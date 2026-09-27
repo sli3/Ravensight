@@ -1,1 +1,23 @@
+# Secrets — never in the build context
+config.toml
+.env
+*.env
+
+# Local environments and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
 graft/
+
+# Repo and editor metadata
+.git/
+.opencode/
+
+# Runtime output and logs
+*.log
+reports/
+
+# Data: exclude everything except the bundled defaults the image needs
+data/*
+!data/defaults/
