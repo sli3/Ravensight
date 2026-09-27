@@ -63,9 +63,6 @@ not in the setup steps below.
 
 ### Hard requirements (the tool cannot run without these)
 
-- **Python 3.11, 3.12, or 3.13** — `chromadb==1.5.9` (pinned in
-  `requirements.txt`) does not yet support Python 3.14+. The Docker image
-  pins to Python 3.12.
 - **A reachable Wazuh deployment (4.x or later):**
   - Wazuh Manager API on TCP/55000 (auth endpoint)
   - Wazuh Indexer (OpenSearch) REST API on TCP/9200 — the actual alert store
@@ -75,14 +72,25 @@ not in the setup steps below.
   any `/v1/chat/completions`-compatible server) is fine; the `api_key` field
   is not validated.
 
-### Conditional requirements
+### Depending on how you run Ravensight
 
-- **Docker + Docker Compose** — only needed when running Ravensight as a
-  container (see [Docker](#docker)). Skip entirely if you run
-  `python3 main.py` on the host.
-- **Docker Compose with profile support (V2)** — only needed if you want the
-  bundled ChromaDB server, which lives behind the `chroma` profile (see
-  [Docker](#docker)). Plain `docker compose up`/`down` will not start it.
+**Docker (recommended):**
+
+- **Docker + Docker Compose V2** — the image bundles its own Python and
+  dependencies, so nothing else needs installing on the host. Compose V2
+  (profile support) is needed if you want the bundled ChromaDB server,
+  which lives behind the `chroma` profile (see [Docker](#docker)). Plain
+  `docker compose up`/`down` will not start it.
+
+**Local / development:**
+
+- **Python 3.11, 3.12, or 3.13** — `chromadb==1.5.9` (pinned in
+  `requirements.txt`) does not yet support Python 3.14+. If your system
+  Python is newer, `uv` can install a supported version for the virtual
+  environment (see [Local / development setup](#local--development-setup)).
+- **[uv](https://docs.astral.sh/uv/)** (recommended) — manages the virtual
+  environment and runs Ravensight inside it without any activation step,
+  so the same commands work in every shell. Plain `pip` + `venv` also works.
 
 ### Optional (the tool runs correctly without these)
 
@@ -114,29 +122,33 @@ cd Ravensight
 
 ### 2. Choose how to run Ravensight
 
-- **Manual / virtual environment** — continue with the steps below
-- **[Docker](#docker)** — single container by default, or with Docker Compose
-  and the optional bundled ChromaDB server; the same section also covers a
-  hybrid host-plus-Docker-Chroma setup
+- **[Docker](#docker) (recommended)** — single container by default, or with
+  Docker Compose and the optional bundled ChromaDB server
+- **Local / development** — run Ravensight directly on the host, e.g. if
+  you are developing or testing changes; continue with the steps below.
+  The [Docker](#docker) section also covers a hybrid setup (host app plus
+  Docker-hosted ChromaDB)
 
 ---
 
-### Manual setup
+### Local / development setup
 
 #### 1. Create a virtual environment
 
 ```bash
 uv venv --python 3.11
-source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
+
+No activation step is needed — `uv` finds the project's `.venv`
+automatically, so these commands work the same in bash, zsh, fish or any
+other shell.
 
 Or with standard venv:
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt
 ```
 
 #### 2. Configure
@@ -184,15 +196,23 @@ Ravensight uses a separate embedding model server for semantic retrieval:
 #### 3. Run
 
 ```bash
-python3 main.py --hours 24
+uv run python3 main.py --hours 24
+```
+
+If you used standard venv instead of `uv`, call the virtual environment's
+Python directly:
+
+```bash
+.venv/bin/python3 main.py --hours 24
 ```
 
 ---
 
 ## Docker
 
-Ravensight can also be run in a container instead of a local virtual environment.
-This is an alternative to the manual setup above — you don't need both.
+Docker is the recommended way to run Ravensight. The image bundles its own
+Python and dependencies, so there is no virtual environment to manage. This
+is an alternative to the local setup above — you don't need both.
 
 ### 1. Build the image
 
@@ -310,9 +330,10 @@ Leave `EMBEDDINGS_CHROMA_HOST` empty (the default) to keep the
 single-container embedded mode — the bundled server is a network-mode
 switch, not a default.
 
-### Hybrid: host `python3 main.py` plus Docker-hosted Chroma
+### Hybrid: host app plus Docker-hosted Chroma
 
-You can run Ravensight on the host (`python3 main.py`) while ChromaDB lives
+You can run Ravensight on the host (`uv run python3 main.py`, following the
+[Local / development setup](#local--development-setup)) while ChromaDB lives
 in the bundled Compose container — useful when you want to keep your host's
 Python environment but isolate ChromaDB behind a managed server.
 

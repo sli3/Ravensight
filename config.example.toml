@@ -13,7 +13,7 @@ indexer_password = "YOUR_INDEXER_PASSWORD"
 [llm]
 base_url = "http://YOUR_LLAMA_CPP_SERVER_IP:8080/v1"
 api_key = "local"
-model = "YOUR_MODEL_ID"
+model = "Ornith-1.5-9B"
 temperature = 0.3
 max_tokens = 1024
 
