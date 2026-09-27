@@ -2,11 +2,16 @@
 baseline.py — Baseline memory persistence for security analysis.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ravensight.embedder import Embedder
 
 import httpx
 from chromadb.errors import ChromaError
@@ -18,7 +23,7 @@ logger = logging.getLogger(__name__)
 class Manager:
     """Manages baseline memory persistence."""
 
-    def __init__(self, config: dict[str, Any], embedder=None) -> None:
+    def __init__(self, config: dict[str, Any], embedder: Embedder | None = None) -> None:
         """
         Initialise baseline manager.
 
