@@ -62,6 +62,9 @@ date — do not attempt it. Report it to Prin instead.
 - Never use `--force` in Git
 - Always show `git diff` and wait for "OK" before committing
 - Never modify any file without first reading its current contents
+- Never work around a permission deny or `ask` prompt — no string building, encoding,
+  `python3 -c` wrappers, subprocess calls or alternative tools. If a rule blocks
+  legitimate work, stop and report the exact command and rule to Prin
 - Commit messages use a category prefix and a short description (`feat:`, `fix:`, `docs:`)
 
 ---

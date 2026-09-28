@@ -7,10 +7,7 @@ permission:
   edit: deny
   bash:
     "*": deny
-    "cat *": allow
-    "grep *": allow
     "python3 -m py_compile *": allow
-    "python3 -c *": allow
     "ruff check *": allow
     "*config.toml*": deny
   external_directory: deny

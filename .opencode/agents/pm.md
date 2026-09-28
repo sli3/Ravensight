@@ -13,7 +13,7 @@ permission:
     "pytest*": allow
     "python3 -m pytest*": allow
     "python3 -m py_compile *": allow
-    "python3 -c *": allow
+    "python3 -c *": ask
     "python3 main.py --help": allow
     "python3 main.py -h": allow
     "ruff check *": allow
@@ -30,6 +30,10 @@ permission:
     "mkdir -p .session-memos*": allow
     "date +*": allow
     "*config.toml*": deny
+    "cat *.env*": deny
+    "head *.env*": deny
+    "cat *.env.example*": allow
+    "head *.env.example*": allow
   external_directory: deny
   doom_loop: deny
   read:

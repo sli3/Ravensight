@@ -24,6 +24,10 @@ permission:
     "git push*": deny
     "git reset --hard*": deny
     "*config.toml*": deny
+    "cat *.env*": deny
+    "head *.env*": deny
+    "cat *.env.example*": allow
+    "head *.env.example*": allow
   read:
     "*": allow
     "config.toml": deny

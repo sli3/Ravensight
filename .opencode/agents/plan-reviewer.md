@@ -15,6 +15,7 @@ permission:
     "*.env.*": deny
     "*.env.example": allow
   hindsight_retain: deny
+  context7_*: allow
   local-files_write_file: deny
   local-files_edit_file: deny
   local-files_create_directory: deny
