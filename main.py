@@ -7,8 +7,10 @@ import sys
 import tomllib
 from pathlib import Path
 
+import openai
+import requests
 from tqdm import tqdm
-from ravensight import wazuh_client, analyser, reporter, baseline, trending, e8_scorer, embedder as embedder_module
+from ravensight import wazuh_client, analyser, reporter, baseline, trending, e8_scorer, config_check, embedder as embedder_module
 
 logger = logging.getLogger(__name__)
 
@@ -54,19 +56,17 @@ def main() -> None:
         logging.critical(f"Invalid config file: {e}")
         sys.exit(1)
 
+    # Validate config before any client or Embedder is created (logs + exits 1 on problems).
+    config_check.validate(config, report_only=args.report_only)
+
     # NEW: Load embeddings config section (optional) and instantiate Embedder
-    embedder_config = config.get("embeddings") if "embeddings" in config else None
+    embedder_config = config.get("embeddings")
     embedder = embedder_module.Embedder(embedder_config, show_progress=show_progress) if embedder_config else None
 
     if embedder is None:
         logging.info("Embeddings disabled: no [embeddings] section — similarity and vector-store features skipped")
     else:
-        logging.info(f"Embeddings enabled: endpoint {embedder_config.get('endpoint', 'http://localhost:8081/v1/embeddings')}")
-
-    for section in ("wazuh", "llm", "reports", "baseline"):
-        if section not in config:
-            logging.critical(f"Missing required config section: [{section}]")
-            sys.exit(1)
+        logging.info(f"Embeddings enabled: endpoint {embedder._endpoint}")
 
     # Pass embedder to baseline.Manager constructor  
     baseline_mgr = baseline.Manager(config["baseline"], embedder=embedder)
@@ -90,12 +90,59 @@ def main() -> None:
         rep.generate(report_data, trends=trends_output)
         return
 
-    alerts = wazuh.fetch_alerts(hours=args.hours, agent=args.agent, level=args.level)
+    try:
+        alerts = wazuh.fetch_alerts(hours=args.hours, agent=args.agent, level=args.level)
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        logging.critical(
+            f"Wazuh Indexer unreachable ({type(e).__name__}: {e}) — "
+            "check [wazuh] indexer_host and indexer_port in config.toml (or .env with Docker)",
+            exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
+        )
+        sys.exit(1)
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else None
+        if status in (401, 403):
+            msg = (
+                f"Wazuh Indexer rejected the login (HTTP {status}) — "
+                "check [wazuh] indexer_user and indexer_password in config.toml (or .env with Docker)"
+            )
+        else:
+            msg = (
+                f"Wazuh Indexer returned HTTP {status} — check the [wazuh] indexer settings"
+            )
+        logging.critical(msg, exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
+        sys.exit(1)
+    except requests.exceptions.RequestException as e:
+        logging.critical(
+            f"Wazuh Indexer request failed ({type(e).__name__}: {e}) — check the [wazuh] indexer settings",
+            exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
+        )
+        sys.exit(1)
 
     mitre_path = config.get("mitre", {}).get("path") if "mitre" in config else None
     asd_path = config.get("asd", {}).get("path") if "asd" in config else None
     platform_hints_path = config.get("platform", {}).get("hints_path") if "platform" in config else None
-    analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, show_progress=show_progress)
+    try:
+        analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, show_progress=show_progress)
+    except openai.APIConnectionError as e:
+        logging.critical(
+            f"LLM server unreachable ({type(e).__name__}: {e}) — check [llm] base_url in config.toml (or .env with Docker)",
+            exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
+        )
+        sys.exit(1)
+    except openai.APIStatusError as e:
+        status = e.status_code if hasattr(e, "status_code") else None
+        logging.critical(
+            f"LLM server returned HTTP {status} — check [llm] base_url, api_key and model",
+            exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
+        )
+        sys.exit(1)
+    except openai.APIError as e:
+        logging.critical(
+            f"LLM request failed ({type(e).__name__}: {e}) — check the [llm] settings",
+            exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
+        )
+        sys.exit(1)
     baseline_mgr.update(analysis, rule_counts=analyser.extract_rule_counts(alerts))
 
     trends_output = None
