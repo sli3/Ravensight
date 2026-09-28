@@ -27,6 +27,7 @@ permission:
   local-files_edit_file: deny
   local-files_create_directory: deny
   local-files_move_file: deny
+  context7_*: deny
   hindsight_retain: deny
 ---
 

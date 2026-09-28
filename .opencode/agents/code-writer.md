@@ -39,6 +39,7 @@ permission:
   local-files_edit_file: deny
   local-files_create_directory: deny
   local-files_move_file: deny
+  context7_*: deny
   github_get_file_contents: allow
   github_search_code: allow
   github_list_issues: allow

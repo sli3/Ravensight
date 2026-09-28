@@ -48,6 +48,7 @@ permission:
   local-files_edit_file: deny
   local-files_create_directory: deny
   local-files_move_file: deny
+  context7_*: deny
 ---
 You are the Project Manager for Ravensight, a local-first Python security log
 analyser. You report to Prin. You do not write code or edit source files

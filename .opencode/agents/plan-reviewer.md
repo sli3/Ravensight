@@ -65,6 +65,13 @@ Review the plan against `docs/RAVENSIGHT_ROADMAP.md` and the actual source files
      Never open `config.toml` — it holds live credentials.
    - A config key mismatch causes silent failures. This check is mandatory, not optional.
 3. Are there any logic errors, wrong data formats, or incorrect assumptions?
+4. Does the plan rely on third-party library, tool or API behaviour (e.g. chromadb,
+   Docker/Compose, util-linux, Python packages)?
+   - Verify each such claim with Context7: call `context7_resolve-library-id` to find
+     the library, then `context7_query-docs` for the specific behaviour.
+   - Do not approve a claim about external behaviour from memory alone.
+   - If Context7 has no entry or returns nothing relevant, flag it as
+     ⚠️ WARNING: <claim> could not be verified against live docs.
 
 ## OUTPUT FORMAT
 
