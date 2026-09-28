@@ -43,6 +43,11 @@ case "$RAVENSIGHT_PUID$RAVENSIGHT_PGID" in
         ;;
 esac
 
+if [ "$RAVENSIGHT_PUID" = "0" ] && [ "$RAVENSIGHT_PGID" != "0" ]; then
+    echo 'ERROR: RAVENSIGHT_PUID=0 means rootless Docker/Podman mode — set RAVENSIGHT_PGID=0 as well.' >&2
+    exit 1
+fi
+
 if [ "$(id -u)" != "0" ]; then
     echo "ERROR: this container was started with --user or Compose user:, which this image does not support." >&2
     echo "Remove it and set RAVENSIGHT_PUID and RAVENSIGHT_PGID in your .env file instead." >&2
@@ -79,7 +84,10 @@ mkdir -p "$RAVENSIGHT_DATA_DIR" "$RAVENSIGHT_REPORTS_DIR"
 # PUID:PGID (e.g. files written by an older root-run container).
 for dir in "$RAVENSIGHT_DATA_DIR" "$RAVENSIGHT_REPORTS_DIR"; do
     repaired=$(find "$dir" \( ! -user "$RAVENSIGHT_PUID" -o ! -group "$RAVENSIGHT_PGID" \) -exec chown -h "$RAVENSIGHT_PUID:$RAVENSIGHT_PGID" {} + -print | wc -l)
-    if [ "$repaired" -gt 0 ]; then
+    still_bad=$(find "$dir" \( ! -user "$RAVENSIGHT_PUID" -o ! -group "$RAVENSIGHT_PGID" \) -print -quit 2>/dev/null || echo "$dir")
+    if [ -n "$still_bad" ]; then
+        echo "WARNING: some entries in $dir could not be re-owned to $RAVENSIGHT_PUID:$RAVENSIGHT_PGID (read-only mount or NFS root-squash?). Ravensight may fail to write there. Fix on the host: sudo chown -R $RAVENSIGHT_PUID:$RAVENSIGHT_PGID on the folder mounted at $dir." >&2
+    elif [ "$repaired" -gt 0 ]; then
         echo "Repaired ownership of $repaired entries in $dir"
     fi
 done
