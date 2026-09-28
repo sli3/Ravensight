@@ -4,6 +4,7 @@ analyser.py — LLM-based security alert analysis via OpenAI-compatible REST API
 
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -240,6 +241,7 @@ def analyse(
     platform_hints_path: str | None = None,
     asd_path: str | None = None,
     show_progress: bool = False,
+    lookback_hours: int | None = None,
 ) -> dict[str, Any]:
     """
     Analyse security alerts using a remote LLM server.
@@ -253,6 +255,8 @@ def analyse(
         platform_hints_path: Optional path to platform false positive hints JSON file;
             defaults to "data/platform_hints.json" if not supplied
         asd_path: Optional path to ASD framework JSON file
+        lookback_hours: Report window in hours — similar incidents within this
+            window are dropped from the prompt. None disables filtering.
 
     Returns:
         Analysis dict with summary, findings, and recommendations.
@@ -268,6 +272,7 @@ def analyse(
     )
 
     similar_incidents = ""
+    formatted: list[str] = []
     if embedder is not None and not embedder.degraded:
         query_text = _summarise_alerts(alerts)
         try:
@@ -279,13 +284,20 @@ def analyse(
             )
             similar = None
         if similar:
-            formatted = []
+            similar = filter_similar_by_window(similar, lookback_hours)
             for item in similar:
                 summary = item.get("summary", "")
                 timestamp = item.get("timestamp", "")
                 severity = item.get("severity", "")
-                formatted.append(f"- {timestamp} ({severity}): {summary}")
-            similar_incidents = "\nSimilar past incidents:\n" + "\n".join(formatted)
+                if severity and severity != "unknown":
+                    formatted.append(f"- {timestamp} ({severity}): {summary}")
+                else:
+                    formatted.append(f"- {timestamp}: {summary}")
+            if formatted:
+                similar_incidents = (
+                    "\nSimilar past incidents (from before this report window):\n"
+                    + "\n".join(formatted)
+                )
 
     tactics = []
     if mitre_path and Path(mitre_path).exists():
@@ -348,9 +360,75 @@ def analyse(
     ##################################
 
     result = _parse_analysis(analysis_text, tactics=tactics)
-    if similar_incidents:
-        result["similar_incidents"] = similar_incidents
+    if formatted:
+        result["similar_incidents"] = "\n".join(formatted)
     return result
+
+
+def filter_similar_by_window(
+    items: list[dict[str, Any]],
+    lookback_hours: int | None,
+    *,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Drop items whose timestamp falls within the report window.
+
+    An item is dropped when its parsed timestamp is at or after
+    ``now - lookback_hours``. Items with missing or unparseable timestamps are
+    kept (and DEBUG-logged). ``lookback_hours`` of None returns the list unchanged.
+
+    Args:
+        items: List of similar-incident dicts from embedder.retrieve_similar().
+            Each item exposes a ``timestamp`` field (ISO string or empty).
+        lookback_hours: Window in hours. None disables filtering.
+        now: Override for the current time — useful in tests. When None, the
+            naive cutoff uses ``datetime.now()`` and the aware cutoff uses
+            ``datetime.now(timezone.utc)``.
+
+    Returns:
+        A new list containing only items older than the window.
+    """
+    if lookback_hours is None:
+        return items
+    if not items:
+        return items
+
+    naive_now = now if now is not None else datetime.now()
+    aware_now = now if (now is not None and now.tzinfo is not None) else datetime.now(timezone.utc)
+    naive_cutoff = naive_now - timedelta(hours=lookback_hours)
+    aware_cutoff = aware_now - timedelta(hours=lookback_hours)
+
+    filtered: list[dict[str, Any]] = []
+    for item in items:
+        ts_raw = item.get("timestamp", "")
+        if not ts_raw:
+            logger.debug("similar-incident item missing timestamp — kept")
+            filtered.append(item)
+            continue
+        try:
+            parsed = datetime.fromisoformat(ts_raw)
+        except (TypeError, ValueError):
+            logger.debug(
+                f"similar-incident item has unparseable timestamp {ts_raw!r} — kept"
+            )
+            filtered.append(item)
+            continue
+
+        try:
+            if parsed.tzinfo is None:
+                if parsed >= naive_cutoff:
+                    continue
+            else:
+                if parsed >= aware_cutoff:
+                    continue
+        except TypeError:
+            logger.debug("similar-incident item timestamp tz mismatch — kept")
+            filtered.append(item)
+            continue
+
+        filtered.append(item)
+    return filtered
 
 
 def _build_prompt(
@@ -361,12 +439,8 @@ def _build_prompt(
     platform_context: str = "",
     asd_context: str = "",
 ) -> str:
-    """Build prompt with alert summary, baseline context, and similar incidents."""
+    """Build prompt with alert summary and similar incidents."""
     alert_summary = _summarise_alerts(alerts)
-
-    baseline_context = ""
-    if baseline.get("findings"):
-        baseline_context = f"Previous baseline findings: {', '.join(baseline['findings'][:3])}"
 
     mitre_reference = ""
     if tactics:
@@ -380,8 +454,6 @@ def _build_prompt(
 {platform_block}
 Recent alerts:
 {alert_summary}
-
-{baseline_context}
 
 {similar_incidents}
 {mitre_reference}

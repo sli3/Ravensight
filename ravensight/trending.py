@@ -136,7 +136,7 @@ class Trending:
             "",
             f"*Rolling window: {self._window_days} days*",
             "",
-            "| Rule Group | Avg/Day | Latest | Direction |",
+            "| Rule Group | Avg/run | Latest | Direction |",
             "|------------|---------|--------|------------|",
         ]
 

@@ -72,12 +72,6 @@ def main() -> None:
     baseline_mgr = baseline.Manager(config["baseline"], embedder=embedder)
     wazuh = wazuh_client.Client(config["wazuh"], show_progress=show_progress)
 
-    # Migrate baseline embeddings (runs on every invocation; no migration marker exists)
-    if embedder is not None:
-        migrated = embedder.migrate_baseline(baseline_mgr.load())
-        if migrated > 0:
-            logging.info(f"Migrated {migrated} entries to vector store")
-
     if args.report_only:
         trends_output = None
         if "trending" in config:
@@ -123,7 +117,7 @@ def main() -> None:
     asd_path = config.get("asd", {}).get("path") if "asd" in config else None
     platform_hints_path = config.get("platform", {}).get("hints_path") if "platform" in config else None
     try:
-        analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, show_progress=show_progress)
+        analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, show_progress=show_progress, lookback_hours=args.hours)
     except openai.APIConnectionError as e:
         logging.critical(
             f"LLM server unreachable ({type(e).__name__}: {e}) — check [llm] base_url in config.toml (or .env with Docker)",
