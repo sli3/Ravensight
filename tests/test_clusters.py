@@ -283,6 +283,40 @@ def test_rule_id_int_str_and_none() -> None:
     assert clusters[0]["rule_ids"] == ["5715", "5716"]
 
 
+def test_null_rule_description_clusters_sort_without_typeerror() -> None:
+    """Explicit null rule descriptions coalesce to 'Unknown' and sort cleanly."""
+    alerts = [
+        {
+            "_source": {
+                "agent": {"name": "host-1"},
+                "rule": {"id": "23503", "description": None, "level": 10},
+                "data": {
+                    "vulnerability": {
+                        "cve": "CVE-2026-1001",
+                        "package": {"name": "openssl"},
+                    }
+                },
+            }
+        },
+        {
+            "_source": {
+                "agent": {"name": "host-1"},
+                "rule": {"id": "23503", "description": None, "level": 10},
+                "data": {
+                    "vulnerability": {
+                        "cve": "CVE-2026-1002",
+                        "package": {"name": "curl"},
+                    }
+                },
+            }
+        },
+    ]
+    clusters = extract_alert_clusters(alerts)
+    assert len(clusters) == 2
+    assert [c["description"] for c in clusters] == ["Unknown", "Unknown"]
+    assert {c["package"] for c in clusters} == {"openssl", "curl"}
+
+
 def test_cve_primary_field_and_regex_fallback() -> None:
     """data.vulnerability.cve wins; the description regex is the fallback."""
     primary = [

@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 MAX_PROMPT_CLUSTERS = 40
 MAX_PROMPT_CVES = 10
+MAX_SIMILARITY_QUERY_CHARS = 4000
 
 _CVE_RE = re.compile(r"CVE-\d{4}-\d{4,}")
 _PACKAGE_FALLBACK_RE = re.compile(r"^CVE-\d{4}-\d{4,}\s+affects\s+(.+)$")
@@ -289,7 +290,7 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
             data = {}
         vuln = data.get("vulnerability")
         rule_groups = rule.get("groups") or []
-        description = rule.get("description", "Unknown")
+        description = rule.get("description") or "Unknown"
         agent = source.get("agent") or {}
         host = agent.get("name") or "unknown"
         level = _coerce_level(rule.get("level", 0))
@@ -411,7 +412,7 @@ def extract_rule_severities(alerts: list[dict[str, Any]]) -> dict[str, str]:
     for alert in alerts:
         source = alert.get("_source") or {}
         rule = source.get("rule") or {}
-        description = rule.get("description", "Unknown")
+        description = rule.get("description") or "Unknown"
         level = _coerce_level(rule.get("level", 0))
         max_levels[description] = max(max_levels.get(description, 0), level)
     return {
@@ -481,13 +482,16 @@ def analyse(
         timeout=300.0,
     )
 
+    clusters = extract_alert_clusters(alerts)
+
     similar_incidents = ""
     formatted: list[str] = []
     if embedder is not None and not embedder.degraded:
-        query_text = _summarise_alerts(alerts)
+        query_descriptions = [c["description"] for c in clusters[:MAX_PROMPT_CLUSTERS]]
+        query_text = "\n".join(query_descriptions)[:MAX_SIMILARITY_QUERY_CHARS]
         try:
             similar = embedder.retrieve_similar(query_text)
-        except (APIConnectionError, APITimeoutError, ValueError, ChromaError, httpx.HTTPError, OSError) as e:
+        except (APIConnectionError, APITimeoutError, APIStatusError, ValueError, ChromaError, httpx.HTTPError, OSError) as e:
             logger.warning(
                 f"Similarity retrieval failed ({type(e).__name__}: {e}) — "
                 "similar-incident context skipped this run"
@@ -524,8 +528,6 @@ def analyse(
 
     asd_data = _load_asd_data(asd_path) if asd_path else {}
     asd_context = _build_asd_context(asd_data)
-
-    clusters = extract_alert_clusters(alerts)
 
     prompt = _build_prompt(
         alerts,
@@ -738,26 +740,6 @@ each prefixed with its cluster id, plus at most one recommendation line per clus
 </recommendations>"""
 
 
-def _summarise_alerts(alerts: list[dict[str, Any]]) -> str:
-    """Create a summary of alerts for the LLM."""
-    by_rule: dict[str, dict[str, Any]] = {}
-    for alert in alerts:
-        source = alert.get("_source", {})
-        rule = source.get("rule", {}).get("description", "Unknown")
-        level = source.get("rule", {}).get("level", 0)
-        agent = source.get("agent", {}).get("name", "Unknown")
-        if rule not in by_rule:
-            by_rule[rule] = {"count": 0, "level": level, "agents": set()}
-        by_rule[rule]["count"] += 1
-        by_rule[rule]["agents"].add(agent)
-
-    lines = [
-        f"- {rule}: {d['count']} alerts (level {d['level']}, agents: {', '.join(d['agents'])})"
-        for rule, d in by_rule.items()
-    ]
-    return "\n".join(lines)
-
-
 def extract_rule_counts(alerts: list[dict[str, Any]]) -> dict[str, int]:
     """
     Extract per-rule-group alert counts from raw alerts.
@@ -772,7 +754,7 @@ def extract_rule_counts(alerts: list[dict[str, Any]]) -> dict[str, int]:
     for alert in alerts:
         source = alert.get("_source", {})
         rule = source.get("rule", {})
-        description = rule.get("description", "Unknown")
+        description = rule.get("description") or "Unknown"
         rule_counts[description] = rule_counts.get(description, 0) + 1
     return rule_counts
 

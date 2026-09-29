@@ -7,6 +7,8 @@ No network — reports are built in-memory via Reporter._build_report.
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ravensight import reporter
 from ravensight.reporter import REPORT_MAX_CVES, Reporter
 
@@ -146,3 +148,53 @@ def test_no_time_clause_when_timestamps_missing() -> None:
     lines = reporter._format_finding(finding)
     assert "→" not in lines[0]
     assert "( → )" not in lines[0]
+
+
+@pytest.mark.parametrize(("count", "word"), [(1, "alert"), (2, "alerts")])
+def test_singular_plural_alert_wording(
+    tmp_path: Path, count: int, word: str
+) -> None:
+    """A count of one renders 'alert'; any other count renders 'alerts'."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report({"summary": "s", "findings": [_cluster(count=count)]})
+    assert f"— {count} {word} on host-1, host-2" in report
+
+
+def test_single_timestamp_rendered_once(tmp_path: Path) -> None:
+    """Equal first/last timestamps render once, without the arrow."""
+    finding = _cluster(
+        first_seen="2026-09-24T08:15:00.000Z",
+        last_seen="2026-09-24T08:15:30.000Z",
+    )
+    lines = reporter._format_finding(finding)
+    assert "(2026-09-24 08:15)" in lines[0]
+    assert "→" not in lines[0]
+
+
+def test_empty_unattached_description_produces_no_bullet(tmp_path: Path) -> None:
+    """An unattached finding with no description renders no Findings bullet."""
+    unattached = _cluster(type="unattached", description="", recommendation="Hygiene advice")
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report({"summary": "s", "findings": [unattached]})
+    assert "*LLM note, not linked to alert data:*" not in report
+    recommendations = report.split("## Recommendations")[-1]
+    assert "- Hygiene advice" in recommendations
+    assert "[C" not in recommendations
+
+
+def test_blank_line_before_mitre_tags_without_similar_incidents(
+    tmp_path: Path,
+) -> None:
+    """MITRE heading is preceded by a blank line when no similar incidents exist."""
+    rep = _make_reporter(tmp_path)
+    data = {
+        "summary": "s",
+        "findings": [_cluster()],
+        "mitre_tags": [{"tactic": "Defense Evasion", "description": "foo"}],
+    }
+    report = rep._build_report(data)
+    lines = report.splitlines()
+    idx = lines.index("## MITRE ATT&CK Tags")
+    assert lines[idx - 1] == ""
+    bullet_idx = next(i for i, line in enumerate(lines) if line.startswith("- **[C3]"))
+    assert idx - bullet_idx >= 2

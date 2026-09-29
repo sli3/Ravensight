@@ -26,6 +26,8 @@ def _format_finding(finding: str | dict) -> list[str]:
         return [f"- {finding}"]
 
     if finding.get("type") == "unattached":
+        if not finding.get("description", "").strip():
+            return []
         return [
             f"- *LLM note, not linked to alert data:* {finding.get('description', '')}"
         ]
@@ -33,14 +35,18 @@ def _format_finding(finding: str | dict) -> list[str]:
     first_seen = _trim_timestamp(finding.get("first_seen", ""))
     last_seen = _trim_timestamp(finding.get("last_seen", ""))
     time_clause = ""
-    if first_seen or last_seen:
+    if first_seen and last_seen and first_seen == last_seen:
+        time_clause = f" ({first_seen})"
+    elif first_seen or last_seen:
         time_clause = f" ({first_seen} → {last_seen})"
 
     hosts = ", ".join(finding.get("hosts", []))
+    count = finding.get("count", 0)
+    alert_word = "alert" if count == 1 else "alerts"
     lines = [
         (
             f"- **[{finding.get('id', '')}] {finding.get('severity', '')}** — "
-            f"{finding.get('description', '')} — {finding.get('count', 0)} alerts "
+            f"{finding.get('description', '')} — {count} {alert_word} "
             f"on {hosts}{time_clause}"
         )
     ]
@@ -240,6 +246,7 @@ class Reporter:
         mitre_tags = data.get("mitre_tags", [])
         if mitre_tags:
             lines.extend([
+                "",
                 "## MITRE ATT&CK Tags",
                 "",
                 "| Tactic | Description |",

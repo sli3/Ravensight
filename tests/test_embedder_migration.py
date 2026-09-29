@@ -13,7 +13,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import chromadb
+import httpx
 import pytest
+from openai import BadRequestError
 
 from main import _similar_incidents_note
 from ravensight import analyser, baseline
@@ -403,4 +405,75 @@ def test_analyser_analyse_survives_chroma_failure_in_retrieve_similar(
     )
 
     assert result.get("similar_incidents", "") == ""
+    assert any("Similarity retrieval failed" in rec.message for rec in caplog.records)
+
+
+def test_analyser_analyse_survives_bad_request_error_in_retrieve_similar(
+    monkeypatch: pytest.MonkeyPatch, caplog: Any
+) -> None:
+    """A BadRequestError from retrieve_similar is caught; analyse() completes."""
+
+    class _FailingEmbedder:
+        """Stand-in embedder whose retrieve_similar raises BadRequestError."""
+
+        degraded = False
+        _chroma_failure = None
+
+        def retrieve_similar(self, query_text: str) -> Any:
+            """Raise as the embedding server does on a context overflow."""
+            request = httpx.Request("POST", "http://localhost:8000/v1/embeddings")
+            response = httpx.Response(400, request=request)
+            raise BadRequestError(
+                "maximum context length exceeded", response=response, body=None
+            )
+
+    class FakeCompletions:
+        """Stand-in for OpenAI chat completions returning one parseable chunk."""
+
+        def create(self, **kwargs: Any) -> Any:
+            """Return a single streaming chunk with valid analysis text."""
+            chunk = SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(
+                    content="<findings>\n- Test finding\n</findings>\n"
+                    "<recommendations>\n- Test recommendation\n</recommendations>"
+                ))]
+            )
+            return iter([chunk])
+
+    class FakeChat:
+        """Stand-in for the chat attribute on an OpenAI client."""
+
+        def __init__(self) -> None:
+            self.completions = FakeCompletions()
+
+    class FakeOpenAI:
+        """Stand-in OpenAI client whose chat completions always return valid text."""
+
+        def __init__(self, **kwargs: Any) -> None:
+            self.chat = FakeChat()
+
+    monkeypatch.setattr(analyser, "OpenAI", FakeOpenAI)
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+
+    embedder = _FailingEmbedder()
+    alerts = [
+        {
+            "_source": {
+                "agent": {"name": "host-1"},
+                "rule": {"id": "1002", "description": "Test rule", "level": 3},
+            }
+        }
+    ]
+    llm_config = {"base_url": "http://localhost:8000/v1", "api_key": "x", "model": "m"}
+
+    result = analyser.analyse(
+        alerts,
+        {},
+        llm_config,
+        embedder=embedder,
+        platform_hints_path="/nonexistent/platform_hints.json",
+    )
+
+    assert result.get("findings")
+    assert embedder.degraded is False
     assert any("Similarity retrieval failed" in rec.message for rec in caplog.records)

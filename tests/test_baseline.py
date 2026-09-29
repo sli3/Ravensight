@@ -141,6 +141,26 @@ def test_migrate_baseline_uses_finding_text_not_repr(
     assert doc["metadatas"][0]["summary"] == text
 
 
+def test_summary_round_trip_and_renders_in_report(tmp_path: Path) -> None:
+    """A stored summary survives reload and renders in the report body."""
+    from ravensight.reporter import Reporter
+
+    summary = "X alerts in Y clusters across 3 hosts"
+    path = tmp_path / "baseline.json"
+    manager = baseline.Manager({"path": str(path)})
+    manager.update(
+        {"findings": [_dict_finding()], "recommendations": ["rec one"], "summary": summary}
+    )
+
+    reloaded = baseline.Manager({"path": str(path)})
+    assert reloaded.load()["summary"] == summary
+
+    rep = Reporter({"output_dir": str(tmp_path / "reports")})
+    report = rep._build_report(reloaded.load())
+    assert summary in report
+    assert "No summary available" not in report
+
+
 def test_migrate_baseline_string_finding_unchanged(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

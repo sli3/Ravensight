@@ -82,6 +82,10 @@ class Manager:
         if recommendations:
             self._baseline["recommendations"] = recommendations
 
+        summary = analysis.get("summary")
+        if summary:
+            self._baseline["summary"] = summary
+
         # Add embeddings from rule_counts when embedder is present
         if self._embedder is not None and rule_counts:
             for rule_desc, count in rule_counts.items():
