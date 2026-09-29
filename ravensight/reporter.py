@@ -10,6 +10,56 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+REPORT_MAX_CVES = 10
+
+
+def _trim_timestamp(raw: str) -> str:
+    """Trim an ISO timestamp to 'YYYY-MM-DD HH:MM', returning '' when empty."""
+    if not raw:
+        return ""
+    return raw[:16].replace("T", " ")
+
+
+def _format_finding(finding: str | dict) -> list[str]:
+    """Render one finding (legacy string or cluster dict) as markdown lines."""
+    if isinstance(finding, str):
+        return [f"- {finding}"]
+
+    if finding.get("type") == "unattached":
+        return [
+            f"- *LLM note, not linked to alert data:* {finding.get('description', '')}"
+        ]
+
+    first_seen = _trim_timestamp(finding.get("first_seen", ""))
+    last_seen = _trim_timestamp(finding.get("last_seen", ""))
+    time_clause = ""
+    if first_seen or last_seen:
+        time_clause = f" ({first_seen} → {last_seen})"
+
+    hosts = ", ".join(finding.get("hosts", []))
+    lines = [
+        (
+            f"- **[{finding.get('id', '')}] {finding.get('severity', '')}** — "
+            f"{finding.get('description', '')} — {finding.get('count', 0)} alerts "
+            f"on {hosts}{time_clause}"
+        )
+    ]
+
+    narrative = finding.get("narrative", "")
+    if narrative:
+        lines.append(f"  - {narrative}")
+
+    if finding.get("type") == "vulnerability":
+        cves = finding.get("cves", [])
+        if cves:
+            shown = cves[:REPORT_MAX_CVES]
+            cve_text = ", ".join(shown)
+            if len(cves) > REPORT_MAX_CVES:
+                cve_text += f" (+{len(cves) - REPORT_MAX_CVES} more)"
+            lines.append(f"  - CVEs: {cve_text}")
+
+    return lines
+
 
 def _render_asd_section(
     asd_data: dict,
@@ -162,7 +212,7 @@ class Reporter:
         findings = data.get("findings", [])
         if findings:
             for finding in findings:
-                lines.append(f"- {finding}")
+                lines.extend(_format_finding(finding))
         else:
             lines.append("*No findings*")
 
@@ -219,7 +269,21 @@ class Reporter:
             "",
         ])
 
-        recommendations = data.get("recommendations", [])
+        if any(isinstance(f, dict) for f in findings):
+            recommendation_lines: list[str] = []
+            for finding in findings:
+                if not isinstance(finding, dict):
+                    continue
+                rec = finding.get("recommendation", "")
+                if not rec:
+                    continue
+                if finding.get("type") == "unattached":
+                    recommendation_lines.append(rec)
+                else:
+                    recommendation_lines.append(f"[{finding.get('id', '')}] {rec}")
+            recommendations: list[str] = recommendation_lines
+        else:
+            recommendations = data.get("recommendations", [])
         if recommendations:
             for rec in recommendations:
                 lines.append(f"- {rec}")

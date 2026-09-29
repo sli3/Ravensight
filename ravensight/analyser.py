@@ -4,6 +4,7 @@ analyser.py — LLM-based security alert analysis via OpenAI-compatible REST API
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,16 @@ from chromadb.errors import ChromaError
 from openai import OpenAI
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 from tqdm import tqdm
+
+MAX_PROMPT_CLUSTERS = 40
+MAX_PROMPT_CVES = 10
+
+_CVE_RE = re.compile(r"CVE-\d{4}-\d{4,}")
+_PACKAGE_FALLBACK_RE = re.compile(r"^CVE-\d{4}-\d{4,}\s+affects\s+(.+)$")
+_CLUSTER_REF_RE = re.compile(r"^\**\s*\[?\s*C(\d+)\s*\]?\s*\**[\s:\-]*", re.IGNORECASE)
+_STRAY_FINDING_RE = re.compile(r"^Finding\s+\d+\s*[:\-]\s*", re.IGNORECASE)
+
+_SEVERITY_ORDER = {"High": 0, "Medium": 1, "Low": 2}
 
 
 def _load_asd_data(asd_path: str) -> dict:
@@ -232,6 +243,205 @@ def _build_platform_context(alerts: list[dict[str, Any]], hints: dict) -> str:
     return "Platform context:\n" + "\n\n".join(blocks)
 
 
+def severity_from_level(level: Any) -> str:
+    """Map a Wazuh rule level to a High/Medium/Low severity label."""
+    try:
+        value = int(level)
+    except (TypeError, ValueError):
+        value = 0
+    if 12 <= value <= 16:
+        return "High"
+    if 7 <= value <= 11:
+        return "Medium"
+    return "Low"
+
+
+def _coerce_level(raw_level: Any) -> int:
+    """Coerce a rule level to int, treating anything non-numeric as 0."""
+    try:
+        return int(raw_level)
+    except (TypeError, ValueError):
+        return 0
+
+
+def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group raw alerts into data-built clusters for analysis.
+
+    Vulnerability alerts group by (agent name, package); all other alerts
+    group by rule description alone, so hosts merge across agents. Counts,
+    hosts, severities, timestamps and CVE lists all come from alert data.
+
+    Args:
+        alerts: List of alert dicts from wazuh_client.fetch_alerts().
+
+    Returns:
+        Cluster dicts ordered by severity, then count descending, then
+        description ascending, with ids assigned C1..Cn after ordering.
+    """
+    vuln_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    rule_by_desc: dict[str, dict[str, Any]] = {}
+
+    for alert in alerts:
+        source = alert.get("_source") or {}
+        rule = source.get("rule") or {}
+        data = source.get("data")
+        if not isinstance(data, dict):
+            data = {}
+        vuln = data.get("vulnerability")
+        rule_groups = rule.get("groups") or []
+        description = rule.get("description", "Unknown")
+        agent = source.get("agent") or {}
+        host = agent.get("name") or "unknown"
+        level = _coerce_level(rule.get("level", 0))
+        timestamp = source.get("@timestamp") or ""
+        rule_id = rule.get("id")
+        rule_id_str = None if rule_id is None else str(rule_id)
+
+        is_vulnerability = (isinstance(vuln, dict) and bool(vuln)) or (
+            "vulnerability-detector" in rule_groups
+        )
+
+        cves: list[str] = []
+        if is_vulnerability:
+            package = None
+            if isinstance(vuln, dict):
+                pkg = vuln.get("package") or {}
+                if isinstance(pkg, dict):
+                    package = pkg.get("name")
+            if not package:
+                match = _PACKAGE_FALLBACK_RE.match(description)
+                if match:
+                    package = match.group(1).strip()
+            if isinstance(vuln, dict) and vuln.get("cve"):
+                cves = [str(vuln["cve"])]
+            else:
+                cves = _CVE_RE.findall(description)
+            key = (host, package) if package else (host, description)
+            cluster = vuln_by_key.get(key)
+            if cluster is None:
+                cluster = _new_cluster("vulnerability", description, package)
+                vuln_by_key[key] = cluster
+        else:
+            cluster = rule_by_desc.get(description)
+            if cluster is None:
+                cluster = _new_cluster("rule", description, None)
+                rule_by_desc[description] = cluster
+
+        cluster["count"] += 1
+        if rule_id_str:
+            cluster["rule_ids"].add(rule_id_str)
+        cluster["hosts"].add(host)
+        cluster["max_level"] = max(cluster["max_level"], level)
+        if timestamp:
+            if not cluster["first_seen"] or timestamp < cluster["first_seen"]:
+                cluster["first_seen"] = timestamp
+            if not cluster["last_seen"] or timestamp > cluster["last_seen"]:
+                cluster["last_seen"] = timestamp
+        cluster["cves"].update(cves)
+
+    ordered = list(vuln_by_key.values()) + list(rule_by_desc.values())
+    for cluster in ordered:
+        if cluster["type"] == "vulnerability" and cluster["package"]:
+            n_cves = len(cluster["cves"])
+            if n_cves > 1:
+                cluster["description"] = (
+                    f"{n_cves} vulnerabilities affect {cluster['package']}"
+                )
+
+    ordered.sort(
+        key=lambda c: (
+            _SEVERITY_ORDER[severity_from_level(c["max_level"])],
+            -c["count"],
+            c["description"],
+        )
+    )
+
+    clusters: list[dict[str, Any]] = []
+    for index, cluster in enumerate(ordered, start=1):
+        clusters.append(
+            {
+                "id": f"C{index}",
+                "type": cluster["type"],
+                "description": cluster["description"],
+                "rule_ids": sorted(cluster["rule_ids"]),
+                "hosts": sorted(cluster["hosts"]),
+                "count": cluster["count"],
+                "max_level": cluster["max_level"],
+                "severity": severity_from_level(cluster["max_level"]),
+                "first_seen": cluster["first_seen"],
+                "last_seen": cluster["last_seen"],
+                "cves": sorted(cluster["cves"]),
+                "package": cluster["package"],
+                "narrative": "",
+                "recommendation": "",
+            }
+        )
+    return clusters
+
+
+def _new_cluster(
+    cluster_type: str, description: str, package: str | None
+) -> dict[str, Any]:
+    """Create a mutable accumulation dict for one alert cluster."""
+    return {
+        "type": cluster_type,
+        "description": description,
+        "package": package,
+        "rule_ids": set(),
+        "hosts": set(),
+        "count": 0,
+        "max_level": 0,
+        "first_seen": "",
+        "last_seen": "",
+        "cves": set(),
+    }
+
+
+def extract_rule_severities(alerts: list[dict[str, Any]]) -> dict[str, str]:
+    """Map rule description to severity from the max level seen per rule.
+
+    Args:
+        alerts: List of alert dicts from wazuh_client.fetch_alerts().
+
+    Returns:
+        Dict mapping rule description to a High/Medium/Low severity label,
+        keyed like extract_rule_counts() with an "Unknown" default.
+    """
+    max_levels: dict[str, int] = {}
+    for alert in alerts:
+        source = alert.get("_source") or {}
+        rule = source.get("rule") or {}
+        description = rule.get("description", "Unknown")
+        level = _coerce_level(rule.get("level", 0))
+        max_levels[description] = max(max_levels.get(description, 0), level)
+    return {
+        description: severity_from_level(level)
+        for description, level in max_levels.items()
+    }
+
+
+def _unattached_finding(description: str, recommendation: str = "") -> dict[str, Any]:
+    """Build an unattached finding dict for LLM lines with no known cluster id."""
+    return {
+        "type": "unattached",
+        "description": description,
+        "count": 0,
+        "hosts": [],
+        "severity": "",
+        "narrative": "",
+        "recommendation": recommendation,
+    }
+
+
+def _split_cluster_ref(body: str) -> tuple[str | None, str]:
+    """Split a tolerant cluster id prefix from an LLM line, returning (id, rest)."""
+    match = _CLUSTER_REF_RE.match(body)
+    if not match:
+        return None, body
+    cluster_id = f"C{int(match.group(1))}"
+    return cluster_id, body[match.end():]
+
+
 def analyse(
     alerts: list[dict[str, Any]],
     baseline: dict[str, Any],
@@ -315,9 +525,12 @@ def analyse(
     asd_data = _load_asd_data(asd_path) if asd_path else {}
     asd_context = _build_asd_context(asd_data)
 
+    clusters = extract_alert_clusters(alerts)
+
     prompt = _build_prompt(
         alerts,
         baseline,
+        clusters=clusters,
         similar_incidents=similar_incidents,
         tactics=tactics,
         platform_context=platform_context,
@@ -359,10 +572,31 @@ def analyse(
     logger.debug(f"Raw LLM response: {analysis_text[:1000]}")
     ##################################
 
-    result = _parse_analysis(analysis_text, tactics=tactics)
+    result = _parse_analysis(analysis_text, tactics=tactics, clusters=clusters)
+    result["summary"] = _build_data_summary(alerts, clusters, lookback_hours)
     if formatted:
         result["similar_incidents"] = "\n".join(formatted)
     return result
+
+
+def _build_data_summary(
+    alerts: list[dict[str, Any]],
+    clusters: list[dict[str, Any]],
+    lookback_hours: int | None,
+) -> str:
+    """Build the run summary purely from alert data, never from LLM text."""
+    hosts: set[str] = set()
+    for cluster in clusters:
+        hosts.update(cluster.get("hosts", []))
+    high = sum(1 for c in clusters if c["severity"] == "High")
+    medium = sum(1 for c in clusters if c["severity"] == "Medium")
+    low = sum(1 for c in clusters if c["severity"] == "Low")
+    window = f" (last {lookback_hours} h)" if lookback_hours is not None else ""
+    return (
+        f"{len(alerts)} alerts in {len(clusters)} clusters across "
+        f"{len(hosts)} hosts — severity: {high} High, {medium} Medium, "
+        f"{low} Low clusters{window}"
+    )
 
 
 def filter_similar_by_window(
@@ -434,13 +668,40 @@ def filter_similar_by_window(
 def _build_prompt(
     alerts: list[dict[str, Any]],
     baseline: dict[str, Any],
+    clusters: list[dict[str, Any]] | None = None,
     similar_incidents: str = "",
     tactics: list = [],
     platform_context: str = "",
     asd_context: str = "",
 ) -> str:
-    """Build prompt with alert summary and similar incidents."""
-    alert_summary = _summarise_alerts(alerts)
+    """Build prompt with cluster lines and similar incidents."""
+    if clusters is None:
+        clusters = extract_alert_clusters(alerts)
+
+    cluster_lines: list[str] = []
+    for cluster in clusters[:MAX_PROMPT_CLUSTERS]:
+        line = (
+            f"[{cluster['id']}] {cluster['severity'].upper()} — "
+            f"{cluster['count']} alerts — {cluster['description']} — "
+            f"hosts: {', '.join(cluster['hosts'])} — "
+            f"{cluster['first_seen']} → {cluster['last_seen']}"
+        )
+        if cluster["type"] == "vulnerability" and cluster["cves"]:
+            shown = cluster["cves"][:MAX_PROMPT_CVES]
+            cve_part = ", ".join(shown)
+            if len(cluster["cves"]) > MAX_PROMPT_CVES:
+                cve_part += f" ... (+{len(cluster['cves']) - MAX_PROMPT_CVES} more)"
+            line += f" — CVEs: {cve_part}"
+        cluster_lines.append(line)
+
+    if len(clusters) > MAX_PROMPT_CLUSTERS:
+        omitted = len(clusters) - MAX_PROMPT_CLUSTERS
+        cluster_lines.append(
+            f"(+{omitted} lower-severity clusters omitted — "
+            "comment only on the clusters listed)"
+        )
+
+    alert_summary = "\n".join(cluster_lines)
 
     mitre_reference = ""
     if tactics:
@@ -452,7 +713,8 @@ def _build_prompt(
 
     return f"""You are a security analyst. Analyse these Wazuh alerts and provide findings.
 {platform_block}
-Recent alerts:
+Recent alerts (clusters built from alert data — do not restate counts, hosts,
+severities or CVEs, and do not invent cluster ids):
 {alert_summary}
 
 {similar_incidents}
@@ -465,14 +727,14 @@ Tag each finding with the most relevant MITRE ATT&CK tactic using exact tactic n
 - Defense Evasion: File integrity tampering to hide malicious changes
 </mitre_tags>
 
-Provide your analysis in this format:
+Provide your analysis in this format — one narrative line per cluster you comment on,
+each prefixed with its cluster id, plus at most one recommendation line per cluster:
 <findings>
-- Finding 1
-- Finding 2
+- [C1] <narrative for cluster C1>
+- [C2] <narrative for cluster C2>
 </findings>
 <recommendations>
-- Recommendation 1
-- Recommendation 2
+- [C1] <recommendation for cluster C1>
 </recommendations>"""
 
 
@@ -515,11 +777,22 @@ def extract_rule_counts(alerts: list[dict[str, Any]]) -> dict[str, int]:
     return rule_counts
 
 
-def _parse_analysis(text: str, tactics: list[dict[str, Any]] = []) -> dict[str, Any]:
-    """Parse LLM response into structured dict."""
-    findings: list[str] = []
+def _parse_analysis(
+    text: str,
+    tactics: list[dict[str, Any]] = [],
+    clusters: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Parse LLM response into structured dict.
+
+    With ``clusters`` given, findings/recommendation lines attach to the
+    matching cluster by id; lines with no id (or an unknown id) become
+    unattached finding dicts and are logged. With ``clusters`` None the
+    legacy string-based behaviour is preserved.
+    """
+    findings: list[Any] = []
     recommendations: list[str] = []
     mitre_tags: list[dict[str, str]] = []
+    unattached: list[dict[str, Any]] = []
 
     # Build tactic lookup for parsing — maps lowercase tactic name to display name
     tactic_lookup: dict[str, str] = {}
@@ -530,6 +803,11 @@ def _parse_analysis(text: str, tactics: list[dict[str, Any]] = []) -> dict[str, 
             tactic_lookup[name.lower()] = name
         if shortname:
             tactic_lookup[shortname.lower()] = name
+
+    by_id: dict[str, dict[str, Any]] = {}
+    if clusters is not None:
+        findings = [dict(c) for c in clusters]
+        by_id = {c["id"]: c for c in findings}
 
     ## For debugging DO NOT REMOVE ##
     logger.debug(f"Raw LLM response: {text[:1000]}")
@@ -551,9 +829,37 @@ def _parse_analysis(text: str, tactics: list[dict[str, Any]] = []) -> dict[str, 
         elif line.startswith("</mitre_tags>"):
             current_section = None
         elif line.startswith("- ") and current_section == "findings":
-            findings.append(line[2:])
+            body = line[2:]
+            if clusters is None:
+                findings.append(body)
+                continue
+            cluster_id, rest = _split_cluster_ref(body)
+            target = by_id.get(cluster_id) if cluster_id else None
+            if target is not None:
+                rest = _STRAY_FINDING_RE.sub("", rest, count=1)
+                if target["narrative"]:
+                    target["narrative"] = f"{target['narrative']} {rest}"
+                else:
+                    target["narrative"] = rest
+            else:
+                logger.warning(f"Unattached finding line (no known cluster id): {line}")
+                unattached.append(_unattached_finding(body))
         elif line.startswith("- ") and current_section == "recommendations":
-            recommendations.append(line[2:])
+            body = line[2:]
+            if clusters is None:
+                recommendations.append(body)
+                continue
+            cluster_id, rest = _split_cluster_ref(body)
+            target = by_id.get(cluster_id) if cluster_id else None
+            if target is not None:
+                rest = _STRAY_FINDING_RE.sub("", rest, count=1)
+                if target["recommendation"]:
+                    target["recommendation"] = f"{target['recommendation']} {rest}"
+                else:
+                    target["recommendation"] = rest
+            else:
+                logger.warning(f"Unattached recommendation line (no known cluster id): {line}")
+                unattached.append(_unattached_finding("", recommendation=rest))
         elif line.startswith("- ") and current_section == "mitre_tags":
             tag_text = line[2:]
             if ":" in tag_text:
@@ -563,8 +869,26 @@ def _parse_analysis(text: str, tactics: list[dict[str, Any]] = []) -> dict[str, 
                 matched_tactic = tactic_lookup.get(tactic_part.lower(), tactic_part)
                 mitre_tags.append({"tactic": matched_tactic, "description": description})
 
+    if clusters is not None:
+        findings.extend(unattached)
+        recommendations = [
+            f["recommendation"] for f in findings if f.get("recommendation")
+        ]
+        hosts: set[str] = set()
+        for c in findings:
+            hosts.update(c.get("hosts", []))
+        high = sum(1 for c in findings if c.get("severity") == "High")
+        medium = sum(1 for c in findings if c.get("severity") == "Medium")
+        low = sum(1 for c in findings if c.get("severity") == "Low")
+        summary = (
+            f"{len(findings)} clusters across {len(hosts)} hosts — "
+            f"severity: {high} High, {medium} Medium, {low} Low clusters"
+        )
+    else:
+        summary = findings[0][:200] + "..." if findings and len(findings[0]) > 200 else findings[0] if findings else "No summary available"
+
     return {
-        "summary": findings[0][:200] + "..." if findings and len(findings[0]) > 200 else findings[0] if findings else "No summary available",
+        "summary": summary,
         "findings": findings,
         "recommendations": recommendations,
         "mitre_tags": mitre_tags,

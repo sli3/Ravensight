@@ -30,6 +30,22 @@ def _format_cause(e: Exception) -> str:
     return f"{type(e).__name__}: {e}"
 
 
+def finding_text(finding: Any) -> str:
+    """Return the text used for embedding a finding.
+
+    Strings are returned unchanged. Dicts use '{description}: {narrative}' when
+    narrative is non-empty, else just description. No counts or timestamps,
+    deterministic, JSON-safe.
+    """
+    if isinstance(finding, dict):
+        description = str(finding.get("description", ""))
+        narrative = str(finding.get("narrative", ""))
+        if narrative:
+            return f"{description}: {narrative}"
+        return description
+    return str(finding)
+
+
 class Embedder:
     """Manages embedding and vector retrieval for semantic memory."""
 
@@ -251,15 +267,19 @@ class Embedder:
             unit=" entry",
             disable=not self.show_progress,
         ):
+            text = finding_text(finding)
+            severity = finding.get("severity") if isinstance(finding, dict) else None
+            if not isinstance(severity, str) or not severity:
+                severity = "unknown"
             metadata = {
                 "timestamp": baseline_data.get("updated_at", ""),
                 "rule_group": "baseline_finding",
-                "severity": "unknown",
-                "summary": str(finding),
+                "severity": severity,
+                "summary": text,
             }
 
             try:
-                self.add_embedding(str(finding), metadata)
+                self.add_embedding(text, metadata)
                 count += 1
             except (APIConnectionError, APITimeoutError, ValueError, ChromaError, httpx.HTTPError, OSError) as e:
                 logger.warning(f"Failed to migrate finding: {e}")

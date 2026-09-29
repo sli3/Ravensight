@@ -118,7 +118,8 @@ def _normalise_findings(findings: list[dict]) -> list[str]:
         description = finding.get("description", "")
         rule_group = finding.get("rule_group", "")
         recommendation = finding.get("recommendation", "")
-        combined = f"{description} {rule_group} {recommendation}".strip()
+        narrative = finding.get("narrative", "")
+        combined = f"{description} {rule_group} {recommendation} {narrative}".strip()
         if combined:
             combined_texts.append(combined)
     return combined_texts

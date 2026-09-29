@@ -124,6 +124,23 @@ def test_baseline_findings_not_in_prompt(captured_prompt: dict[str, Any]) -> Non
     assert "Previous baseline findings" not in prompt_text
 
 
+def test_cluster_line_appears_and_stale_baseline_absent(
+    captured_prompt: dict[str, Any],
+) -> None:
+    """Cluster-based prompts list the alert cluster and exclude stale baseline text."""
+    baseline = {
+        "findings": ["STALE BASELINE FINDING TEXT FROM LAST WEEK"],
+        "recommendations": ["STALE BASELINE RECOMMENDATION"],
+        "updated_at": "2026-09-20T00:00:00",
+    }
+    _run_analyse([], baseline)
+    prompt_text = captured_prompt["messages"][0]["content"]
+    assert "STALE BASELINE FINDING TEXT" not in prompt_text
+    assert "STALE BASELINE RECOMMENDATION" not in prompt_text
+    assert "[C1]" in prompt_text
+    assert "SSHD authentication success." in prompt_text
+
+
 def test_similar_incident_header_in_prompt_not_in_result(
     captured_prompt: dict[str, Any],
 ) -> None:

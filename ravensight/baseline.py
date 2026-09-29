@@ -58,9 +58,10 @@ class Manager:
         return self._baseline
 
     def update(
-        self, 
-        analysis: dict[str, Any], 
-        rule_counts: dict[str, int] | None = None
+        self,
+        analysis: dict[str, Any],
+        rule_counts: dict[str, int] | None = None,
+        rule_severities: dict[str, str] | None = None,
     ) -> None:
         """
         Update baseline with new analysis results.
@@ -68,6 +69,8 @@ class Manager:
         Args:
             analysis: Analysis dict from analyser.analyse().
             rule_counts: Optional dict of rule-group counts for this run.
+            rule_severities: Optional dict of rule description to severity
+                label for embedding metadata.
         """
         findings = analysis.get("findings", [])
         recommendations = analysis.get("recommendations", [])
@@ -91,7 +94,7 @@ class Manager:
                 metadata = {
                     "timestamp": datetime.now().isoformat(),
                     "rule_group": rule_desc,
-                    "severity": "unknown",
+                    "severity": (rule_severities or {}).get(rule_desc, "unknown"),
                     "summary": text,
                 }
                 try:

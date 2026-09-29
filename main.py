@@ -137,7 +137,11 @@ def main() -> None:
             exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
         )
         sys.exit(1)
-    baseline_mgr.update(analysis, rule_counts=analyser.extract_rule_counts(alerts))
+    baseline_mgr.update(
+        analysis,
+        rule_counts=analyser.extract_rule_counts(alerts),
+        rule_severities=analyser.extract_rule_severities(alerts),
+    )
 
     trends_output = None
     if "trending" in config:
