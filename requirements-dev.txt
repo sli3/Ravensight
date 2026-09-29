@@ -1,0 +1,5 @@
+# Development and test tools. Install into the project environment with:
+#   uv pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=9.0
+ruff>=0.6

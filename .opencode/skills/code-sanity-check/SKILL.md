@@ -8,10 +8,10 @@ description: Logic and syntax verification for Python code. Run when user says "
 ### Steps
 
 1. **Syntax**
-   Run `ruff check` on the file.
-   Fall back to `python -m py_compile` if ruff is unavailable.
+   Run `uv run ruff check` on the file.
+   Fall back to `uv run python -m py_compile` if ruff is unavailable.
 ```bash
-   ruff check [file.py] || python -m py_compile [file.py]
+   uv run ruff check [file.py] || uv run python -m py_compile [file.py]
 ```
    If syntax fails — stop immediately. Report the failure and do NOT continue
    to the next steps. Ask the user to fix the syntax error first.

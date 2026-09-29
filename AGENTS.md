@@ -63,7 +63,7 @@ date — do not attempt it. Report it to Prin instead.
 - Always show `git diff` and wait for "OK" before committing
 - Never modify any file without first reading its current contents
 - Never work around a permission deny or `ask` prompt — no string building, encoding,
-  `python3 -c` wrappers, subprocess calls or alternative tools. If a rule blocks
+  `python3 -c` or `uv run python -c` wrappers, subprocess calls or alternative tools. If a rule blocks
   legitimate work, stop and report the exact command and rule to Prin
 - Commit messages use a category prefix and a short description (`feat:`, `fix:`, `docs:`)
 
@@ -88,6 +88,17 @@ date — do not attempt it. Report it to Prin instead.
 - Use `logging` not `print` for diagnostic output
 - Never use bare `except:` — always catch specific exceptions
 - Use `pathlib.Path` for file paths, not `os.path`
+
+---
+
+## Running Python and Tests
+
+- Always run Python through the project environment: `uv run python ...`,
+  `uv run pytest`, `uv run ruff check ...`. Never call `python3`, `pytest` or `ruff`
+  directly — the system interpreter has different package versions (for example
+  system `chromadb` 0.6.3 against the pinned 1.5.9), so its results cannot be trusted
+- Test and lint tools come from `requirements-dev.txt`
+  (`uv pip install -r requirements-dev.txt`), not `requirements.txt`
 
 ---
 
@@ -130,7 +141,7 @@ compaction. Automatic retain still works. Memories reach you only when you call
 The skills below apply to sessions run directly.
 
 - Run the **code-preflight** skill at the start of every Code session
-- To find the latest memo: `ls -t .session-memos/*.md | head -1`
+- To find the latest memo: `ls -t .session-memos/` (the first entry is the newest)
 - When context is getting full, suggest saving the session memo
 
 ### Skill Permissions by Session Type

@@ -88,6 +88,6 @@ Never edit without one of these two sequences.
 
 ## After an edit
 
-- Run the relevant smoke test or `pytest` where applicable — you have bash access for this.
+- Run the relevant smoke test or tests with `uv run pytest` where applicable — you have bash access for this. Always go through `uv run`; never call `python3` or `pytest` directly (see AGENTS.md).
 - Do not run `git commit` or `git push` yourself — that belongs to the git-workflow skill, invoked separately after review has passed.
 - Use UK English in code comments and docstrings (initialise, colour, behaviour, analyse).

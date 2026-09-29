@@ -76,7 +76,8 @@ Before calling `@plan-reviewer`, establish prior session context:
 1. Call `hindsight_recall` once, following the MEMORY RECALL section of your
    own agent definition.
 2. Find and read the most recent session memo, if one exists:
-   `ls -t .session-memos/*.md 2>/dev/null | head -1`
+   `ls -t .session-memos/` — the first entry is the newest. If the folder does not
+   exist, there are no memos yet.
 3. Read `AGENTS.md` and the relevant section of `docs/RAVENSIGHT_ROADMAP.md` for
    this task's feature.
 4. Note: last recorded status, any open deferred items, open bugs.
@@ -117,7 +118,7 @@ Wait for `@code-writer` to complete before proceeding to Step 3.
 This loop has ONE job: get the test suite green. It does not perform
 code-quality review — that happens once, in Step 4, on stable code.
 
-Run the relevant `pytest` suite yourself. If it is already PASSING → proceed
+Run the test suite yourself with `uv run pytest`. If it is already PASSING → proceed
 straight to Step 4 (the loop body never runs).
 
 Otherwise, for each iteration (max 3):
@@ -126,7 +127,7 @@ a. Iterations 1 and 2: hand the raw failure output and stack trace straight
    Iteration 3 (only if failures persist): escalate to `@deep-bug-hunter`
    in Mode 2 (deep root-cause analysis) first, then hand its diagnosis to
    `@code-writer` to apply.
-b. Rerun the pytest suite yourself. Do not apply the fix yourself — you have
+b. Rerun the suite yourself with `uv run pytest`. Do not apply the fix yourself — you have
    no edit tool.
 c. Evaluate the rerun result:
    - PASSING → exit the loop and proceed to Step 4.
@@ -145,7 +146,7 @@ a. Zero findings → proceed to Step 5.
 b. Hard stop finding (`AGENTS.md` contradiction, config.toml touched) → stop
    and report.
 c. Otherwise, hand the findings to `@code-writer` for one fix pass, rerun
-   pytest yourself to confirm still green, then proceed to Step 5. If that
+   `uv run pytest` yourself to confirm still green, then proceed to Step 5. If that
    fix pass breaks the suite, re-enter Step 3 for a SINGLE corrective
    iteration only (not a fresh 3-round budget); if it still cannot be made
    green → hard stop.
@@ -178,7 +179,7 @@ changed, edit nothing.
 
 Then produce a structured summary containing:
 - What was built (files changed, functions added/modified)
-- Test results — re-run the suite one final time yourself and report the
+- Test results — re-run the suite one final time yourself (`uv run pytest`) and report the
   live count; do not carry forward a number from an earlier step
 - Fix-loop summary (how many iterations ran, whether `@deep-bug-hunter` was
   escalated to)

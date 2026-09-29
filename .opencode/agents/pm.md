@@ -10,14 +10,13 @@ permission:
     "docs/RAVENSIGHT_ROADMAP.md": allow
   bash:
     "*": deny
-    "pytest*": allow
-    "python3 -m pytest*": allow
-    "python3 -m py_compile *": allow
-    "python3 -c *": ask
-    "python3 main.py --help": allow
-    "python3 main.py -h": allow
-    "ruff check *": allow
-    "python3 -m ruff check *": allow
+    "uv run pytest*": allow
+    "uv run python -m pytest*": allow
+    "uv run python -m py_compile *": allow
+    "uv run python -c *": ask
+    "uv run python main.py --help": allow
+    "uv run python main.py -h": allow
+    "uv run ruff check *": allow
     "ls -t *": allow
     "head *": allow
     "cat *": allow
@@ -186,8 +185,8 @@ After the session memo, store one short digest in Hindsight with
 1. One call, three to six short lines: what the build did, what was decided and
    why, and any lesson worth keeping. Do not store test counts, pass or fail
    results, line numbers or anything else that will be out of date after the next
-   commit. Each line must make sense on its own, because recall returns lines in
-   isolation. Start the first line with today's
+   commit. Name files and functions only — never `file:line` references. Each
+   line must make sense on its own, because recall returns lines in isolation. Start the first line with today's
    date and the task in a few words. If nothing was decided or learned, store
    nothing and say so.
 2. Verified facts only. Store a fact only if you confirmed it in this run from

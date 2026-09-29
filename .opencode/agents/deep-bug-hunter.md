@@ -7,8 +7,8 @@ permission:
   edit: deny
   bash:
     "*": deny
-    "python3 -m py_compile *": allow
-    "ruff check *": allow
+    "uv run python -m py_compile *": allow
+    "uv run ruff check *": allow
     "*config.toml*": deny
   external_directory: deny
   doom_loop: deny
