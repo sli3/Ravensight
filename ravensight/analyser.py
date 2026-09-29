@@ -398,27 +398,30 @@ def _new_cluster(
     }
 
 
-def extract_rule_severities(alerts: list[dict[str, Any]]) -> dict[str, str]:
-    """Map rule description to severity from the max level seen per rule.
+def cluster_key(cluster: dict[str, Any]) -> str:
+    """Return the stable per-cluster vector/trend key for one alert cluster.
 
-    Args:
-        alerts: List of alert dicts from wazuh_client.fetch_alerts().
-
-    Returns:
-        Dict mapping rule description to a High/Medium/Low severity label,
-        keyed like extract_rule_counts() with an "Unknown" default.
+    Vulnerability clusters with a package key on (host, package); those without
+    key on (host, description); rule clusters key on description alone.
     """
-    max_levels: dict[str, int] = {}
-    for alert in alerts:
-        source = alert.get("_source") or {}
-        rule = source.get("rule") or {}
-        description = rule.get("description") or "Unknown"
-        level = _coerce_level(rule.get("level", 0))
-        max_levels[description] = max(max_levels.get(description, 0), level)
-    return {
-        description: severity_from_level(level)
-        for description, level in max_levels.items()
-    }
+    if cluster["type"] == "vulnerability":
+        host = cluster["hosts"][0]
+        if cluster.get("package"):
+            return f"vuln|{host}|{cluster['package']}"
+        return f"vuln|{host}|{cluster['description']}"
+    return f"rule|{cluster['description']}"
+
+
+def cluster_label(key: str) -> str:
+    """Return a human-readable label for a cluster key.
+
+    'vuln|h|p' becomes 'Vulnerabilities in p (h)'; 'rule|d' stays 'd'.
+    Descriptions containing '|' survive via maxsplit.
+    """
+    parts = key.split("|", 2)
+    if parts[0] == "vuln" and len(parts) == 3:
+        return f"Vulnerabilities in {parts[2]} ({parts[1]})"
+    return key.split("|", 1)[1] if parts[0] == "rule" and len(parts) > 1 else key
 
 
 def _unattached_finding(description: str, recommendation: str = "") -> dict[str, Any]:
@@ -738,25 +741,6 @@ each prefixed with its cluster id, plus at most one recommendation line per clus
 <recommendations>
 - [C1] <recommendation for cluster C1>
 </recommendations>"""
-
-
-def extract_rule_counts(alerts: list[dict[str, Any]]) -> dict[str, int]:
-    """
-    Extract per-rule-group alert counts from raw alerts.
-
-    Args:
-        alerts: List of alert dicts from wazuh_client.fetch_alerts()
-
-    Returns:
-        Dict mapping rule description to alert count.
-    """
-    rule_counts: dict[str, int] = {}
-    for alert in alerts:
-        source = alert.get("_source", {})
-        rule = source.get("rule", {})
-        description = rule.get("description") or "Unknown"
-        rule_counts[description] = rule_counts.get(description, 0) + 1
-    return rule_counts
 
 
 def _parse_analysis(

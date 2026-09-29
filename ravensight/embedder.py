@@ -144,13 +144,16 @@ class Embedder:
             logger.error(f"Failed to encode text: {e}")
             raise
 
-    def add_embedding(self, text: str, metadata: dict[str, Any]) -> None:
+    def add_embedding(
+        self, text: str, metadata: dict[str, Any], doc_id: str | None = None
+    ) -> None:
         """
         Add embedding to vector store.
 
         Args:
             text: Text to embed (alert cluster summary).
             metadata: Dict with timestamp, rule_group, severity, summary keys.
+            doc_id: Optional upsert id; defaults to a hash of the text.
         """
         if self.degraded:
             logger.warning("Embedder degraded — vector-store add skipped")
@@ -165,10 +168,11 @@ class Embedder:
             embedding_list = embedding.tolist()
 
         # Deterministic id: identical text overwrites itself instead of duplicating
-        content_hash_id = "alert-" + sha256(text.encode("utf-8")).hexdigest()[:32]
+        if doc_id is None:
+            doc_id = "alert-" + sha256(text.encode("utf-8")).hexdigest()[:32]
         try:
             self._collection.upsert(
-                ids=[content_hash_id],
+                ids=[doc_id],
                 embeddings=[embedding_list],
                 documents=[text],
                 metadatas=[metadata],

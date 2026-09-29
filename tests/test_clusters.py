@@ -13,8 +13,9 @@ import pytest
 from ravensight import analyser
 from ravensight.analyser import (
     MAX_PROMPT_CLUSTERS,
+    cluster_key,
+    cluster_label,
     extract_alert_clusters,
-    extract_rule_severities,
     severity_from_level,
 )
 
@@ -257,19 +258,58 @@ def test_prompt_caps_clusters_and_reports_omitted(
     assert result["recommendations"] == []
 
 
-def test_extract_rule_severities_keyed_like_counts() -> None:
-    """extract_rule_severities uses the same keying and Unknown default as counts."""
-    alerts = [
-        _alert(description="SSHD brute force", level=10),
-        _alert(description="SSHD brute force", level=3),
-        _alert(description="Kernel oops", level=5),
-        # absent description key defaults to "Unknown", matching extract_rule_counts
-        {"_source": {"rule": {"id": "1002", "level": 12}}},
-    ]
-    severities = extract_rule_severities(alerts)
-    assert severities["SSHD brute force"] == "Medium"
-    assert severities["Kernel oops"] == "Low"
-    assert severities["Unknown"] == "High"
+def test_cluster_key_uses_package_not_description_or_id() -> None:
+    """Vuln keys use (host, package) even when the description was rewritten."""
+    cluster = {
+        "id": "C1",
+        "type": "vulnerability",
+        "description": "2 vulnerabilities affect openssl",
+        "hosts": ["host-1"],
+        "package": "openssl",
+        "count": 2,
+        "severity": "Medium",
+    }
+    assert cluster_key(cluster) == "vuln|host-1|openssl"
+
+
+def test_cluster_key_vuln_without_package_uses_description() -> None:
+    """Vuln clusters with no package fall back to (host, description)."""
+    cluster = {
+        "id": "C2",
+        "type": "vulnerability",
+        "description": "Multiple CVEs detected",
+        "hosts": ["host-3"],
+        "package": None,
+        "count": 1,
+        "severity": "High",
+    }
+    assert cluster_key(cluster) == "vuln|host-3|Multiple CVEs detected"
+
+
+def test_cluster_key_rule_uses_description_only() -> None:
+    """Rule keys ignore hosts and use the description alone."""
+    cluster = {
+        "id": "C3",
+        "type": "rule",
+        "description": "SSHD brute force",
+        "hosts": ["host-1", "host-2"],
+        "package": None,
+        "count": 7,
+        "severity": "Medium",
+    }
+    assert cluster_key(cluster) == "rule|SSHD brute force"
+
+
+def test_cluster_label_vuln_and_rule_forms() -> None:
+    """Labels render 'Vulnerabilities in p (h)' for vuln keys, description for rule keys."""
+    assert cluster_label("vuln|host-1|openssl") == "Vulnerabilities in openssl (host-1)"
+    assert cluster_label("rule|SSHD brute force") == "SSHD brute force"
+
+
+def test_cluster_label_survives_pipes_in_description() -> None:
+    """Descriptions containing '|' survive the maxsplit-based label parse."""
+    assert cluster_label("rule|user | sudo | root") == "user | sudo | root"
+    assert cluster_label("vuln|h|pkg | with | pipes") == "Vulnerabilities in pkg | with | pipes (h)"
 
 
 def test_rule_id_int_str_and_none() -> None:

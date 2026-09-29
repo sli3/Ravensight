@@ -26,8 +26,8 @@ path = "${RAVENSIGHT_DATA_DIR}/baseline_state.json"
 [trending]
 # Rolling window in days for trend analysis
 window_days = ${TRENDING_WINDOW_DAYS}
-# Write standalone trending_YYYY-MM-DD.md report
-output_standalone = ${TRENDING_OUTPUT_STANDALONE}
+# Maximum rows shown in the trends table
+max_rows = ${TRENDING_MAX_ROWS}
 
 [mitre]
 # Path to local MITRE ATT&CK dataset (JSON format)

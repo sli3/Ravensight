@@ -279,17 +279,41 @@ def test_chroma_upsert_failure_mid_migration_degrades(
     assert any("ChromaDB unreachable mid-run" in rec.message for rec in caplog.records)
 
 
+def _cluster(description: str, count: int) -> dict[str, Any]:
+    """Build a minimal rule cluster dict for baseline.update()."""
+    return {
+        "id": "C1",
+        "type": "rule",
+        "description": description,
+        "rule_ids": ["5710"],
+        "hosts": ["host-1"],
+        "count": count,
+        "max_level": 10,
+        "severity": "Medium",
+        "first_seen": "2026-09-24T08:00:00.000Z",
+        "last_seen": "2026-09-24T09:00:00.000Z",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+    }
+
+
 def test_baseline_manager_update_survives_chroma_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: Any
 ) -> None:
-    """A Chroma failure partway through rule_counts writes degrades but never crashes."""
+    """A Chroma failure partway through cluster writes degrades but never crashes."""
     emb = Embedder({"chroma_db_path": str(tmp_path / "chromadb")})
     monkeypatch.setattr(Embedder, "encode", lambda self, text: [0.0] * 8)
 
     baseline_path = tmp_path / "baseline.json"
     manager = baseline.Manager({"path": str(baseline_path)}, embedder=emb)
 
-    rule_counts = {"rule-desc-1": 3, "rule-desc-2": 1, "rule-desc-3": 7}
+    clusters = [
+        _cluster("rule-desc-1", 3),
+        _cluster("rule-desc-2", 1),
+        _cluster("rule-desc-3", 7),
+    ]
     real_upsert = chromadb.Collection.upsert
 
     def flaky_upsert(self: Any, **kwargs: Any) -> Any:
@@ -301,10 +325,38 @@ def test_baseline_manager_update_survives_chroma_failure(
     monkeypatch.setattr(chromadb.Collection, "upsert", flaky_upsert)
     caplog.set_level(logging.WARNING, logger="ravensight.baseline")
 
-    manager.update({"findings": [], "recommendations": []}, rule_counts=rule_counts)
+    manager.update(
+        {"findings": [], "recommendations": []},
+        clusters=clusters,
+        run_params={"hours": 24, "agent": None, "level": 7},
+    )
 
     assert emb.degraded is True
     assert baseline_path.exists()
+
+
+def test_add_embedding_with_doc_id_uses_it(
+    embedder: Embedder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An explicit doc_id becomes the upsert id instead of the text hash."""
+    monkeypatch.setattr(Embedder, "encode", lambda self, text: [0.0] * 8)
+
+    embedder.add_embedding("cluster text", _metadata("cluster text"), doc_id="alert-fixed-id")
+
+    assert embedder._collection.count() == 1
+    assert embedder._collection.get(ids=["alert-fixed-id"])["ids"] == ["alert-fixed-id"]
+
+
+def test_add_embedding_without_doc_id_keeps_hash_id(
+    embedder: Embedder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting doc_id keeps the original sha256-of-text id scheme."""
+    monkeypatch.setattr(Embedder, "encode", lambda self, text: [0.0] * 8)
+
+    embedder.add_embedding("hash me", _metadata("hash me"))
+
+    expected_id = "alert-" + sha256(b"hash me").hexdigest()[:32]
+    assert embedder._collection.get(ids=[expected_id])["ids"] == [expected_id]
 
 
 def test_query_similar_mid_run_failure_propagates_and_degrades(

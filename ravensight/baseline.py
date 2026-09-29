@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
-from datetime import datetime
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ravensight.embedder import Embedder
@@ -17,7 +18,28 @@ import httpx
 from chromadb.errors import ChromaError
 from openai import APIConnectionError, APITimeoutError
 
+from ravensight import analyser
+
 logger = logging.getLogger(__name__)
+
+DEFAULT_RUN_HOURS = 24
+DEFAULT_RUN_LEVEL = 7
+SCAN_HISTORY_MAX_DAYS = 90
+
+
+def is_default_run(params: dict[str, Any] | None) -> bool:
+    """Return True when the run matches the default daily-run parameters.
+
+    A default run looks back DEFAULT_RUN_HOURS hours, has no agent filter and
+    uses the DEFAULT_RUN_LEVEL minimum level. Missing keys are not default.
+    """
+    if params is None:
+        return False
+    return (
+        params.get("hours") == DEFAULT_RUN_HOURS
+        and params.get("agent") is None
+        and params.get("level") == DEFAULT_RUN_LEVEL
+    )
 
 
 class Manager:
@@ -60,17 +82,19 @@ class Manager:
     def update(
         self,
         analysis: dict[str, Any],
-        rule_counts: dict[str, int] | None = None,
-        rule_severities: dict[str, str] | None = None,
+        clusters: list[dict[str, Any]] | None = None,
+        run_params: dict[str, Any] | None = None,
     ) -> None:
         """
         Update baseline with new analysis results.
 
         Args:
             analysis: Analysis dict from analyser.analyse().
-            rule_counts: Optional dict of rule-group counts for this run.
-            rule_severities: Optional dict of rule description to severity
-                label for embedding metadata.
+            clusters: Optional list of alert clusters from
+                analyser.extract_alert_clusters(); appended to scan history and,
+                on default runs, embedded into the vector store.
+            run_params: Optional run parameters (hours, agent, level) used to
+                decide whether this run feeds trends and vector writes.
         """
         findings = analysis.get("findings", [])
         recommendations = analysis.get("recommendations", [])
@@ -86,39 +110,86 @@ class Manager:
         if summary:
             self._baseline["summary"] = summary
 
-        # Add embeddings from rule_counts when embedder is present
-        if self._embedder is not None and rule_counts:
-            for rule_desc, count in rule_counts.items():
+        # Embed one vector per cluster on default runs only
+        if self._embedder is not None and clusters and is_default_run(run_params):
+            for cluster in clusters:
                 if self._embedder.degraded:
                     cause = getattr(self._embedder, "_chroma_failure", None) or "embedding server unreachable"
                     formatted = cause[:1].upper() + cause[1:]
-                    logger.warning(f"{formatted} — vector-store update skipped for this run")
+                    logger.warning(f"{formatted} — cluster vector-store writes skipped for this run")
                     break
-                text = f"{rule_desc}: {count} alerts"
+                text = self._cluster_vector_text(cluster)
                 metadata = {
                     "timestamp": datetime.now().isoformat(),
-                    "rule_group": rule_desc,
-                    "severity": (rule_severities or {}).get(rule_desc, "unknown"),
-                    "summary": text,
+                    "rule_group": analyser.cluster_key(cluster),
+                    "severity": cluster["severity"],
+                    "summary": self._cluster_summary(cluster),
                 }
+                doc_id = "alert-" + sha256(
+                    f"{analyser.cluster_key(cluster)}|{datetime.now().strftime('%Y-%m-%d')}".encode()
+                ).hexdigest()[:32]
                 try:
-                    self._embedder.add_embedding(text, metadata)
+                    self._embedder.add_embedding(text, metadata, doc_id=doc_id)
                 except (APIConnectionError, APITimeoutError, ValueError, ChromaError, httpx.HTTPError, OSError) as e:
                     logger.warning(
                         f"Vector-store write failed ({type(e).__name__}: {e}) — "
-                        "skipping remaining rule-count writes this run"
+                        "skipping remaining cluster writes this run"
                     )
                     break
 
-        if rule_counts:
+        if clusters is not None:
             snapshot = {
                 "timestamp": datetime.now().isoformat(),
-                "rule_groups": rule_counts
+                "hours": (run_params or {}).get("hours"),
+                "agent": (run_params or {}).get("agent"),
+                "level": (run_params or {}).get("level"),
+                "cluster_counts": {
+                    analyser.cluster_key(c): c.get("count", 0) for c in clusters
+                },
             }
             self._baseline.setdefault("scan_history", []).append(snapshot)
+            self._prune_scan_history()
 
         self._save()
         logger.info(f"Updated baseline with {len(findings)} findings")
+
+    @staticmethod
+    def _cluster_vector_text(cluster: dict[str, Any]) -> str:
+        """Return the embedding text for one cluster — no counts, ever."""
+        if cluster["type"] == "vulnerability":
+            host = cluster["hosts"][0]
+            if cluster.get("package"):
+                return f"Vulnerabilities affect {cluster['package']} on host {host}"
+            return f"{cluster['description']} on host {host}"
+        return cluster["description"]
+
+    @staticmethod
+    def _cluster_summary(cluster: dict[str, Any]) -> str:
+        """Return the display summary for one cluster vector's metadata."""
+        count = cluster.get("count", 0)
+        noun = "alert" if count == 1 else "alerts"
+        summary = f"{cluster['description']}: {count} {noun}"
+        if cluster["type"] == "vulnerability":
+            summary += f" on {cluster['hosts'][0]}"
+        return summary
+
+    def _prune_scan_history(self) -> None:
+        """Drop scan history entries older than SCAN_HISTORY_MAX_DAYS, keeping unparseable ones."""
+        cutoff = datetime.now() - timedelta(days=SCAN_HISTORY_MAX_DAYS)
+        kept: list[dict[str, Any]] = []
+        for entry in self._baseline.get("scan_history", []):
+            ts = entry.get("timestamp", "")
+            try:
+                parsed = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except ValueError:
+                logger.debug(f"scan_history entry has unparseable timestamp {ts!r} — kept")
+                kept.append(entry)
+                continue
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone().replace(tzinfo=None)
+            if parsed >= cutoff:
+                kept.append(entry)
+        self._baseline["scan_history"] = kept
 
     def _save(self) -> None:
         """Save baseline to disk."""

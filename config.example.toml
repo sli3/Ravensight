@@ -26,8 +26,8 @@ path = "data/baseline_state.json"
 [trending]
 # Rolling window in days for trend analysis
 window_days = 30
-# Write standalone trending_YYYY-MM-DD.md report
-output_standalone = false
+# Maximum rows shown in the trends table
+max_rows = 25
 
 [mitre]
 # Path to local MITRE ATT&CK dataset (JSON format)

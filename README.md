@@ -249,7 +249,7 @@ start-up — you never need to hand-edit a config file when running in Docker.
 | `EMBEDDINGS_MODEL` | | (default: `Qwen3-Embedding-0.6B`) |
 | `EMBEDDINGS_TOP_K` | | (default: `5`) |
 | `TRENDING_WINDOW_DAYS` | | (default: `30`) |
-| `TRENDING_OUTPUT_STANDALONE` | | (default: `false`) |
+| `TRENDING_MAX_ROWS` | | Maximum rows shown in the trends table (default: `25`) |
 | `RAVENSIGHT_DATA_DIR` | | Path inside the container for data files (default: `/app/data`) |
 | `RAVENSIGHT_REPORTS_DIR` | | Path inside the container for reports (default: `/app/reports`) |
 

@@ -27,9 +27,9 @@ def main() -> None:
     """Main entry point for Ravensight."""
     parser = argparse.ArgumentParser(description="Ravensight Security Log Analyser")
     parser.add_argument("--config", default="config.toml", help="Path to config file")
-    parser.add_argument("--hours", type=int, default=24, help="Lookback window in hours")
+    parser.add_argument("--hours", type=int, default=baseline.DEFAULT_RUN_HOURS, help="Lookback window in hours")
     parser.add_argument("--agent", type=str, default=None, help="Wazuh agent ID")
-    parser.add_argument("--level", type=int, default=7, help="Minimum alert level")
+    parser.add_argument("--level", type=int, default=baseline.DEFAULT_RUN_LEVEL, help="Minimum alert level")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Logging level")
     parser.add_argument("--report-only", action="store_true", help="Generate report from existing baseline")
     parser.add_argument(
@@ -137,10 +137,11 @@ def main() -> None:
             exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
         )
         sys.exit(1)
+    clusters = analyser.extract_alert_clusters(alerts)
     baseline_mgr.update(
         analysis,
-        rule_counts=analyser.extract_rule_counts(alerts),
-        rule_severities=analyser.extract_rule_severities(alerts),
+        clusters=clusters,
+        run_params={"hours": args.hours, "agent": args.agent, "level": args.level},
     )
 
     trends_output = None
