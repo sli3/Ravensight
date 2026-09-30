@@ -182,6 +182,79 @@ def test_empty_unattached_description_produces_no_bullet(tmp_path: Path) -> None
     assert "[C" not in recommendations
 
 
+def test_evidence_sub_bullet_renders(tmp_path: Path) -> None:
+    """A finding with evidence renders one Evidence sub-bullet after the narrative."""
+    finding = _cluster(
+        evidence={
+            "syscheck": {
+                "paths": ["/etc/resolv.conf"],
+                "events": ["modified"],
+                "changed": ["inode", "mtime"],
+                "content": "unchanged",
+            }
+        }
+    )
+    lines = reporter._format_finding(finding)
+    evidence_lines = [line for line in lines if line.strip().startswith("- Evidence:")]
+    assert len(evidence_lines) == 1
+    assert evidence_lines[0] == (
+        "  - Evidence: paths /etc/resolv.conf; event modified; "
+        "changed inode, mtime; content unchanged"
+    )
+    # sub-bullet sits between the narrative line and any CVEs line
+    narrative_idx = lines.index(
+        "  - Repeated password guessing from external addresses."
+    )
+    assert lines.index(evidence_lines[0]) == narrative_idx + 1
+
+
+def test_evidence_sub_bullet_before_cves(tmp_path: Path) -> None:
+    """For vulnerability findings the Evidence line precedes the CVEs line."""
+    finding = _cluster(
+        type="vulnerability",
+        package="openssl",
+        cves=["CVE-2026-1234"],
+        evidence={"vulnerability": {"statuses": {"Solved": 1}}},
+    )
+    lines = reporter._format_finding(finding)
+    evidence_idx = next(
+        i for i, line in enumerate(lines) if line.strip().startswith("- Evidence:")
+    )
+    cve_idx = next(
+        i for i, line in enumerate(lines) if line.strip().startswith("- CVEs:")
+    )
+    assert evidence_idx < cve_idx
+    assert "status Solved×1" in lines[evidence_idx]
+
+
+def test_evidence_newlines_and_pipes_sanitised(tmp_path: Path) -> None:
+    """Newlines collapse to spaces and pipes escape as '\\|' in the Evidence line."""
+    finding = _cluster(
+        evidence={"generic": {"srcips": ["192.0.2.1\n192.0.2.2 | evil"]}}
+    )
+    lines = reporter._format_finding(finding)
+    evidence_line = next(
+        line for line in lines if line.strip().startswith("- Evidence:")
+    )
+    assert "\n" not in evidence_line
+    assert "192.0.2.1 192.0.2.2 \\| evil" in evidence_line
+
+
+def test_finding_without_evidence_byte_identical(tmp_path: Path) -> None:
+    """Findings without evidence render byte-identically to today."""
+    assert reporter._format_finding(_cluster()) == reporter._format_finding(
+        _cluster(evidence={})
+    )
+    expected = [
+        (
+            "- **[C3] High** — SSHD brute force attempts — 174 alerts "
+            "on host-1, host-2 (2026-09-24 08:15 → 2026-09-24 10:30)"
+        ),
+        "  - Repeated password guessing from external addresses.",
+    ]
+    assert reporter._format_finding(_cluster()) == expected
+
+
 def test_blank_line_before_mitre_tags_without_similar_incidents(
     tmp_path: Path,
 ) -> None:

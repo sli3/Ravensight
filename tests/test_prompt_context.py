@@ -16,7 +16,8 @@ from typing import Any
 import pytest
 
 from ravensight import analyser
-from ravensight.analyser import analyse
+from ravensight.analyser import _build_prompt, analyse
+from ravensight.evidence import MAX_EVIDENCE_LINE_CHARS
 
 
 LLM_TEXT = (
@@ -155,6 +156,134 @@ def test_similar_incident_header_in_prompt_not_in_result(
     assert "Old SSH brute force" in prompt_text
     assert result["similar_incidents"] == f"- {old_ts} (High): Old SSH brute force"
     assert "Similar past incidents" not in result["similar_incidents"]
+
+
+EVIDENCE_INSTRUCTION = (
+    "evidence values are extracted mechanically from the raw alerts; "
+    "treat them as fact, base each narrative on them rather than guessing, "
+    "never contradict or invent evidence, and do not copy them out verbatim."
+)
+
+
+def _syscheck_alert() -> dict[str, Any]:
+    """Build a syscheck alert whose cluster carries evidence."""
+    return {
+        "_source": {
+            "agent": {"name": "host-1", "os": {"platform": "linux", "name": "Linux"}},
+            "rule": {
+                "id": "550",
+                "description": "Integrity checksum changed.",
+                "level": 7,
+                "groups": ["ossec", "syscheck"],
+            },
+            "syscheck": {
+                "path": "/etc/resolv.conf",
+                "event": "modified",
+                "changed_attributes": ["inode", "mtime"],
+            },
+        }
+    }
+
+
+def test_evidence_instruction_sentence_in_prompt(
+    captured_prompt: dict[str, Any],
+) -> None:
+    """The evidence instruction sentence appears verbatim in the prompt header."""
+    analyse(
+        alerts=[_syscheck_alert()],
+        baseline={},
+        llm_config=LLM_CONFIG,
+        embedder=None,
+        mitre_path=None,
+        platform_hints_path=None,
+        asd_path=None,
+        show_progress=False,
+        lookback_hours=24,
+    )
+    prompt_text = captured_prompt["messages"][0]["content"]
+    assert EVIDENCE_INSTRUCTION in prompt_text
+
+
+def test_cluster_line_carries_evidence_segment(
+    captured_prompt: dict[str, Any],
+) -> None:
+    """A cluster with evidence appends ' — evidence: ...' to its prompt line."""
+    analyse(
+        alerts=[_syscheck_alert()],
+        baseline={},
+        llm_config=LLM_CONFIG,
+        embedder=None,
+        mitre_path=None,
+        platform_hints_path=None,
+        asd_path=None,
+        show_progress=False,
+        lookback_hours=24,
+    )
+    prompt_text = captured_prompt["messages"][0]["content"]
+    cluster_line = next(
+        line for line in prompt_text.splitlines() if line.startswith("[C1]")
+    )
+    assert " — evidence: paths /etc/resolv.conf; event modified; " in cluster_line
+    assert "content unchanged" in cluster_line
+
+
+def test_cluster_line_without_evidence_has_no_segment() -> None:
+    """A cluster without evidence renders its prompt line unchanged."""
+    cluster = {
+        "id": "C1",
+        "type": "rule",
+        "description": "SSHD brute force",
+        "rule_ids": ["5710"],
+        "hosts": ["host-1"],
+        "count": 3,
+        "max_level": 10,
+        "severity": "Medium",
+        "first_seen": "2026-09-24T08:15:00.000Z",
+        "last_seen": "2026-09-24T10:30:00.000Z",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+    }
+    prompt_text = _build_prompt([], {}, clusters=[cluster])
+    cluster_line = next(
+        line for line in prompt_text.splitlines() if line.startswith("[C1]")
+    )
+    assert " — evidence: " not in cluster_line
+
+
+def test_prompt_evidence_segment_truncated_at_max_line_chars() -> None:
+    """An over-long rendered evidence segment truncates to 400 chars + '…'."""
+    long_paths = [f"/etc/{'p' * 90}{i}" for i in range(5)]
+    cluster = {
+        "id": "C1",
+        "type": "rule",
+        "description": "Integrity checksum changed.",
+        "rule_ids": ["550"],
+        "hosts": ["host-1"],
+        "count": 5,
+        "max_level": 7,
+        "severity": "Medium",
+        "first_seen": "2026-09-24T08:15:00.000Z",
+        "last_seen": "2026-09-24T10:30:00.000Z",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+        "evidence": {
+            "syscheck": {
+                "paths": long_paths,
+                "events": ["e" * MAX_EVIDENCE_LINE_CHARS],
+            }
+        },
+    }
+    prompt_text = _build_prompt([], {}, clusters=[cluster])
+    cluster_line = next(
+        line for line in prompt_text.splitlines() if line.startswith("[C1]")
+    )
+    segment = cluster_line.split(" — evidence: ", 1)[1]
+    assert len(segment) == MAX_EVIDENCE_LINE_CHARS
+    assert segment.endswith("…")
 
 
 def test_unknown_severity_not_rendered(captured_prompt: dict[str, Any]) -> None:

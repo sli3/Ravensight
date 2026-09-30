@@ -1,0 +1,42 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.29",
+  "_id": "fixture-dpkg-2902",
+  "_source": {
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.10",
+      "name": "host-a",
+      "id": "004"
+    },
+    "manager": {
+      "name": "Wazuh"
+    },
+    "data": {
+      "dpkg_status": "status installed",
+      "package": "libc-bin",
+      "arch": "amd64",
+      "version": "2.39-0ubuntu8.9"
+    },
+    "rule": {
+      "firedtimes": 2,
+      "mail": false,
+      "level": 7,
+      "description": "New dpkg (Debian Package) installed.",
+      "groups": [
+        "syslog",
+        "dpkg",
+        "config_changed"
+      ],
+      "id": "2902"
+    },
+    "location": "/var/log/dpkg.log",
+    "decoder": {
+      "name": "dpkg-decoder"
+    },
+    "id": "1790717363.2",
+    "full_log": "2026-09-30 06:59:22 status installed libc-bin:amd64 2.39-0ubuntu8.9",
+    "timestamp": "2026-09-29T21:29:23.202+0000"
+  }
+}

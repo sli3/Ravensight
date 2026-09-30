@@ -15,6 +15,8 @@ from openai import OpenAI
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 from tqdm import tqdm
 
+from ravensight import evidence
+
 MAX_PROMPT_CLUSTERS = 40
 MAX_PROMPT_CVES = 10
 MAX_SIMILARITY_QUERY_CHARS = 4000
@@ -339,6 +341,7 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
             if not cluster["last_seen"] or timestamp > cluster["last_seen"]:
                 cluster["last_seen"] = timestamp
         cluster["cves"].update(cves)
+        evidence.accumulate(cluster["evidence_acc"], alert)
 
     ordered = list(vuln_by_key.values()) + list(rule_by_desc.values())
     for cluster in ordered:
@@ -359,24 +362,26 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
 
     clusters: list[dict[str, Any]] = []
     for index, cluster in enumerate(ordered, start=1):
-        clusters.append(
-            {
-                "id": f"C{index}",
-                "type": cluster["type"],
-                "description": cluster["description"],
-                "rule_ids": sorted(cluster["rule_ids"]),
-                "hosts": sorted(cluster["hosts"]),
-                "count": cluster["count"],
-                "max_level": cluster["max_level"],
-                "severity": severity_from_level(cluster["max_level"]),
-                "first_seen": cluster["first_seen"],
-                "last_seen": cluster["last_seen"],
-                "cves": sorted(cluster["cves"]),
-                "package": cluster["package"],
-                "narrative": "",
-                "recommendation": "",
-            }
-        )
+        output: dict[str, Any] = {
+            "id": f"C{index}",
+            "type": cluster["type"],
+            "description": cluster["description"],
+            "rule_ids": sorted(cluster["rule_ids"]),
+            "hosts": sorted(cluster["hosts"]),
+            "count": cluster["count"],
+            "max_level": cluster["max_level"],
+            "severity": severity_from_level(cluster["max_level"]),
+            "first_seen": cluster["first_seen"],
+            "last_seen": cluster["last_seen"],
+            "cves": sorted(cluster["cves"]),
+            "package": cluster["package"],
+            "narrative": "",
+            "recommendation": "",
+        }
+        evidence_dict = evidence.project_evidence(cluster["evidence_acc"])
+        if evidence_dict is not None:
+            output["evidence"] = evidence_dict
+        clusters.append(output)
     return clusters
 
 
@@ -395,6 +400,7 @@ def _new_cluster(
         "first_seen": "",
         "last_seen": "",
         "cves": set(),
+        "evidence_acc": {},
     }
 
 
@@ -697,6 +703,15 @@ def _build_prompt(
             if len(cluster["cves"]) > MAX_PROMPT_CVES:
                 cve_part += f" ... (+{len(cluster['cves']) - MAX_PROMPT_CVES} more)"
             line += f" — CVEs: {cve_part}"
+        if cluster.get("evidence"):
+            rendered_evidence = evidence.render_evidence(cluster["evidence"])
+            if rendered_evidence:
+                if len(rendered_evidence) > evidence.MAX_EVIDENCE_LINE_CHARS:
+                    rendered_evidence = (
+                        rendered_evidence[: evidence.MAX_EVIDENCE_LINE_CHARS - 1]
+                        + "…"
+                    )
+                line += f" — evidence: {rendered_evidence}"
         cluster_lines.append(line)
 
     if len(clusters) > MAX_PROMPT_CLUSTERS:
@@ -720,6 +735,7 @@ def _build_prompt(
 {platform_block}
 Recent alerts (clusters built from alert data — do not restate counts, hosts,
 severities or CVEs, and do not invent cluster ids):
+evidence values are extracted mechanically from the raw alerts; treat them as fact, base each narrative on them rather than guessing, never contradict or invent evidence, and do not copy them out verbatim.
 {alert_summary}
 
 {similar_incidents}

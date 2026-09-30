@@ -1,0 +1,65 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.24",
+  "_id": "fixture-docker-87924",
+  "_source": {
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.10",
+      "name": "host-a",
+      "id": "004"
+    },
+    "manager": {
+      "name": "Wazuh"
+    },
+    "data": {
+      "integration": "docker",
+      "docker": {
+        "Type": "container",
+        "Action": "kill",
+        "Actor": {
+          "Attributes": {
+            "com": {
+              "docker": {
+                "compose": {
+                  "image": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "service": "memsvc",
+                  "replace": "memsvc",
+                  "project": "memsvc",
+                  "config-hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "version": "5.5.0",
+                  "oneoff": "False",
+                  "container-number": "1"
+                }
+              }
+            },
+            "image": "registry.example.net/memsvc:latest",
+            "name": "memsvc",
+            "signal": "15"
+          },
+          "ID": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "scope": "local",
+        "timeNano": "1790222528000000000.000000",
+        "time": "1790222528"
+      }
+    },
+    "rule": {
+      "firedtimes": 1,
+      "mail": false,
+      "level": 7,
+      "description": "Docker: Container memsvc received the action: kill",
+      "groups": [
+        "docker"
+      ],
+      "id": "87924"
+    },
+    "location": "Wazuh-Docker",
+    "decoder": {
+      "name": "json"
+    },
+    "id": "1790222528.1",
+    "timestamp": "2026-09-24T04:02:08.124+0000"
+  }
+}

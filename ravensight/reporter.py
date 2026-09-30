@@ -7,6 +7,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Optional
 
+from ravensight.evidence import render_evidence
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,10 @@ def _format_finding(finding: str | dict) -> list[str]:
     narrative = finding.get("narrative", "")
     if narrative:
         lines.append(f"  - {narrative}")
+
+    evidence_text = render_evidence(finding.get("evidence"))
+    if evidence_text:
+        lines.append(f"  - Evidence: {evidence_text}")
 
     if finding.get("type") == "vulnerability":
         cves = finding.get("cves", [])

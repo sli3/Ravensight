@@ -1,0 +1,56 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.24",
+  "_id": "fixture-vuln-23502",
+  "_source": {
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.10",
+      "name": "host-a",
+      "id": "004"
+    },
+    "manager": {
+      "name": "Wazuh"
+    },
+    "data": {
+      "vulnerability": {
+        "severity": "-",
+        "package": {
+          "name": "linux-image-6.8.0-139-generic",
+          "version": "6.8.0-139.139",
+          "architecture": "amd64"
+        },
+        "published": "2026-08-15T00:00:00Z",
+        "classification": "-",
+        "title": "CVE-2026-74566 affecting linux-image-6.8.0-139-generic was solved",
+        "type": "Packages",
+        "reference": "https://www.cve.org/CVERecord?id=CVE-2026-74566",
+        "score": {
+          "version": "-",
+          "base": "-1"
+        },
+        "cve": "CVE-2026-74566",
+        "enumeration": "CVE",
+        "updated": "2026-09-18T00:00:00Z",
+        "status": "Solved"
+      }
+    },
+    "rule": {
+      "firedtimes": 2934,
+      "mail": false,
+      "level": 3,
+      "description": "The CVE-2026-74566 that affected linux-image-6.8.0-139-generic was solved due to an update in the agent or feed.",
+      "groups": [
+        "vulnerability-detector"
+      ],
+      "id": "23502"
+    },
+    "location": "vulnerability-detector",
+    "decoder": {
+      "name": "json"
+    },
+    "id": "1790287405.1",
+    "timestamp": "2026-09-24T22:03:25.453+0000"
+  }
+}

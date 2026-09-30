@@ -1,0 +1,76 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.29",
+  "_id": "fixture-syscheck-550",
+  "_source": {
+    "syscheck": {
+      "uname_after": "root",
+      "mtime_after": "2026-09-29T15:20:24",
+      "inode_before": 1000001,
+      "size_after": "231",
+      "gid_after": "0",
+      "mtime_before": "2026-09-29T03:20:22",
+      "mode": "scheduled",
+      "path": "/etc/resolv.conf",
+      "sha1_after": "1111111111111111111111111111111111111111",
+      "changed_attributes": [
+        "inode",
+        "mtime"
+      ],
+      "gname_after": "wheel",
+      "uid_after": "0",
+      "perm_after": "rw-r--r--",
+      "event": "modified",
+      "md5_after": "22222222222222222222222222222222",
+      "sha256_after": "3333333333333333333333333333333333333333333333333333333333333333",
+      "inode_after": 1000002
+    },
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.1",
+      "name": "fw-a",
+      "id": "003"
+    },
+    "manager": {
+      "name": "Wazuh"
+    },
+    "rule": {
+      "mail": false,
+      "level": 7,
+      "pci_dss": [
+        "11.5"
+      ],
+      "description": "Integrity checksum changed.",
+      "groups": [
+        "ossec",
+        "syscheck",
+        "syscheck_entry_modified",
+        "syscheck_file"
+      ],
+      "nist_800_53": [
+        "SI.7"
+      ],
+      "firedtimes": 2,
+      "mitre": {
+        "technique": [
+          "Stored Data Manipulation"
+        ],
+        "id": [
+          "T1565.001"
+        ],
+        "tactic": [
+          "Impact"
+        ]
+      },
+      "id": "550"
+    },
+    "location": "syscheck",
+    "decoder": {
+      "name": "syscheck_integrity_changed"
+    },
+    "id": "1790695250.1",
+    "full_log": "File '/etc/resolv.conf' modified\nMode: scheduled\nChanged attributes: inode,mtime\nOld modification time was: '1790652022', now it is '1790695224'\nOld inode was: '1000001', now it is '1000002'\n",
+    "timestamp": "2026-09-29T15:20:50.545+0000"
+  }
+}

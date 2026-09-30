@@ -1,0 +1,36 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.29",
+  "_id": "fixture-netstat-533",
+  "_source": {
+    "previous_log": "ossec: output: 'netstat listening ports':\ntcp 0.0.0.0:22 0.0.0.0:* 1/systemd\ntcp6 :::22 :::* 1/systemd\ntcp 127.0.0.53:53 0.0.0.0:* 1101/systemd-res\nudp 192.0.2.10:68 0.0.0.0:* 1102/systemd-net\ntcp 0.0.0.0:443 0.0.0.0:* 2201/docker-proxy\ntcp 0.0.0.0:8001 0.0.0.0:* 2202/docker-prox\ntcp 0.0.0.0:8002 0.0.0.0:* 2203/docker-prox\ntcp 127.0.0.1:40001 0.0.0.0:* 3301/code-server",
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.10",
+      "name": "host-a",
+      "id": "004"
+    },
+    "previous_output": "Previous output:\nossec: output: 'netstat listening ports':\ntcp 0.0.0.0:22 0.0.0.0:* 1/systemd\ntcp6 :::22 :::* 1/systemd\ntcp 127.0.0.53:53 0.0.0.0:* 1101/systemd-res\nudp 192.0.2.10:68 0.0.0.0:* 1102/systemd-net\ntcp 0.0.0.0:443 0.0.0.0:* 2201/docker-proxy\ntcp 0.0.0.0:8001 0.0.0.0:* 2202/docker-prox\ntcp 0.0.0.0:8002 0.0.0.0:* 2203/docker-prox\ntcp 127.0.0.1:40001 0.0.0.0:* 3301/code-server",
+    "manager": {
+      "name": "Wazuh"
+    },
+    "rule": {
+      "firedtimes": 1,
+      "mail": false,
+      "level": 7,
+      "description": "Listened ports status (netstat) changed (new port opened or closed).",
+      "groups": [
+        "ossec"
+      ],
+      "id": "533"
+    },
+    "location": "netstat listening ports",
+    "decoder": {
+      "name": "ossec"
+    },
+    "id": "1790726232.1",
+    "full_log": "ossec: output: 'netstat listening ports':\ntcp 0.0.0.0:22 0.0.0.0:* 1/systemd\ntcp6 :::22 :::* 1/systemd\ntcp 127.0.0.53:53 0.0.0.0:* 1101/systemd-res\nudp 192.0.2.10:68 0.0.0.0:* 1102/systemd-net\ntcp 0.0.0.0:443 0.0.0.0:* 2201/docker-proxy\ntcp 0.0.0.0:8001 0.0.0.0:* 2202/docker-prox\ntcp 0.0.0.0:8002 0.0.0.0:* 2203/docker-prox\ntcp 127.0.0.1:40001 0.0.0.0:* 3301/code-server\ntcp 127.0.0.1:40002 0.0.0.0:* 3302/code-server",
+    "timestamp": "2026-09-29T23:57:12.109+0000"
+  }
+}

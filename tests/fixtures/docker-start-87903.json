@@ -1,0 +1,64 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.24",
+  "_id": "fixture-docker-87903",
+  "_source": {
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.10",
+      "name": "host-a",
+      "id": "004"
+    },
+    "manager": {
+      "name": "Wazuh"
+    },
+    "data": {
+      "integration": "docker",
+      "docker": {
+        "Type": "container",
+        "Action": "start",
+        "Actor": {
+          "Attributes": {
+            "com": {
+              "docker": {
+                "compose": {
+                  "image": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "service": "memsvc",
+                  "replace": "memsvc",
+                  "project": "memsvc",
+                  "config-hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "version": "5.5.0",
+                  "oneoff": "False",
+                  "container-number": "1"
+                }
+              }
+            },
+            "image": "registry.example.net/memsvc:latest",
+            "name": "memsvc"
+          },
+          "ID": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "scope": "local",
+        "timeNano": "1790222528000000000.000000",
+        "time": "1790222528"
+      }
+    },
+    "rule": {
+      "firedtimes": 1,
+      "mail": false,
+      "level": 3,
+      "description": "Docker: Container memsvc started",
+      "groups": [
+        "docker"
+      ],
+      "id": "87903"
+    },
+    "location": "Wazuh-Docker",
+    "decoder": {
+      "name": "json"
+    },
+    "id": "1790222528.1",
+    "timestamp": "2026-09-24T04:02:11.689+0000"
+  }
+}
