@@ -4,6 +4,7 @@ analyser.py — LLM-based security alert analysis via OpenAI-compatible REST API
 
 import json
 import logging
+import math
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -25,6 +26,12 @@ _CVE_RE = re.compile(r"CVE-\d{4}-\d{4,}")
 _PACKAGE_FALLBACK_RE = re.compile(r"^CVE-\d{4}-\d{4,}\s+affects\s+(.+)$")
 _CLUSTER_REF_RE = re.compile(r"^\**\s*\[?\s*C(\d+)\s*\]?\s*\**[\s:\-]*", re.IGNORECASE)
 _STRAY_FINDING_RE = re.compile(r"^Finding\s+\d+\s*[:\-]\s*", re.IGNORECASE)
+
+RULE_87702_IPV6_ARTEFACT_NOTE = (
+    "Wazuh rule 87702 groups IPv6 filterlog by a misdecoded field — its "
+    "same-source wording and T1110 tag do not describe the real sources shown "
+    "in the evidence"
+)
 
 _SEVERITY_ORDER = {"High": 0, "Medium": 1, "Low": 2}
 
@@ -149,13 +156,54 @@ def _load_platform_hints(hints_path: str) -> dict:
         return {}
 
 
-def _build_platform_context(alerts: list[dict[str, Any]], hints: dict) -> str:
+def _load_platform_agents(path: str | None) -> dict:
+    """Load Wazuh agent-name → vendor/platform map from local JSON file.
+
+    Defaults to 'data/platform_agents.json' when path is None. Missing or
+    unreadable file = today's behaviour (no host facts block), logged once
+    at DEBUG. Malformed entries (non-dict values, missing keys) are
+    skipped with a DEBUG log each.
+    """
+    chosen = path or "data/platform_agents.json"
+    try:
+        with Path(chosen).open("r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        logger.debug(f"Platform agents file not found: {chosen}")
+        return {}
+    except json.JSONDecodeError as e:
+        logger.debug(f"Failed to parse platform agents file {chosen}: {e}")
+        return {}
+    if not isinstance(raw, dict):
+        logger.debug(f"Platform agents file {chosen} is not a JSON object")
+        return {}
+    result: dict[str, dict[str, str]] = {}
+    for name, info in raw.items():
+        if not isinstance(info, dict):
+            logger.debug(f"Platform agents entry {name!r} is not a dict — skipped")
+            continue
+        platform = info.get("platform")
+        vendor = info.get("vendor")
+        if not isinstance(platform, str) or not isinstance(vendor, str):
+            logger.debug(f"Platform agents entry {name!r} missing platform/vendor — skipped")
+            continue
+        result[name] = {"platform": platform, "vendor": vendor}
+    return result
+
+
+def _build_platform_context(
+    alerts: list[dict[str, Any]],
+    hints: dict,
+    platform_agents: dict | None = None,
+) -> str:
     """Build platform context block for prompt injection.
 
     Extracts distinct agent.os.platform values from the alert batch, looks up
     matching hints for the rule IDs present, and returns a formatted context block.
     Returns an empty string if no platform matches are found — caller skips silently.
     Alerts with null _source/agent/os/platform/rule fields are skipped silently.
+    When agent.os.platform is missing or empty, falls back to the
+    platform_agents agent-name map.
     """
     if not hints:
         return ""
@@ -170,9 +218,13 @@ def _build_platform_context(alerts: list[dict[str, Any]], hints: dict) -> str:
         if agent is None:
             continue
         os_info = agent.get("os")
-        if os_info is None:
-            continue
-        platform = os_info.get("platform")
+        platform = os_info.get("platform") if isinstance(os_info, dict) else None
+        if not platform and platform_agents:
+            agent_name = agent.get("name")
+            if isinstance(agent_name, str):
+                mapped = platform_agents.get(agent_name)
+                if isinstance(mapped, dict):
+                    platform = mapped.get("platform")
         if platform is None:
             continue
         platform = platform.lower()
@@ -182,7 +234,7 @@ def _build_platform_context(alerts: list[dict[str, Any]], hints: dict) -> str:
             agent_name = agent.get("name")
             if agent_name is None:
                 agent_name = "unknown"
-            os_name = os_info.get("name", platform)
+            os_name = os_info.get("name", platform) if isinstance(os_info, dict) else platform
             seen_platforms[platform] = {
                 "agent_name": agent_name,
                 "os_name": os_name,
@@ -283,6 +335,9 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
     """
     vuln_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     rule_by_desc: dict[str, dict[str, Any]] = {}
+    dpkg_records: dict[
+        tuple[str, str], list[tuple[str, str, dict[str, Any]]]
+    ] = {}
 
     for alert in alerts:
         source = alert.get("_source") or {}
@@ -296,7 +351,7 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
         agent = source.get("agent") or {}
         host = agent.get("name") or "unknown"
         level = _coerce_level(rule.get("level", 0))
-        timestamp = source.get("@timestamp") or ""
+        timestamp = source.get("@timestamp") or source.get("timestamp") or ""
         rule_id = rule.get("id")
         rule_id_str = None if rule_id is None else str(rule_id)
 
@@ -342,6 +397,11 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
                 cluster["last_seen"] = timestamp
         cluster["cves"].update(cves)
         evidence.accumulate(cluster["evidence_acc"], alert)
+        dpkg = evidence.dpkg_event(alert)
+        if dpkg is not None and dpkg[1] in ("half-configured", "installed"):
+            dpkg_records.setdefault((host, dpkg[0]), []).append(
+                (timestamp, dpkg[1], cluster["evidence_acc"])
+            )
 
     ordered = list(vuln_by_key.values()) + list(rule_by_desc.values())
     for cluster in ordered:
@@ -377,12 +437,106 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
             "package": cluster["package"],
             "narrative": "",
             "recommendation": "",
+            "notes": [],
         }
         evidence_dict = evidence.project_evidence(cluster["evidence_acc"])
         if evidence_dict is not None:
             output["evidence"] = evidence_dict
         clusters.append(output)
+    acc_to_output: dict[int, dict[str, Any]] = {
+        id(cluster["evidence_acc"]): output
+        for cluster, output in zip(ordered, clusters)
+    }
+    _apply_post_cluster_notes(clusters, dpkg_records, acc_to_output)
     return clusters
+
+
+def _apply_post_cluster_notes(
+    clusters: list[dict[str, Any]],
+    dpkg_records: dict[tuple[str, str], list[tuple[str, str, dict[str, Any]]]],
+    acc_to_output: dict[int, dict[str, Any]],
+) -> None:
+    """Attach data-built notes to clusters: dpkg upgrade pairing and rule
+    87702 IPv6 artefact. Mutates the cluster dicts in place.
+    """
+    _pair_dpkg_clusters(clusters, dpkg_records, acc_to_output)
+    _apply_rule_87702_artefact(clusters)
+
+
+def _pair_dpkg_clusters(
+    clusters: list[dict[str, Any]],
+    dpkg_records: dict[tuple[str, str], list[tuple[str, str, dict[str, Any]]]],
+    acc_to_output: dict[int, dict[str, Any]],
+) -> None:
+    """Pair half-configured → installed dpkg events per (host, pkg ver).
+
+    For every half-configured event within 60 s of an installed event for the
+    same (host, pkg ver), add one note to each cluster listing every paired
+    pkg ver and the largest gap. Parses timestamps timezone-aware; skips
+    silently when a timestamp fails to parse or is naive.
+    """
+    pairings: dict[tuple[int, int], tuple[set[str], float]] = {}
+    for (_host, key), records in dpkg_records.items():
+        parsed: list[tuple[datetime, str, dict[str, Any]]] = []
+        for timestamp, status, acc in records:
+            try:
+                moment = datetime.fromisoformat(timestamp)
+            except (TypeError, ValueError):
+                continue
+            if moment.tzinfo is None:
+                continue
+            parsed.append((moment, status, acc))
+        for h_moment, h_status, h_acc in parsed:
+            if h_status != "half-configured":
+                continue
+            for i_moment, i_status, i_acc in parsed:
+                if i_status != "installed":
+                    continue
+                gap = abs((i_moment - h_moment).total_seconds())
+                if gap > 60 or id(h_acc) == id(i_acc):
+                    continue
+                pair = (id(h_acc), id(i_acc))
+                pkgs, largest = pairings.get(pair, (set(), 0.0))
+                pkgs.add(key)
+                pairings[pair] = (pkgs, max(largest, gap))
+
+    for (h_acc_id, i_acc_id), (pkgs, largest) in pairings.items():
+        half = acc_to_output.get(h_acc_id)
+        installed = acc_to_output.get(i_acc_id)
+        if half is None or installed is None:
+            continue
+        shown = sorted(pkgs)[:3]
+        pkg_list = ", ".join(shown)
+        if len(pkgs) > 3:
+            pkg_list += f" (+{len(pkgs) - 3} more)"
+        n = max(1, math.ceil(largest))
+        note = (
+            f"normal dpkg upgrade sequence: {pkg_list} "
+            f"half-configured → installed within {n} s (see {installed['id']})"
+        )
+        if note not in half["notes"]:
+            half["notes"].append(note)
+        mirror = (
+            f"normal dpkg upgrade sequence: {pkg_list} "
+            f"half-configured → installed within {n} s (see {half['id']})"
+        )
+        if mirror not in installed["notes"]:
+            installed["notes"].append(mirror)
+
+
+def _apply_rule_87702_artefact(clusters: list[dict[str, Any]]) -> None:
+    """Add the IPv6/87702 artefact note to clusters whose rule_ids include
+    '87702' and whose firewall evidence carries an ipv6 ipversion.
+    """
+    for cluster in clusters:
+        if "87702" not in cluster.get("rule_ids", []):
+            continue
+        ev = cluster.get("evidence") or {}
+        fw = ev.get("firewall") or {}
+        if "ipv6" not in fw.get("ipversions", []):
+            continue
+        if RULE_87702_IPV6_ARTEFACT_NOTE not in cluster["notes"]:
+            cluster["notes"].append(RULE_87702_IPV6_ARTEFACT_NOTE)
 
 
 def _new_cluster(
@@ -459,6 +613,7 @@ def analyse(
     embedder=None,
     mitre_path: str | None = None,
     platform_hints_path: str | None = None,
+    platform_agents_path: str | None = None,
     asd_path: str | None = None,
     show_progress: bool = False,
     lookback_hours: int | None = None,
@@ -474,6 +629,8 @@ def analyse(
        mitre_path: Optional path to MITRE tactics JSON file
         platform_hints_path: Optional path to platform false positive hints JSON file;
             defaults to "data/platform_hints.json" if not supplied
+        platform_agents_path: Optional path to agent-name → vendor/platform JSON
+            map; defaults to "data/platform_agents.json" if not supplied
         asd_path: Optional path to ASD framework JSON file
         lookback_hours: Report window in hours — similar incidents within this
             window are dropped from the prompt. None disables filtering.
@@ -531,7 +688,10 @@ def analyse(
 
     hints_file = platform_hints_path or "data/platform_hints.json"
     platform_hints = _load_platform_hints(hints_file)
-    platform_context = _build_platform_context(alerts, platform_hints)
+    platform_agents = _load_platform_agents(platform_agents_path)
+    platform_context = _build_platform_context(
+        alerts, platform_hints, platform_agents=platform_agents
+    )
     if platform_context:
         logger.debug("Platform context injected into prompt")
 
@@ -546,6 +706,7 @@ def analyse(
         tactics=tactics,
         platform_context=platform_context,
         asd_context=asd_context,
+        platform_agents=platform_agents,
     )
 
     try:
@@ -676,6 +837,35 @@ def filter_similar_by_window(
     return filtered
 
 
+def _build_host_facts_block(
+    clusters: list[dict[str, Any]],
+    platform_agents: dict[str, dict[str, str]],
+) -> str:
+    """Build a 'Host facts:' prompt block listing every cluster host that
+    matches the agent-name map, one line per matched host. Empty when no
+    host matches.
+    """
+    if not platform_agents:
+        return ""
+    seen: set[str] = set()
+    lines: list[str] = []
+    for cluster in clusters:
+        for host in cluster.get("hosts", []):
+            if host in seen:
+                continue
+            info = platform_agents.get(host)
+            if not info:
+                continue
+            seen.add(host)
+            lines.append(
+                f"- {host}: {info['vendor']} ({info['platform']}). "
+                "Rule descriptions may name a different product; use this vendor name."
+            )
+    if not lines:
+        return ""
+    return "Host facts:\n" + "\n".join(lines)
+
+
 def _build_prompt(
     alerts: list[dict[str, Any]],
     baseline: dict[str, Any],
@@ -684,10 +874,15 @@ def _build_prompt(
     tactics: list = [],
     platform_context: str = "",
     asd_context: str = "",
+    platform_agents: dict | None = None,
 ) -> str:
     """Build prompt with cluster lines and similar incidents."""
     if clusters is None:
         clusters = extract_alert_clusters(alerts)
+
+    host_facts_block = ""
+    if platform_agents:
+        host_facts_block = _build_host_facts_block(clusters, platform_agents)
 
     cluster_lines: list[str] = []
     for cluster in clusters[:MAX_PROMPT_CLUSTERS]:
@@ -712,6 +907,8 @@ def _build_prompt(
                         + "…"
                     )
                 line += f" — evidence: {rendered_evidence}"
+        if cluster.get("notes"):
+            line += " — notes: " + "; ".join(cluster["notes"])
         cluster_lines.append(line)
 
     if len(clusters) > MAX_PROMPT_CLUSTERS:
@@ -721,7 +918,10 @@ def _build_prompt(
             "comment only on the clusters listed)"
         )
 
-    alert_summary = "\n".join(cluster_lines)
+    if host_facts_block:
+        alert_summary = host_facts_block + "\n\n" + "\n".join(cluster_lines)
+    else:
+        alert_summary = "\n".join(cluster_lines)
 
     mitre_reference = ""
     if tactics:
@@ -735,18 +935,18 @@ def _build_prompt(
 {platform_block}
 Recent alerts (clusters built from alert data — do not restate counts, hosts,
 severities or CVEs, and do not invent cluster ids):
-evidence values are extracted mechanically from the raw alerts; treat them as fact, base each narrative on them rather than guessing, never contradict or invent evidence, and do not copy them out verbatim.
+Rules:
+1. Evidence values and notes are facts taken from the raw alerts. Prefer the benign explanation that fits them.
+2. Never contradict the evidence. If unsure, say less.
+3. Copy ports, paths, counts, package names and versions exactly as written in the evidence, or leave them out.
+4. 'content unchanged' means only metadata (such as inode or mtime) changed: treat it as low concern. 'scope internal → external' means hosts on this network were blocked going out, not an outside scan.
+5. Name products and vendors as given in Host facts, not as the rule description says.
+6. Recommend only what the evidence justifies. Do not suggest restoring files, forensics or isolating hosts unless the evidence shows a content change or an external source.
 {alert_summary}
 
 {similar_incidents}
 {mitre_reference}
 {asd_block}
-
-Tag each finding with the most relevant MITRE ATT&CK tactic using exact tactic names from the reference above:
-<mitre_tags>
-- Persistence: Rootkit installed to maintain access across reboots
-- Defense Evasion: File integrity tampering to hide malicious changes
-</mitre_tags>
 
 Provide your analysis in this format — one narrative line per cluster you comment on,
 each prefixed with its cluster id, plus at most one recommendation line per cluster:
@@ -776,16 +976,6 @@ def _parse_analysis(
     mitre_tags: list[dict[str, str]] = []
     unattached: list[dict[str, Any]] = []
 
-    # Build tactic lookup for parsing — maps lowercase tactic name to display name
-    tactic_lookup: dict[str, str] = {}
-    for t in tactics:
-        name = t.get("name", "")
-        shortname = t.get("shortname", "")
-        if name:
-            tactic_lookup[name.lower()] = name
-        if shortname:
-            tactic_lookup[shortname.lower()] = name
-
     by_id: dict[str, dict[str, Any]] = {}
     if clusters is not None:
         findings = [dict(c) for c in clusters]
@@ -805,10 +995,6 @@ def _parse_analysis(
         elif line.startswith("<recommendations>"):
             current_section = "recommendations"
         elif line.startswith("</recommendations>"):
-            current_section = None
-        elif line.startswith("<mitre_tags>"):
-            current_section = "mitre_tags"
-        elif line.startswith("</mitre_tags>"):
             current_section = None
         elif line.startswith("- ") and current_section == "findings":
             body = line[2:]
@@ -842,14 +1028,6 @@ def _parse_analysis(
             else:
                 logger.warning(f"Unattached recommendation line (no known cluster id): {line}")
                 unattached.append(_unattached_finding("", recommendation=rest))
-        elif line.startswith("- ") and current_section == "mitre_tags":
-            tag_text = line[2:]
-            if ":" in tag_text:
-                tactic_part = tag_text.split(":", 1)[0].strip()
-                description = tag_text.split(":", 1)[1].strip()
-                # Look up canonical tactic name, fall back to what the LLM wrote
-                matched_tactic = tactic_lookup.get(tactic_part.lower(), tactic_part)
-                mitre_tags.append({"tactic": matched_tactic, "description": description})
 
     if clusters is not None:
         findings.extend(unattached)

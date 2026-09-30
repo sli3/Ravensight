@@ -55,3 +55,4 @@ overrides_path = "${RAVENSIGHT_DATA_DIR}/e8_keyword_overrides.json"
 # Path to platform false positive hint table
 # Edit this file directly to add new hints — no code change required
 hints_path = "${RAVENSIGHT_DATA_DIR}/platform_hints.json"
+agents_path = "${RAVENSIGHT_DATA_DIR}/platform_agents.json"

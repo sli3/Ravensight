@@ -2,10 +2,13 @@
 evidence.py — mechanical per-cluster evidence extraction from raw alerts.
 
 Each alert cluster carries a few real values ('evidence') pulled straight from
-its alerts' fields — file paths, package statuses, opened and closed ports,
-container actions, vulnerability states. Evidence is data-built, never
-LLM-written, and bounded in size; it is shown to the LLM in the prompt cluster
-lines and to the reader in the report. Pure standard-library module.
+its alerts' fields — syscheck file paths and content verdicts, dpkg
+package/version/status pairs, netstat opened and closed ports with their
+processes, docker container action/signal/compose/image tuples, vulnerability
+status/severity/score, firewall action/direction/interface/ipversion/protocol/
+sources/destinations/destination-port tuples parsed from OPNsense filterlog
+lines, and generic srcip/dstuser fallbacks. Evidence is data-built, never
+LLM-written, and bounded in size.
 """
 
 import ipaddress
@@ -22,6 +25,32 @@ _CONTENT_ATTRIBUTES = frozenset({"md5", "sha1", "sha256", "size"})
 _EXCLUDED_SEVERITIES = frozenset({"", "-"})
 _EXCLUDED_SCORE_BASES = frozenset({"", "-", "-1"})
 _FILTERLOG_RE = re.compile(r"filterlog(?:\[\d+\])?:\s*(.*)$")
+
+_INTERNAL_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("::1/128"),
+]
+
+
+def _classify_ip_scope(ip_str: str) -> str | None:
+    """Classify one IP string as 'internal' or 'external' against an explicit
+    internal-network list; return None for unparseable values. Documentation
+    ranges (RFC 5737, 2001:db8::/32) deliberately count as external so redacted
+    fixtures behave like real traffic.
+    """
+    if not isinstance(ip_str, str):
+        return None
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except (TypeError, ValueError):
+        return None
+    return "internal" if any(addr in net for net in _INTERNAL_NETS) else "external"
 
 
 def _clean(value: Any) -> str:
@@ -120,6 +149,8 @@ def _empty_shape_acc(shape: str) -> dict[str, Any]:
             "sources": [],
             "destinations": [],
             "dstports": [],
+            "src_scopes": set(),
+            "dst_scopes": set(),
             "sources_total": 0,
             "sources_distinct": set(),
         }
@@ -140,23 +171,52 @@ def _accumulate_syscheck(acc: dict[str, Any], alert: dict[str, Any]) -> None:
             _add_unique(acc["changed"], attribute)
 
 
-def _accumulate_dpkg(acc: dict[str, Any], alert: dict[str, Any]) -> None:
-    """Merge one alert's dpkg package/version/status into acc."""
+def _dpkg_fields(alert: dict[str, Any]) -> tuple[str, str, str] | None:
+    """Return (package, version, status) from one dpkg alert's data, or None.
+
+    Package and version are required; status may be empty.
+    """
     source = alert.get("_source") or {}
     data = source.get("data")
     if not isinstance(data, dict):
-        return
+        return None
     package = _clean(data.get("package"))
     version = _clean(data.get("version"))
     if not package or not version:
-        return
+        return None
     status = _clean(data.get("dpkg_status")).removeprefix("status ")
-    entries: dict[str, list[str]] = acc["entries"]
+    return package, version, status
+
+
+def dpkg_event(alert: dict[str, Any]) -> tuple[str, str] | None:
+    """Return ('<package> <version>', status) for one dpkg alert.
+
+    Parsing is identical to _accumulate_dpkg: data.package, data.version, and
+    data.dpkg_status with the 'status ' prefix removed. Returns None when
+    package, version or status is missing.
+    """
+    fields = _dpkg_fields(alert)
+    if fields is None:
+        return None
+    package, version, status = fields
+    if not status:
+        return None
+    return f"{package} {version}", status
+
+
+def _accumulate_dpkg(acc: dict[str, Any], alert: dict[str, Any]) -> None:
+    """Merge one alert's dpkg package/version/status into acc."""
+    fields = _dpkg_fields(alert)
+    if fields is None:
+        return
+    package, version, status = fields
     key = f"{package} {version}"
+    entries: dict[str, list[str]] = acc["entries"]
     if key not in entries and len(entries) >= MAX_EVIDENCE_VALUES:
         return
     statuses = entries.setdefault(key, [])
-    _add_unique(statuses, status)
+    if status:
+        _add_unique(statuses, status)
 
 
 def _parse_netstat_log(log: Any) -> dict[str, dict[str, Any]]:
@@ -336,6 +396,12 @@ def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
         _add_unique(acc["interfaces"], interface)
         _add_unique(acc["ipversions"], ipversion)
         _add_unique(acc["protocols"], protoname)
+        src_scope = _classify_ip_scope(src)
+        if src_scope:
+            acc["src_scopes"].add(src_scope)
+        dst_scope = _classify_ip_scope(dst)
+        if dst_scope:
+            acc["dst_scopes"].add(dst_scope)
         _add_unique(acc["destinations"], dst)
 
         if src:
@@ -477,6 +543,10 @@ def _project_firewall(acc: dict[str, Any]) -> dict[str, Any]:
         out["sources"] = sorted(acc["sources"])
     if acc["sources_total"]:
         out["sources_total"] = acc["sources_total"]
+    if acc["src_scopes"]:
+        out["src_scopes"] = sorted(acc["src_scopes"])
+    if acc["dst_scopes"]:
+        out["dst_scopes"] = sorted(acc["dst_scopes"])
     return out
 
 
@@ -608,6 +678,12 @@ def _render_firewall(data: dict[str, Any]) -> list[str]:
         parts.append(
             "iface " + ", ".join(_sanitise(v) for v in data["interfaces"])
         )
+    src_scopes = data.get("src_scopes") or []
+    dst_scopes = data.get("dst_scopes") or []
+    if src_scopes and dst_scopes:
+        src_side = ", ".join(src_scopes)
+        dst_side = ", ".join(dst_scopes)
+        parts.append(f"scope {src_side} → {dst_side}")
     if data.get("ipversions"):
         parts.append(", ".join(sorted(data["ipversions"])))
     if data.get("protocols"):

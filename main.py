@@ -116,8 +116,9 @@ def main() -> None:
     mitre_path = config.get("mitre", {}).get("path") if "mitre" in config else None
     asd_path = config.get("asd", {}).get("path") if "asd" in config else None
     platform_hints_path = config.get("platform", {}).get("hints_path") if "platform" in config else None
+    platform_agents_path = config.get("platform", {}).get("agents_path") if "platform" in config else None
     try:
-        analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, show_progress=show_progress, lookback_hours=args.hours)
+        analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, platform_agents_path=platform_agents_path, show_progress=show_progress, lookback_hours=args.hours)
     except openai.APIConnectionError as e:
         logging.critical(
             f"LLM server unreachable ({type(e).__name__}: {e}) — check [llm] base_url in config.toml (or .env with Docker)",

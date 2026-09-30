@@ -8,7 +8,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ravensight.analyser import _build_platform_context, _load_platform_hints
+from ravensight.analyser import (
+    _build_platform_context,
+    _load_platform_agents,
+    _load_platform_hints,
+)
 
 FREEBSD_HINT = (
     "Link count mismatches on /boot/efi are a structural FAT32 artefact on "
@@ -319,3 +323,62 @@ def test_build_platform_context_null_rule_id_does_not_match_None_hint() -> None:
     assert context != ""
     assert "should-never-appear-in-output" not in context
     assert "Rule None" not in context
+
+
+# --- platform agents map (Build 1d) ---
+
+
+def test_build_platform_context_falls_back_to_agents_map() -> None:
+    """Missing agent.os.platform falls back to the agent-name map."""
+    alerts = [
+        {
+            "_source": {
+                "agent": {"name": "fw1"},
+                "rule": {"id": "510", "description": "FIM event"},
+            }
+        }
+    ]
+    platform_agents = {"fw1": {"platform": "freebsd", "vendor": "OPNsense"}}
+    context = _build_platform_context(alerts, FREEBSD_HINTS, platform_agents)
+    assert context.startswith("Platform context:\n")
+    assert "- Agent: fw1 (freebsd — FreeBSD and derivatives" in context
+    assert "Rule 510 on /boot/efi" in context
+
+
+def test_load_platform_agents_missing_file_logs_debug(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """Missing agents file returns {} and logs once at DEBUG."""
+    caplog.set_level(logging.DEBUG, logger="ravensight.analyser")
+    missing = str(tmp_path / "does_not_exist.json")
+    result = _load_platform_agents(missing)
+    assert result == {}
+    assert any(
+        "Platform agents file not found" in rec.message for rec in caplog.records
+    )
+
+
+def test_load_platform_agents_malformed_entries_skipped(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """Non-dict values and entries missing platform/vendor are skipped."""
+    caplog.set_level(logging.DEBUG, logger="ravensight.analyser")
+    agents_file = tmp_path / "agents.json"
+    agents_file.write_text(
+        json.dumps(
+            {
+                "fw1": {"platform": "freebsd"},
+                "fw2": "not a dict",
+                "fw3": {"platform": "freebsd", "vendor": "OPNsense"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = _load_platform_agents(str(agents_file))
+    assert result == {"fw3": {"platform": "freebsd", "vendor": "OPNsense"}}
+    assert any(
+        "is not a dict" in rec.message for rec in caplog.records
+    )
+    assert any(
+        "missing platform/vendor" in rec.message for rec in caplog.records
+    )

@@ -10,12 +10,15 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ravensight.analyser import cluster_key, extract_alert_clusters
+from ravensight.analyser import _build_prompt, cluster_key, extract_alert_clusters
 from ravensight.baseline import Manager
 from ravensight.evidence import (
+    MAX_EVIDENCE_LINE_CHARS,
     MAX_EVIDENCE_VALUE_CHARS,
     MAX_EVIDENCE_VALUES,
+    _classify_ip_scope,
     accumulate,
+    dpkg_event,
     render_evidence,
 )
 
@@ -36,7 +39,6 @@ def _alert(
     syscheck: Any = None,
     full_log: Any = None,
     previous_log: Any = None,
-    previous_output: Any = None,
     predecoder: Any = None,
 ) -> dict[str, Any]:
     """Build one synthetic alert dict in the documented Wazuh shape."""
@@ -55,8 +57,6 @@ def _alert(
         source["full_log"] = full_log
     if previous_log is not None:
         source["previous_log"] = previous_log
-    if previous_output is not None:
-        source["previous_output"] = previous_output
     if predecoder is not None:
         source["predecoder"] = predecoder
     return {"_source": source}
@@ -125,6 +125,47 @@ def _only_cluster(alerts: list[dict[str, Any]]) -> dict[str, Any]:
     clusters = extract_alert_clusters(alerts)
     assert len(clusters) == 1
     return clusters[0]
+
+
+# --- scope classifier ---
+
+
+def test_scope_classifier_rfc1918_internal() -> None:
+    """RFC 1918, loopback and link-local IPv4 ranges classify as internal."""
+    for ip in (
+        "10.1.2.3",
+        "172.16.0.1",
+        "172.31.255.254",
+        "192.168.0.42",
+        "127.0.0.1",
+        "169.254.1.1",
+    ):
+        assert _classify_ip_scope(ip) == "internal"
+
+
+def test_scope_classifier_ula_and_link_local_internal() -> None:
+    """ULA, link-local and loopback IPv6 ranges classify as internal."""
+    assert _classify_ip_scope("fd00:0:0:1::c") == "internal"
+    assert _classify_ip_scope("fd12:3456:789a::1") == "internal"
+    assert _classify_ip_scope("fe80::1") == "internal"
+    assert _classify_ip_scope("::1") == "internal"
+
+
+def test_scope_classifier_documentation_ranges_external() -> None:
+    """RFC 5737 and 2001:db8::/32 documentation ranges classify as external."""
+    assert _classify_ip_scope("2001:db8::1") == "external"
+    assert _classify_ip_scope("2001:db8:202::5e") == "external"
+    assert _classify_ip_scope("192.0.2.1") == "external"
+    assert _classify_ip_scope("198.51.100.7") == "external"
+    assert _classify_ip_scope("203.0.113.10") == "external"
+
+
+def test_scope_classifier_garbage_returns_none() -> None:
+    """Unparseable values return None instead of raising."""
+    assert _classify_ip_scope("not-an-ip") is None
+    assert _classify_ip_scope("") is None
+    assert _classify_ip_scope(None) is None  # type: ignore[arg-type]
+    assert _classify_ip_scope(443) is None  # type: ignore[arg-type]
 
 
 # --- syscheck ---
@@ -234,6 +275,37 @@ def test_dpkg_missing_fields_degrade_without_raising() -> None:
     assert clusters[0]["evidence"]["dpkg"]["packages"] == [
         "libc-bin 2.39-0ubuntu8.9"
     ]
+
+
+def test_dpkg_event_returns_key_and_status() -> None:
+    """dpkg_event parses the 'status ' prefix into (pkg ver, status)."""
+    assert dpkg_event(_dpkg_alert()) == (
+        "libc-bin 2.39-0ubuntu8.9",
+        "installed",
+    )
+
+
+def test_dpkg_event_accepts_status_without_prefix() -> None:
+    """dpkg_event also handles a bare status with no 'status ' prefix."""
+    assert dpkg_event(_dpkg_alert(status="installed")) == (
+        "libc-bin 2.39-0ubuntu8.9",
+        "installed",
+    )
+
+
+def test_dpkg_event_none_when_status_missing() -> None:
+    """dpkg_event returns None when dpkg_status is absent."""
+    assert dpkg_event(_dpkg_alert(status=None)) is None
+
+
+def test_dpkg_event_none_when_package_missing() -> None:
+    """dpkg_event returns None when package is absent."""
+    assert dpkg_event(_dpkg_alert(package=None)) is None
+
+
+def test_dpkg_event_none_when_version_missing() -> None:
+    """dpkg_event returns None when version is absent."""
+    assert dpkg_event(_dpkg_alert(version=None)) is None
 
 
 # --- netstat ---
@@ -373,6 +445,8 @@ def test_firewall_multiple_fixture_evidence() -> None:
                 "2001:db8:201::84",
             ],
             "dstports": ["443"],
+            "src_scopes": ["internal"],
+            "dst_scopes": ["external"],
             "sources_total": 3,
         }
     }
@@ -389,7 +463,8 @@ def test_firewall_multiple_fixture_rendering() -> None:
     """Multiple-block firewall fixture renders as the documented example line."""
     cluster = _only_cluster([_fixture("firewall-multiple-87702.json")])
     assert render_evidence(cluster["evidence"]) == (
-        "action block; dir in; iface vtnet1; ipv6; proto tcp; "
+        "action block; dir in; iface vtnet1; scope internal → external; "
+        "ipv6; proto tcp; "
         "src fd00:0:0:1::a, fd00:0:0:1::b, fd00:0:0:1::c (3 distinct); "
         "dst 2001:db8:100::2, 2001:db8:101::2, 2001:db8:200::5f, "
         "2001:db8:201::84; dport 443"
@@ -409,12 +484,15 @@ def test_firewall_drop_fixture_evidence() -> None:
             "sources": ["fd00:0:0:1::c"],
             "destinations": ["2001:db8:202::5e"],
             "dstports": ["80"],
+            "src_scopes": ["internal"],
+            "dst_scopes": ["external"],
             "sources_total": 1,
         }
     }
     rendered = render_evidence(cluster["evidence"])
     assert rendered == (
-        "action block; dir in; iface vtnet1; ipv6; proto tcp; "
+        "action block; dir in; iface vtnet1; scope internal → external; "
+        "ipv6; proto tcp; "
         "src fd00:0:0:1::c; dst 2001:db8:202::5e; dport 80"
     )
     assert "(1 distinct)" not in rendered
@@ -440,6 +518,8 @@ def test_firewall_synthetic_ipv4() -> None:
     assert fw["dstports"] == ["22"]
     assert fw["ipversions"] == ["ipv4"]
     assert fw["protocols"] == ["tcp"]
+    assert fw["src_scopes"] == ["external"]
+    assert fw["dst_scopes"] == ["external"]
 
 
 def test_firewall_synthetic_icmp_no_dport() -> None:
@@ -498,6 +578,30 @@ def test_firewall_sources_capped_but_count_kept() -> None:
     assert fw["sources_total"] == 6
     rendered = render_evidence(cluster["evidence"])
     assert "(6 distinct)" in rendered
+
+
+def test_firewall_scope_survives_400_char_truncation() -> None:
+    """The scope segment stays in the prompt line even when the rendered
+    evidence exceeds MAX_EVIDENCE_LINE_CHARS and is truncated."""
+    lines = "\n".join(
+        (
+            "Sep 30 10:00:00 fw.example.net filterlog[1]: "
+            f"1,,,abc,em0,match,block,in,4,0x0,,64,12345,0,none,6,tcp,"
+            f"60,192.0.2.{i},198.51.100.{i},1234,{i}{'9' * 89},0"
+        )
+        for i in range(1, 6)
+    )
+    cluster = _only_cluster(
+        [_alert(predecoder={"program_name": "filterlog"}, full_log=lines)]
+    )
+    rendered = render_evidence(cluster["evidence"])
+    assert len(rendered) > MAX_EVIDENCE_LINE_CHARS
+    prompt = _build_prompt([], {}, clusters=[cluster])
+    cluster_line = next(
+        line for line in prompt.splitlines() if line.startswith("[C1]")
+    )
+    assert "scope external → external" in cluster_line
+    assert cluster_line.endswith("…")
 
 
 # --- generic ---

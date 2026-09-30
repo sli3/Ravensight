@@ -61,6 +61,9 @@ def _format_finding(finding: str | dict) -> list[str]:
     if evidence_text:
         lines.append(f"  - Evidence: {evidence_text}")
 
+    for note in finding.get("notes", []):
+        lines.append(f"  - Note: {note}")
+
     if finding.get("type") == "vulnerability":
         cves = finding.get("cves", [])
         if cves:

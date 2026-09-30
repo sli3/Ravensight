@@ -59,3 +59,8 @@ overrides_path = "data/e8_keyword_overrides.json"
 # Path to platform false positive hint table
 # Edit this file directly to add new hints — no code change required
 hints_path = "data/platform_hints.json"
+# Optional map from Wazuh agent name to {platform, vendor}. Lets reports name
+# the right product even when the rule description says something different.
+# File is git-ignored and never seeded — copy data/defaults/platform_agents.example.json
+# to data/platform_agents.json to start.
+agents_path = "data/platform_agents.json"

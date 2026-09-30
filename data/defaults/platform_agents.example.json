@@ -1,0 +1,6 @@
+{
+  "YOUR_FIREWALL_AGENT_NAME": {
+    "platform": "freebsd",
+    "vendor": "OPNsense"
+  }
+}

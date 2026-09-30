@@ -255,6 +255,28 @@ def test_finding_without_evidence_byte_identical(tmp_path: Path) -> None:
     assert reporter._format_finding(_cluster()) == expected
 
 
+def test_finding_with_notes_renders_note_lines() -> None:
+    """Notes render as Note sub-bullets after the Evidence line, in order."""
+    finding = _cluster(
+        notes=["alpha", "beta"],
+        evidence={"generic": {"srcips": ["192.0.2.1"]}},
+    )
+    lines = reporter._format_finding(finding)
+    assert "  - Note: alpha" in lines
+    assert "  - Note: beta" in lines
+    assert lines.index("  - Note: alpha") < lines.index("  - Note: beta")
+    evidence_idx = next(
+        i for i, line in enumerate(lines) if line.strip().startswith("- Evidence:")
+    )
+    assert lines.index("  - Note: alpha") > evidence_idx
+
+
+def test_finding_without_notes_no_note_lines() -> None:
+    """Findings without notes render no Note sub-bullets."""
+    lines = reporter._format_finding(_cluster())
+    assert all("  - Note:" not in line for line in lines)
+
+
 def test_blank_line_before_mitre_tags_without_similar_incidents(
     tmp_path: Path,
 ) -> None:

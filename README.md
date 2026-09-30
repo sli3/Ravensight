@@ -174,6 +174,7 @@ cp config.example.toml config.toml
 | `llm.api_key` | Any string — llama.cpp does not validate |
 | `reports.output_dir` | Where to write markdown reports |
 | `baseline.path` | Path to the baseline JSON file |
+| `platform.agents_path` | Optional map from Wazuh agent name to vendor/platform so reports name the right product. Default: `data/platform_agents.json` |
 
 #### Embedding Model Configuration
 
@@ -276,6 +277,12 @@ A default `e8_keyword_overrides.json` and `platform_hints.json` are seeded into
 the mounted `data/` volume on first start if you haven't provided your own —
 edit them directly in your mounted `data/` folder afterwards; the container
 never overwrites an existing file there.
+
+To map Wazuh agent names to their actual vendor and platform (so reports name
+the right product even when a rule description says something different), create
+`data/platform_agents.json` in your mounted data folder by copying
+`data/defaults/platform_agents.example.json`. This file is optional, never
+seeded by the container, and not required for Ravensight to run.
 
 ### Forcing a re-sync
 
@@ -438,6 +445,7 @@ Findings are tagged against the **MITRE ATT&CK** framework and Australia's
 - `data/e8_keyword_overrides.json` reduces Essential Eight scoring false
   positives via a keyword blocklist
 - `data/platform_hints.json` is a hand-edited false-positive hint table
+- `data/platform_agents.json` is a hand-edited, git-ignored, optional map of Wazuh agent name → vendor/platform
 
 ---
 

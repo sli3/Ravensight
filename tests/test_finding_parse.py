@@ -138,6 +138,24 @@ def test_prompt_template_has_no_finding_one() -> None:
     assert "Finding 1" not in prompt
 
 
+def test_parse_analysis_ignores_stray_mitre_tags_block() -> None:
+    """A stray <mitre_tags> block is silently ignored — no tags, no findings."""
+    clusters = _two_clusters()
+    text = (
+        "<findings>\n"
+        "- [C1] Brute force from external hosts\n"
+        "</findings>\n"
+        "<mitre_tags>\n"
+        "- Defense Evasion: foo\n"
+        "</mitre_tags>"
+    )
+    result = _parse_analysis(text, clusters=clusters)
+    assert result["mitre_tags"] == []
+    assert len(result["findings"]) == 2
+    assert all(f["type"] != "unattached" for f in result["findings"])
+    assert result["findings"][0]["narrative"] == "Brute force from external hosts"
+
+
 LLM_KNOWN_STRING = "LLM SUPPLIED NARRATIVE TEXT MUST NOT LEAK INTO SUMMARY"
 LLM_CONFIG = {
     "base_url": "http://llm.invalid/v1",

@@ -158,10 +158,21 @@ def test_similar_incident_header_in_prompt_not_in_result(
     assert "Similar past incidents" not in result["similar_incidents"]
 
 
-EVIDENCE_INSTRUCTION = (
-    "evidence values are extracted mechanically from the raw alerts; "
-    "treat them as fact, base each narrative on them rather than guessing, "
-    "never contradict or invent evidence, and do not copy them out verbatim."
+PROMPT_RULES_BLOCK = (
+    "Rules:\n"
+    "1. Evidence values and notes are facts taken from the raw alerts. "
+    "Prefer the benign explanation that fits them.\n"
+    "2. Never contradict the evidence. If unsure, say less.\n"
+    "3. Copy ports, paths, counts, package names and versions exactly as "
+    "written in the evidence, or leave them out.\n"
+    "4. 'content unchanged' means only metadata (such as inode or mtime) "
+    "changed: treat it as low concern. 'scope internal → external' means "
+    "hosts on this network were blocked going out, not an outside scan.\n"
+    "5. Name products and vendors as given in Host facts, not as the rule "
+    "description says.\n"
+    "6. Recommend only what the evidence justifies. Do not suggest restoring "
+    "files, forensics or isolating hosts unless the evidence shows a content "
+    "change or an external source."
 )
 
 
@@ -188,7 +199,7 @@ def _syscheck_alert() -> dict[str, Any]:
 def test_evidence_instruction_sentence_in_prompt(
     captured_prompt: dict[str, Any],
 ) -> None:
-    """The evidence instruction sentence appears verbatim in the prompt header."""
+    """The Rules block appears verbatim in the prompt header."""
     analyse(
         alerts=[_syscheck_alert()],
         baseline={},
@@ -201,7 +212,128 @@ def test_evidence_instruction_sentence_in_prompt(
         lookback_hours=24,
     )
     prompt_text = captured_prompt["messages"][0]["content"]
-    assert EVIDENCE_INSTRUCTION in prompt_text
+    assert PROMPT_RULES_BLOCK in prompt_text
+
+
+def test_prompt_does_not_contain_old_instruction_line(
+    captured_prompt: dict[str, Any],
+) -> None:
+    """The retired 'do not copy them out verbatim' instruction line is gone."""
+    analyse(
+        alerts=[_syscheck_alert()],
+        baseline={},
+        llm_config=LLM_CONFIG,
+        embedder=None,
+        mitre_path=None,
+        platform_hints_path=None,
+        asd_path=None,
+        show_progress=False,
+        lookback_hours=24,
+    )
+    prompt_text = captured_prompt["messages"][0]["content"]
+    assert "do not copy them out verbatim" not in prompt_text
+
+
+def test_prompt_does_not_contain_mitre_tags_section(
+    captured_prompt: dict[str, Any],
+) -> None:
+    """The <mitre_tags> request and example block no longer appear."""
+    analyse(
+        alerts=[_syscheck_alert()],
+        baseline={},
+        llm_config=LLM_CONFIG,
+        embedder=None,
+        mitre_path=None,
+        platform_hints_path=None,
+        asd_path=None,
+        show_progress=False,
+        lookback_hours=24,
+    )
+    prompt_text = captured_prompt["messages"][0]["content"]
+    assert "<mitre_tags>" not in prompt_text
+    assert "Tag each finding" not in prompt_text
+
+
+def test_prompt_cluster_line_includes_notes_segment() -> None:
+    """A cluster with notes appends ' — notes: ...' to its prompt line."""
+    cluster = {
+        "id": "C1",
+        "type": "rule",
+        "description": "SSHD brute force",
+        "rule_ids": ["5710"],
+        "hosts": ["host-1"],
+        "count": 3,
+        "max_level": 10,
+        "severity": "Medium",
+        "first_seen": "2026-09-24T08:15:00.000Z",
+        "last_seen": "2026-09-24T10:30:00.000Z",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+        "notes": ["foo bar"],
+    }
+    prompt_text = _build_prompt([], {}, clusters=[cluster])
+    cluster_line = next(
+        line for line in prompt_text.splitlines() if line.startswith("[C1]")
+    )
+    assert " — notes: foo bar" in cluster_line
+
+
+def test_prompt_host_facts_block_present() -> None:
+    """Matched hosts render a Host facts block ahead of the cluster lines."""
+    cluster = {
+        "id": "C1",
+        "type": "rule",
+        "description": "OPNsense firewall drop event.",
+        "rule_ids": ["87701"],
+        "hosts": ["fw-a"],
+        "count": 1,
+        "max_level": 5,
+        "severity": "Low",
+        "first_seen": "2026-09-30T00:35:00.000+0000",
+        "last_seen": "2026-09-30T00:35:00.000+0000",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+        "notes": [],
+    }
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    prompt_text = _build_prompt(
+        [], {}, clusters=[cluster], platform_agents=platform_agents
+    )
+    assert "Host facts:" in prompt_text
+    assert (
+        "- fw-a: OPNsense (freebsd). Rule descriptions may name a different "
+        "product; use this vendor name." in prompt_text
+    )
+
+
+def test_prompt_host_facts_absent_when_no_match() -> None:
+    """No Host facts block appears when no cluster host matches the map."""
+    cluster = {
+        "id": "C1",
+        "type": "rule",
+        "description": "SSHD brute force",
+        "rule_ids": ["5710"],
+        "hosts": ["host-1"],
+        "count": 3,
+        "max_level": 10,
+        "severity": "Medium",
+        "first_seen": "2026-09-24T08:15:00.000Z",
+        "last_seen": "2026-09-24T10:30:00.000Z",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+        "notes": [],
+    }
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    prompt_text = _build_prompt(
+        [], {}, clusters=[cluster], platform_agents=platform_agents
+    )
+    assert "Host facts:" not in prompt_text
 
 
 def test_cluster_line_carries_evidence_segment(
