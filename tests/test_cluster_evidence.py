@@ -15,6 +15,7 @@ from ravensight.baseline import Manager
 from ravensight.evidence import (
     MAX_EVIDENCE_VALUE_CHARS,
     MAX_EVIDENCE_VALUES,
+    accumulate,
     render_evidence,
 )
 
@@ -35,6 +36,8 @@ def _alert(
     syscheck: Any = None,
     full_log: Any = None,
     previous_log: Any = None,
+    previous_output: Any = None,
+    predecoder: Any = None,
 ) -> dict[str, Any]:
     """Build one synthetic alert dict in the documented Wazuh shape."""
     source: dict[str, Any] = {
@@ -52,6 +55,10 @@ def _alert(
         source["full_log"] = full_log
     if previous_log is not None:
         source["previous_log"] = previous_log
+    if previous_output is not None:
+        source["previous_output"] = previous_output
+    if predecoder is not None:
+        source["predecoder"] = predecoder
     return {"_source": source}
 
 
@@ -341,6 +348,158 @@ def test_vulnerability_fixture_rendering() -> None:
     )
 
 
+# --- firewall ---
+
+
+def test_firewall_multiple_fixture_evidence() -> None:
+    """Multiple-block firewall fixture yields capped sources and total count."""
+    cluster = _only_cluster([_fixture("firewall-multiple-87702.json")])
+    assert cluster["evidence"] == {
+        "firewall": {
+            "actions": ["block"],
+            "directions": ["in"],
+            "interfaces": ["vtnet1"],
+            "ipversions": ["ipv6"],
+            "protocols": ["tcp"],
+            "sources": [
+                "fd00:0:0:1::a",
+                "fd00:0:0:1::b",
+                "fd00:0:0:1::c",
+            ],
+            "destinations": [
+                "2001:db8:100::2",
+                "2001:db8:101::2",
+                "2001:db8:200::5f",
+                "2001:db8:201::84",
+            ],
+            "dstports": ["443"],
+            "sources_total": 3,
+        }
+    }
+    rendered = render_evidence(cluster["evidence"])
+    src_part = next(p for p in rendered.split("; ") if p.startswith("src "))
+    assert (
+        "fd00:0:0:1::a, fd00:0:0:1::b, fd00:0:0:1::c (3 distinct)"
+        in src_part
+    )
+    assert "443" not in src_part
+
+
+def test_firewall_multiple_fixture_rendering() -> None:
+    """Multiple-block firewall fixture renders as the documented example line."""
+    cluster = _only_cluster([_fixture("firewall-multiple-87702.json")])
+    assert render_evidence(cluster["evidence"]) == (
+        "action block; dir in; iface vtnet1; ipv6; proto tcp; "
+        "src fd00:0:0:1::a, fd00:0:0:1::b, fd00:0:0:1::c (3 distinct); "
+        "dst 2001:db8:100::2, 2001:db8:101::2, 2001:db8:200::5f, "
+        "2001:db8:201::84; dport 443"
+    )
+
+
+def test_firewall_drop_fixture_evidence() -> None:
+    """Single-drop firewall fixture yields one source and no distinct suffix."""
+    cluster = _only_cluster([_fixture("firewall-drop-87701.json")])
+    assert cluster["evidence"] == {
+        "firewall": {
+            "actions": ["block"],
+            "directions": ["in"],
+            "interfaces": ["vtnet1"],
+            "ipversions": ["ipv6"],
+            "protocols": ["tcp"],
+            "sources": ["fd00:0:0:1::c"],
+            "destinations": ["2001:db8:202::5e"],
+            "dstports": ["80"],
+            "sources_total": 1,
+        }
+    }
+    rendered = render_evidence(cluster["evidence"])
+    assert rendered == (
+        "action block; dir in; iface vtnet1; ipv6; proto tcp; "
+        "src fd00:0:0:1::c; dst 2001:db8:202::5e; dport 80"
+    )
+    assert "(1 distinct)" not in rendered
+
+
+def test_firewall_synthetic_ipv4() -> None:
+    """A synthetic IPv4 filterlog line parses src, dst, dport and ipversion."""
+    cluster = _only_cluster(
+        [
+            _alert(
+                predecoder={"program_name": "filterlog"},
+                full_log=(
+                    "Sep 30 10:00:00 fw.example.net filterlog[1]: "
+                    "5,,,abc,vtnet0,match,block,in,4,0x0,,64,12345,0,DF,6,tcp,"
+                    "60,192.0.2.50,198.51.100.7,51515,22,0,S,1,,64240,,mss"
+                ),
+            )
+        ]
+    )
+    fw = cluster["evidence"]["firewall"]
+    assert fw["sources"] == ["192.0.2.50"]
+    assert fw["destinations"] == ["198.51.100.7"]
+    assert fw["dstports"] == ["22"]
+    assert fw["ipversions"] == ["ipv4"]
+    assert fw["protocols"] == ["tcp"]
+
+
+def test_firewall_synthetic_icmp_no_dport() -> None:
+    """A non-TCP/UDP filterlog line parses cleanly with no dstport."""
+    cluster = _only_cluster(
+        [
+            _alert(
+                predecoder={"program_name": "filterlog"},
+                full_log=(
+                    "Sep 30 10:00:00 fw.example.net filterlog[1]: "
+                    "1,,,abc,em0,match,block,in,4,0x0,,64,12345,0,none,1,icmp,"
+                    "84,192.0.2.10,198.51.100.9"
+                ),
+            )
+        ]
+    )
+    fw = cluster["evidence"]["firewall"]
+    assert fw["protocols"] == ["icmp"]
+    assert "dstports" not in fw or fw["dstports"] == []
+
+
+def test_firewall_malformed_lines_skipped() -> None:
+    """Malformed filterlog lines are skipped without producing firewall evidence."""
+    cluster = _only_cluster(
+        [
+            _alert(
+                predecoder={"program_name": "filterlog"},
+                full_log=(
+                    "Sep 30 10:00:00 fw.example.net sshd[1]: no filterlog here\n"
+                    "Sep 30 10:00:01 fw.example.net filterlog[1]: 1,2,3\n"
+                    "Sep 30 10:00:02 fw.example.net filterlog[1]: "
+                    "1,,,abc,em0,match,block,in,99,0x0,,64,12345,0,none,6,tcp,"
+                    "60,192.0.2.1,198.51.100.1,1234,80,0"
+                ),
+            )
+        ]
+    )
+    assert "evidence" not in cluster
+
+
+def test_firewall_sources_capped_but_count_kept() -> None:
+    """Distinct firewall sources are capped while the true count is preserved."""
+    lines = "\n".join(
+        (
+            "Sep 30 10:00:00 fw.example.net filterlog[1]: "
+            f"1,,,abc,em0,match,block,in,4,0x0,,64,12345,0,none,6,tcp,"
+            f"60,192.0.2.{i},198.51.100.1,1234,80,0"
+        )
+        for i in range(1, 7)
+    )
+    cluster = _only_cluster(
+        [_alert(predecoder={"program_name": "filterlog"}, full_log=lines)]
+    )
+    fw = cluster["evidence"]["firewall"]
+    assert len(fw["sources"]) == MAX_EVIDENCE_VALUES == 5
+    assert fw["sources_total"] == 6
+    rendered = render_evidence(cluster["evidence"])
+    assert "(6 distinct)" in rendered
+
+
 # --- generic ---
 
 
@@ -361,6 +520,18 @@ def test_generic_nothing_present_yields_no_evidence_key() -> None:
     """A generic alert with no data fields carries no evidence key."""
     cluster = _only_cluster([_alert()])
     assert "evidence" not in cluster
+
+
+def test_generic_drops_non_ip_srcip() -> None:
+    """Generic accumulator rejects srcip values that are not valid IP addresses."""
+    acc: dict[str, Any] = {}
+    accumulate(acc, _alert(data={"srcip": "443", "dstuser": "alice"}))
+    accumulate(acc, _alert(data={"srcip": "192.0.2.9"}))
+    accumulate(acc, _alert(data={"srcip": "2001:db8::1"}))
+    generic = acc["generic"]
+    assert generic["srcips"] == ["192.0.2.9", "2001:db8::1"]
+    assert "443" not in generic["srcips"]
+    assert generic["dstusers"] == ["alice"]
 
 
 # --- caps and truncation ---
@@ -394,8 +565,8 @@ def test_render_evidence_empty_inputs() -> None:
 # --- all fixtures together ---
 
 
-def test_all_seven_fixtures_produce_seven_clusters() -> None:
-    """All seven fixtures together extract seven clusters without exceptions."""
+def test_all_fixtures_produce_nine_clusters() -> None:
+    """All nine fixtures together extract nine clusters without exceptions."""
     alerts = [
         _fixture("syscheck-550.json"),
         _fixture("dpkg-installed-2902.json"),
@@ -404,9 +575,11 @@ def test_all_seven_fixtures_produce_seven_clusters() -> None:
         _fixture("docker-kill-87924.json"),
         _fixture("docker-start-87903.json"),
         _fixture("vuln-solved-23502.json"),
+        _fixture("firewall-multiple-87702.json"),
+        _fixture("firewall-drop-87701.json"),
     ]
     clusters = extract_alert_clusters(alerts)
-    assert len(clusters) == 7
+    assert len(clusters) == 9
     assert all("evidence" in c for c in clusters)
 
 

@@ -8,6 +8,8 @@ LLM-written, and bounded in size; it is shown to the LLM in the prompt cluster
 lines and to the reader in the report. Pure standard-library module.
 """
 
+import ipaddress
+import re
 from typing import Any
 
 MAX_EVIDENCE_VALUES = 5
@@ -19,6 +21,7 @@ _ELLIPSIS = "…"
 _CONTENT_ATTRIBUTES = frozenset({"md5", "sha1", "sha256", "size"})
 _EXCLUDED_SEVERITIES = frozenset({"", "-"})
 _EXCLUDED_SCORE_BASES = frozenset({"", "-", "-1"})
+_FILTERLOG_RE = re.compile(r"filterlog(?:\[\d+\])?:\s*(.*)$")
 
 
 def _clean(value: Any) -> str:
@@ -49,10 +52,11 @@ def _add_unique(
 
 
 def detect_shape(alert: dict[str, Any]) -> str:
-    """Classify one alert into exactly one of the six evidence shapes.
+    """Classify one alert into exactly one of the seven evidence shapes.
 
-    First match wins: vulnerability, syscheck, dpkg, netstat, docker, then
-    'generic' as the catch-all — a shape string is always returned.
+    First match wins: vulnerability, syscheck, dpkg, netstat, docker,
+    firewall, then 'generic' as the catch-all — a shape string is always
+    returned.
     """
     source = alert.get("_source") or {}
     rule = source.get("rule") or {}
@@ -73,6 +77,18 @@ def detect_shape(alert: dict[str, Any]) -> str:
         return "netstat"
     if "docker" in groups:
         return "docker"
+    predecoder = source.get("predecoder")
+    if not isinstance(predecoder, dict):
+        predecoder = {}
+    full_log = source.get("full_log")
+    if not isinstance(full_log, str):
+        full_log = ""
+    if (
+        predecoder.get("program_name") == "filterlog"
+        or "filterlog[" in full_log
+        or "filterlog:" in full_log
+    ):
+        return "firewall"
     return "generic"
 
 
@@ -94,6 +110,19 @@ def _empty_shape_acc(shape: str) -> dict[str, Any]:
         }
     if shape == "vulnerability":
         return {"statuses": {}, "versions": [], "severities": [], "score_bases": []}
+    if shape == "firewall":
+        return {
+            "actions": [],
+            "directions": [],
+            "interfaces": [],
+            "ipversions": [],
+            "protocols": [],
+            "sources": [],
+            "destinations": [],
+            "dstports": [],
+            "sources_total": 0,
+            "sources_distinct": set(),
+        }
     return {"srcips": [], "dstusers": []}
 
 
@@ -256,13 +285,85 @@ def _accumulate_vulnerability(acc: dict[str, Any], alert: dict[str, Any]) -> Non
             _add_unique(acc["score_bases"], base)
 
 
+def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
+    """Merge one alert's OPNsense filterlog lines into the firewall accumulator."""
+    source = alert.get("_source") or {}
+    full_log = source.get("full_log")
+    previous_output = source.get("previous_output")
+
+    lines: list[str] = []
+    if isinstance(full_log, str):
+        lines.extend(full_log.splitlines())
+    if isinstance(previous_output, str):
+        lines.extend(previous_output.splitlines())
+
+    for line in lines:
+        match = _FILTERLOG_RE.search(line)
+        if not match:
+            continue
+        fields = match.group(1).split(",")
+        if len(fields) < 9:
+            continue
+
+        interface = _clean(fields[4])
+        action = _clean(fields[6])
+        direction = _clean(fields[7])
+        ipversion_raw = _clean(fields[8])
+        if ipversion_raw == "4":
+            ipversion = "ipv4"
+            version_slice_len = 11
+        elif ipversion_raw == "6":
+            ipversion = "ipv6"
+            version_slice_len = 8
+        else:
+            continue
+
+        if len(fields) < 9 + version_slice_len:
+            continue
+
+        version_fields = fields[9 : 9 + version_slice_len]
+        if ipversion == "ipv4":
+            protoname = _clean(version_fields[7])
+            src = _clean(version_fields[9])
+            dst = _clean(version_fields[10])
+        else:
+            protoname = _clean(version_fields[3])
+            src = _clean(version_fields[6])
+            dst = _clean(version_fields[7])
+
+        _add_unique(acc["actions"], action)
+        _add_unique(acc["directions"], direction)
+        _add_unique(acc["interfaces"], interface)
+        _add_unique(acc["ipversions"], ipversion)
+        _add_unique(acc["protocols"], protoname)
+        _add_unique(acc["destinations"], dst)
+
+        if src:
+            _add_unique(acc["sources"], src)
+            acc["sources_distinct"].add(src)
+            acc["sources_total"] = len(acc["sources_distinct"])
+
+        if protoname in ("tcp", "udp"):
+            port_start = 9 + version_slice_len
+            if len(fields) >= port_start + 3:
+                dstport = _clean(fields[port_start + 1])
+                _add_unique(acc["dstports"], dstport)
+
+
 def _accumulate_generic(acc: dict[str, Any], alert: dict[str, Any]) -> None:
     """Merge one alert's generic srcip/dstuser values into acc."""
     source = alert.get("_source") or {}
     data = source.get("data")
     if not isinstance(data, dict):
         return
-    _add_unique(acc["srcips"], data.get("srcip"))
+    srcip = data.get("srcip")
+    if srcip is not None:
+        try:
+            ipaddress.ip_address(str(srcip))
+        except ValueError:
+            pass
+        else:
+            _add_unique(acc["srcips"], srcip)
     _add_unique(acc["dstusers"], data.get("dstuser"))
 
 
@@ -272,6 +373,7 @@ _SHAPE_ACCUMULATORS = {
     "netstat": _accumulate_netstat,
     "docker": _accumulate_docker,
     "vulnerability": _accumulate_vulnerability,
+    "firewall": _accumulate_firewall,
     "generic": _accumulate_generic,
 }
 
@@ -357,6 +459,27 @@ def _project_vulnerability(acc: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _project_firewall(acc: dict[str, Any]) -> dict[str, Any]:
+    """Project the firewall accumulator, omitting empty fields."""
+    out: dict[str, Any] = {}
+    for field in (
+        "actions",
+        "directions",
+        "interfaces",
+        "ipversions",
+        "protocols",
+        "destinations",
+        "dstports",
+    ):
+        if acc[field]:
+            out[field] = sorted(acc[field])
+    if acc["sources"]:
+        out["sources"] = sorted(acc["sources"])
+    if acc["sources_total"]:
+        out["sources_total"] = acc["sources_total"]
+    return out
+
+
 def _project_generic(acc: dict[str, Any]) -> dict[str, Any]:
     """Project the generic accumulator, omitting empty lists."""
     out: dict[str, Any] = {}
@@ -373,6 +496,7 @@ _SHAPE_PROJECTORS = {
     "netstat": _project_netstat,
     "docker": _project_docker,
     "vulnerability": _project_vulnerability,
+    "firewall": _project_firewall,
     "generic": _project_generic,
 }
 
@@ -471,6 +595,39 @@ def _render_vulnerability(data: dict[str, Any]) -> list[str]:
     return parts
 
 
+def _render_firewall(data: dict[str, Any]) -> list[str]:
+    """Render firewall evidence fields in documented order."""
+    parts = []
+    if data.get("actions"):
+        parts.append(
+            "action " + ", ".join(_sanitise(v) for v in data["actions"])
+        )
+    if data.get("directions"):
+        parts.append("dir " + ", ".join(_sanitise(v) for v in data["directions"]))
+    if data.get("interfaces"):
+        parts.append(
+            "iface " + ", ".join(_sanitise(v) for v in data["interfaces"])
+        )
+    if data.get("ipversions"):
+        parts.append(", ".join(sorted(data["ipversions"])))
+    if data.get("protocols"):
+        parts.append("proto " + ", ".join(_sanitise(v) for v in data["protocols"]))
+    sources = data.get("sources")
+    if sources:
+        src_part = "src " + ", ".join(_sanitise(v) for v in sources)
+        total = data.get("sources_total")
+        if isinstance(total, int) and total > 1:
+            src_part += f" ({total} distinct)"
+        parts.append(src_part)
+    if data.get("destinations"):
+        parts.append("dst " + ", ".join(_sanitise(v) for v in data["destinations"]))
+    if data.get("dstports"):
+        parts.append(
+            "dport " + ", ".join(_sanitise(v) for v in data["dstports"])
+        )
+    return parts
+
+
 def _render_generic(data: dict[str, Any]) -> list[str]:
     """Render generic evidence fields."""
     parts = []
@@ -489,6 +646,7 @@ _SHAPE_RENDERERS = {
     "dpkg": _render_dpkg,
     "netstat": _render_netstat,
     "docker": _render_docker,
+    "firewall": _render_firewall,
     "generic": _render_generic,
 }
 

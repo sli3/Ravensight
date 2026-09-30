@@ -1,0 +1,62 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.30",
+  "_id": "fixture-fw-87702",
+  "_source": {
+    "predecoder": {
+      "hostname": "fw.example.net",
+      "program_name": "filterlog",
+      "timestamp": "Sep 30 10:00:05"
+    },
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.1",
+      "name": "fw-a",
+      "id": "003"
+    },
+    "previous_output": "Sep 30 10:00:05 fw.example.net filterlog[1000]: 14,,,00000000000000000000000000000000,vtnet1,match,block,in,6,0x00,0x00011,64,tcp,6,40,fd00:0:0:1::a,2001:db8:101::2,40001,443,0,S,1000000000,,65535,,mss;sackOK;TS;wscale;eol\nSep 30 10:00:04 fw.example.net filterlog[1000]: 14,,,00000000000000000000000000000000,vtnet1,match,block,in,6,0x00,0x00012,64,tcp,6,40,fd00:0:0:1::a,2001:db8:100::2,40002,443,0,S,1000000000,,65535,,mss;sackOK;TS;wscale;eol\nSep 30 10:00:03 fw.example.net filterlog[1000]: 14,,,00000000000000000000000000000000,vtnet1,match,block,in,6,0x00,0x00000,64,tcp,6,40,fd00:0:0:1::b,2001:db8:200::5f,40003,443,0,S,1000000000,,65535,,mss;sackOK;TS;wscale;eol\nSep 30 10:00:02 fw.example.net filterlog[1000]: 14,,,00000000000000000000000000000000,vtnet1,match,block,in,6,0x00,0x00000,64,tcp,6,40,fd00:0:0:1::c,2001:db8:201::84,40004,443,0,S,1000000000,,65535,,mss;sackOK;TS;wscale;eol",
+    "data": {
+      "protocol": "2001:db8:100::2",
+      "srcip": "443",
+      "dstport": "1000000000",
+      "action": "block",
+      "srcport": "",
+      "dstip": "0",
+      "id": "00000000000000000000000000000000"
+    },
+    "manager": {
+      "name": "Wazuh"
+    },
+    "rule": {
+      "mail": false,
+      "level": 10,
+      "description": "Multiple pfSense firewall blocks events from same source.",
+      "groups": [
+        "pfsense",
+        "multiple_blocks"
+      ],
+      "frequency": 18,
+      "firedtimes": 1,
+      "mitre": {
+        "technique": [
+          "Brute Force"
+        ],
+        "id": [
+          "T1110"
+        ],
+        "tactic": [
+          "Credential Access"
+        ]
+      },
+      "id": "87702"
+    },
+    "location": "/var/ossec/logs/opnsense_syslog.log",
+    "decoder": {
+      "name": "pf"
+    },
+    "id": "1000000001.1",
+    "full_log": "Sep 30 10:00:05 fw.example.net filterlog[1000]: 14,,,00000000000000000000000000000000,vtnet1,match,block,in,6,0x00,0x00013,64,tcp,6,40,fd00:0:0:1::a,2001:db8:100::2,40002,443,0,S,1000000000,,65535,,mss;sackOK;TS;wscale;eol",
+    "timestamp": "2026-09-30T00:30:05.000+0000"
+  }
+}

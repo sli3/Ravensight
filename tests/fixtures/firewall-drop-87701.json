@@ -1,0 +1,50 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.09.30",
+  "_id": "fixture-fw-87701",
+  "_source": {
+    "predecoder": {
+      "hostname": "fw.example.net",
+      "program_name": "filterlog",
+      "timestamp": "Sep 30 10:05:00"
+    },
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.0.2.1",
+      "name": "fw-a",
+      "id": "003"
+    },
+    "data": {
+      "protocol": "2001:db8:202::5e",
+      "srcip": "80",
+      "dstport": "1000000000",
+      "action": "block",
+      "srcport": "",
+      "dstip": "0",
+      "id": "00000000000000000000000000000000"
+    },
+    "manager": {
+      "name": "Wazuh"
+    },
+    "rule": {
+      "firedtimes": 1,
+      "mail": false,
+      "level": 5,
+      "description": "OPNsense firewall drop event.",
+      "groups": [
+        "pfsense",
+        "opnsense",
+        "firewall_block"
+      ],
+      "id": "87701"
+    },
+    "location": "/var/ossec/logs/opnsense_syslog.log",
+    "decoder": {
+      "name": "pf"
+    },
+    "id": "1000000002.1",
+    "full_log": "Sep 30 10:05:00 fw.example.net filterlog[1000]: 14,,,00000000000000000000000000000000,vtnet1,match,block,in,6,0x00,0x00000,64,tcp,6,40,fd00:0:0:1::c,2001:db8:202::5e,40005,80,0,S,1000000000,,65535,,mss;sackOK;TS;wscale;eol",
+    "timestamp": "2026-09-30T00:35:00.000+0000"
+  }
+}
