@@ -80,7 +80,18 @@ Before calling `@plan-reviewer`, establish prior session context:
    exist, there are no memos yet.
 3. Read `AGENTS.md` and the relevant section of `docs/RAVENSIGHT_ROADMAP.md` for
    this task's feature.
-4. Note: last recorded status, any open deferred items, open bugs.
+4. Locate the code this build touches with graft — its MCP tools (`graft_*`)
+   or the `graft` CLI, whichever is available: a map/orientation call once,
+   then ask with this task as the question (with source spans). Open source
+   files only at the file:line spans graft cites; use graft's skeleton view
+   instead of reading whole files, and its callers view for blast radius. If
+   graft is unavailable, fall back to Read/Glob and say so.
+5. Note: last recorded status, any open deferred items, open bugs.
+
+In every delegation to `@plan-reviewer`, `@code-writer` and `@deep-bug-hunter`,
+include this line: "Locate code with graft first (its `graft_*` MCP tools or
+the `graft` CLI: ask with source spans, skeleton, callers); open files only at
+the cited spans."
 
 Carry this "Prior session context" into your delegation to `@plan-reviewer`,
 with any relevant recalled lines under `Recalled context (unverified)`,
