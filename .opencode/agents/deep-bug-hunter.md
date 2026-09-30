@@ -1,7 +1,7 @@
 ---
 description: Merged post-edit review + deep bug investigation. Reviews diffs after code-writer finishes, and performs slow, thorough read-only debugging when invoked for a Debug session or escalated from a /build fix loop. Checks for config pattern consistency (new config keys following existing patterns like mitre_path/asd_path), ChromaDB metadatas= usage, and OPNsense/FreeBSD-specific false-positive handling. Read-only — never modifies files.
 mode: subagent
-model: zai-coding-plan/glm-5.2
+model: zai-coding-plan/glm-5.3
 temperature: 0.1
 permission:
   edit: deny
