@@ -5,7 +5,13 @@ model: zai-coding-plan/glm-4.7
 temperature: 0.2
 permission:
   edit: deny
-  bash: deny
+  bash:
+    "*": deny
+    "graft map*": allow
+    "graft ask *": allow
+    "graft grep *": allow
+    "graft skeleton *": allow
+    "graft callers *": allow
   external_directory: deny
   doom_loop: deny
   read:

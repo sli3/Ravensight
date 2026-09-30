@@ -7,6 +7,11 @@ permission:
   edit: deny
   bash:
     "*": deny
+    "graft map*": allow
+    "graft ask *": allow
+    "graft grep *": allow
+    "graft skeleton *": allow
+    "graft callers *": allow
     "uv run python -m py_compile *": allow
     "uv run ruff check *": allow
     "*config.toml*": deny

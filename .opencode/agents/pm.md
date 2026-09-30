@@ -10,6 +10,11 @@ permission:
     "docs/RAVENSIGHT_ROADMAP.md": allow
   bash:
     "*": deny
+    "graft map*": allow
+    "graft ask *": allow
+    "graft grep *": allow
+    "graft skeleton *": allow
+    "graft callers *": allow
     "uv run pytest*": allow
     "uv run python -m pytest*": allow
     "uv run python -m py_compile *": allow
