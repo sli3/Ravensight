@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from rich import box
 from rich.console import Console, Group
 from rich.live import Live
 from rich.logging import RichHandler
@@ -325,7 +326,7 @@ class RichRunReporter:
         report_path: Path | None,
     ) -> None:
         """Render the cluster table for the finish screen."""
-        table = Table(title="Finish", show_lines=False, header_style="bold")
+        table = Table(box=box.SIMPLE_HEAD, show_lines=False, header_style="bold")
         table.add_column("ID", style="dim")
         table.add_column("Severity")
         table.add_column("Alerts", justify="right")
@@ -344,9 +345,9 @@ class RichRunReporter:
                 str(r["notes"]),
                 str(r["flags"]),
             )
-        self._console.print(table)
-        self._print_summary_line(severity_counts, unattached_count,
-                                 warnings, errors, report_path)
+        summary = self._summary_line(severity_counts, unattached_count,
+                                     warnings, errors, report_path)
+        self._print_finish_panel(Group(table, summary))
 
     def _print_finish_empty(
         self,
@@ -357,19 +358,26 @@ class RichRunReporter:
         report_path: Path | None,
     ) -> None:
         """Render the no-findings finish screen."""
-        self._console.print("[dim]No findings[/dim]")
-        self._print_summary_line(severity_counts, unattached_count,
-                                 warnings, errors, report_path)
+        summary = self._summary_line(severity_counts, unattached_count,
+                                     warnings, errors, report_path)
+        self._print_finish_panel(Group(Text("No findings", style="dim"), Text(""), summary))
 
-    def _print_summary_line(
+    def _print_finish_panel(self, body: Group) -> None:
+        """Print the finish screen as one bordered box, with a gap above it."""
+        self._console.print()
+        self._console.print(
+            Panel(body, title="Finish", border_style="grey50", expand=False)
+        )
+
+    def _summary_line(
         self,
         severity_counts: dict[str, int],
         unattached_count: int,
         warnings: int,
         errors: int,
         report_path: Path | None,
-    ) -> None:
-        """Print the severity counts, warning/error totals and report path."""
+    ) -> Text:
+        """Build the severity counts, warning/error totals, report path and LLM line."""
         h = severity_counts.get("High", 0)
         m = severity_counts.get("Medium", 0)
         l = severity_counts.get("Low", 0)
@@ -394,7 +402,7 @@ class RichRunReporter:
         if self._state.llm_info is not None:
             line.append("  ")
             line.append(f"LLM: {self._state.llm_info}")
-        self._console.print(line)
+        return line
 
 
 class CountingHandler(logging.Handler):
@@ -435,7 +443,13 @@ def create_reporter(no_progress: bool) -> tuple[RunReporter, logging.Handler]:
     interactive = not no_progress and console.is_interactive
     if interactive:
         handler: logging.Handler = RichHandler(
-            console=console, show_path=False, markup=False,
+            console=console,
+            show_path=False,
+            markup=False,
+            # A short time on every line keeps the left column solid instead
+            # of leaving gaps wherever the time repeats.
+            omit_repeated_times=False,
+            log_time_format="%H:%M:%S",
         )
         handler.setFormatter(logging.Formatter("%(message)s"))
         return RichRunReporter(console), handler
