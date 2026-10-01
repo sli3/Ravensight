@@ -107,7 +107,6 @@ def _run_analyse(
         mitre_path=None,
         platform_hints_path=None,
         asd_path=None,
-        show_progress=False,
         lookback_hours=24,
     )
 
@@ -210,7 +209,6 @@ def test_evidence_instruction_sentence_in_prompt(
         mitre_path=None,
         platform_hints_path=None,
         asd_path=None,
-        show_progress=False,
         lookback_hours=24,
     )
     prompt_text = captured_prompt["messages"][0]["content"]
@@ -229,7 +227,6 @@ def test_prompt_does_not_contain_old_instruction_line(
         mitre_path=None,
         platform_hints_path=None,
         asd_path=None,
-        show_progress=False,
         lookback_hours=24,
     )
     prompt_text = captured_prompt["messages"][0]["content"]
@@ -248,7 +245,6 @@ def test_prompt_does_not_contain_mitre_tags_section(
         mitre_path=None,
         platform_hints_path=None,
         asd_path=None,
-        show_progress=False,
         lookback_hours=24,
     )
     prompt_text = captured_prompt["messages"][0]["content"]
@@ -350,7 +346,6 @@ def test_cluster_line_carries_evidence_segment(
         mitre_path=None,
         platform_hints_path=None,
         asd_path=None,
-        show_progress=False,
         lookback_hours=24,
     )
     prompt_text = captured_prompt["messages"][0]["content"]

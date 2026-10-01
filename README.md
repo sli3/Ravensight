@@ -107,7 +107,7 @@ not in the setup steps below.
 
 Installed automatically by `uv pip install -r requirements.txt` (or
 `pip install -r requirements.txt`): `requests`, `openai`,
-`chromadb==1.5.9`, `tqdm`, `httpx`. See `requirements.txt` for exact pins.
+`chromadb==1.5.9`, `rich`, `httpx`. See `requirements.txt` for exact pins.
 
 ---
 
@@ -378,8 +378,12 @@ options:
   --level LEVEL    Minimum alert level to include (default: 7)
   --log-level      Logging verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)
   --report-only    Generate report from last baseline without re-querying Wazuh
-  --no-progress    Disable tqdm progress bars (e.g. for cron or log redirection)
+  --no-progress    Plain output: no live panel or colours (e.g. for cron or log redirection)
 ```
+
+In a terminal, Ravensight shows a live status panel and a finish summary on
+stderr; with `--no-progress`, in pipes, under cron or in docker logs, you get
+plain log lines instead.
 
 ### Example output
 

@@ -206,7 +206,7 @@ def test_summary_is_data_built(monkeypatch: pytest.MonkeyPatch) -> None:
         _alert("SSHD brute force", 12, agent="host-2"),
         _alert("Suspicious file", 7),
     ]
-    result = analyser.analyse(alerts, {}, LLM_CONFIG, show_progress=False)
+    result = analyser.analyse(alerts, {}, LLM_CONFIG)
 
     assert result["summary"].startswith("3 alerts in 2 clusters")
     assert "2 hosts" in result["summary"]

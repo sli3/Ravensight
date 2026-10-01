@@ -1,15 +1,18 @@
 """
 wazuh_client.py — Wazuh Indexer and Manager REST API client.
 """
+from __future__ import annotations
 
 import logging
 import urllib3
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
 from requests.auth import HTTPBasicAuth
-from tqdm import tqdm
+
+if TYPE_CHECKING:
+    from ravensight.ui import RunReporter
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +22,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 class Client:
     """Wazuh REST API client for fetching security alerts."""
 
-    def __init__(self, config: dict[str, Any], show_progress: bool = False) -> None:
+    def __init__(self, config: dict[str, Any], progress: RunReporter | None = None) -> None:
         """Initialise with wazuh config section."""
-        self.show_progress = show_progress
+        self._progress = progress
         # Manager API config
         self.host = config["host"]
         self.port = config.get("port", 55000)
@@ -87,30 +90,42 @@ class Client:
 
         auth = HTTPBasicAuth(self.indexer_user, self.indexer_password)
 
+        if self._progress is not None:
+            self._progress.service("wazuh", "active")
+            self._progress.stage("Fetch alerts", "active")
         try:
-            with tqdm(total=None, desc="Fetching alerts", unit="", disable=not self.show_progress) as bar:
-                response = requests.post(
-                    f"{self.indexer_url}/wazuh-alerts-4.x-*/_search",
-                    json=query,
-                    auth=auth,
-                    verify=False,
-                    timeout=30,
-                )
-                response.raise_for_status()
-                bar.update(1)
+            response = requests.post(
+                f"{self.indexer_url}/wazuh-alerts-4.x-*/_search",
+                json=query,
+                auth=auth,
+                verify=False,
+                timeout=30,
+            )
+            response.raise_for_status()
         except requests.exceptions.ConnectionError as e:
+            if self._progress is not None:
+                self._progress.service("wazuh", "fail", detail=str(e))
+                self._progress.stage("Fetch alerts", "fail")
             logger.error(f"Failed to connect to Wazuh Indexer: {e}")
             raise
         except requests.exceptions.Timeout as e:
+            if self._progress is not None:
+                self._progress.service("wazuh", "fail", detail=str(e))
+                self._progress.stage("Fetch alerts", "fail")
             logger.error(f"Timeout connecting to Wazuh Indexer: {e}")
             raise
         except requests.exceptions.HTTPError as e:
+            if self._progress is not None:
+                self._progress.service("wazuh", "fail", detail=str(e))
+                self._progress.stage("Fetch alerts", "fail")
             logger.error(f"HTTP error from Wazuh Indexer: {e}")
             raise
 
         data = response.json()
         alerts = data["hits"]["hits"]
+        if self._progress is not None:
+            self._progress.service("wazuh", "ok")
+            self._progress.stage("Fetch alerts", "done")
         logger.info(f"Fetched {len(alerts)} alerts from Wazuh Indexer")
-        tqdm.write(f"Fetched {len(alerts)} alerts")
 
         return alerts

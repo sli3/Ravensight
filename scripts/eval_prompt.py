@@ -165,7 +165,6 @@ def main() -> None:
                 "mitre_path": config.get("mitre", {}).get("path"),
                 "platform_hints_path": config.get("platform", {}).get("hints_path"),
                 "asd_path": config.get("asd", {}).get("path"),
-                "show_progress": False,
                 "lookback_hours": None,
             }
             if supports:

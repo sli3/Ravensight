@@ -183,7 +183,7 @@ class Reporter:
         asd_data: Optional[dict[str, Any]] = None,
         e8_scores: Optional[dict] = None,
         matched_controls: Optional[list] = None,
-    ) -> None:
+    ) -> Path:
         """
         Generate markdown report from analysis data.
 
@@ -193,6 +193,9 @@ class Reporter:
             asd_data: Optional ASD framework data for Essential Eight and ISM controls.
             e8_scores: Optional E8 scoring results.
             matched_controls: Optional list of matched ISM controls.
+
+        Returns:
+            Path of the written report file.
         """
         report = self._build_report(
             data,
@@ -205,6 +208,7 @@ class Reporter:
         with filename.open("w") as f:
             f.write(report)
         logger.info(f"Report written to {filename}")
+        return filename
 
     def _build_report(
         self,

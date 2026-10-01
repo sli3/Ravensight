@@ -1,23 +1,27 @@
 """
 analyser.py — LLM-based security alert analysis via OpenAI-compatible REST API.
 """
+from __future__ import annotations
 
 import ipaddress
 import json
 import logging
 import math
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from chromadb.errors import ChromaError
 from openai import OpenAI
 from openai import APIConnectionError, APIStatusError, APITimeoutError
-from tqdm import tqdm
 
 from ravensight import evidence
+
+if TYPE_CHECKING:
+    from ravensight.ui import RunReporter
 
 MAX_PROMPT_CLUSTERS = 40
 MAX_PROMPT_CVES = 10
@@ -640,6 +644,21 @@ def _split_cluster_ref(body: str) -> tuple[str | None, str]:
     return cluster_id, body[match.end():]
 
 
+def _extract_timings(chunk: Any) -> tuple[int | None, float | None]:
+    """Extract (predicted_n, predicted_per_second) from an LLM stream chunk.
+
+    llama.cpp reports them under chunk.model_extra["timings"]; returns
+    (None, None) when the chunk carries no timings.
+    """
+    extra = getattr(chunk, "model_extra", None)
+    if not extra:
+        return None, None
+    timings = extra.get("timings")
+    if not isinstance(timings, dict):
+        return None, None
+    return timings.get("predicted_n"), timings.get("predicted_per_second")
+
+
 def analyse(
     alerts: list[dict[str, Any]],
     baseline: dict[str, Any],
@@ -649,7 +668,7 @@ def analyse(
     platform_hints_path: str | None = None,
     platform_agents_path: str | None = None,
     asd_path: str | None = None,
-    show_progress: bool = False,
+    progress: RunReporter | None = None,
     lookback_hours: int | None = None,
 ) -> dict[str, Any]:
     """
@@ -666,6 +685,7 @@ def analyse(
         platform_agents_path: Optional path to agent-name → vendor/platform JSON
             map; defaults to "data/platform_agents.json" if not supplied
         asd_path: Optional path to ASD framework JSON file
+        progress: Optional RunReporter for terminal UI service/stage/LLM hooks
         lookback_hours: Report window in hours — similar incidents within this
             window are dropped from the prompt. None disables filtering.
 
@@ -673,6 +693,10 @@ def analyse(
         Analysis dict with summary, findings, and recommendations.
     """
     if not alerts:
+        if progress is not None:
+            progress.stage("Similar incidents", "done")
+            progress.service("llm", "skipped")
+            progress.stage("LLM analysis", "done")
         logger.info("No alerts to analyse")
         return {"summary": "No alerts", "findings": [], "recommendations": []}
 
@@ -686,6 +710,8 @@ def analyse(
 
     similar_incidents = ""
     formatted: list[str] = []
+    if progress is not None:
+        progress.stage("Similar incidents", "active")
     if embedder is not None and not embedder.degraded:
         query_descriptions = [c["description"] for c in clusters[:MAX_PROMPT_CLUSTERS]]
         query_text = "\n".join(query_descriptions)[:MAX_SIMILARITY_QUERY_CHARS]
@@ -712,6 +738,9 @@ def analyse(
                     "\nSimilar past incidents (from before this report window):\n"
                     + "\n".join(formatted)
                 )
+
+    if progress is not None:
+        progress.stage("Similar incidents", "done")
 
     tactics = []
     if mitre_path and Path(mitre_path).exists():
@@ -744,7 +773,15 @@ def analyse(
     )
 
     try:
+        if progress is not None:
+            progress.stage("LLM analysis", "active")
         full_text = ""
+        content_count = 0
+        llm_started_at: float | None = None
+        first_chunk_seen = False
+        last_tokens: int | None = None
+        last_tok_s: float | None = None
+        last_chunk: Any = None
         stream = client.chat.completions.create(
             model=llm_config["model"],
             messages=[{"role": "user", "content": prompt}],
@@ -754,21 +791,49 @@ def analyse(
             frequency_penalty=0.0,
             stream=True,
         )
-        with tqdm(
-            total=None,
-            desc="Analysing",
-            unit=" tok",
-            disable=not show_progress,
-        ) as bar:
-            for chunk in stream:
-                content = chunk.choices[0].delta.content or ""
-                full_text += content
-                if content:
-                    bar.update(1)
+        for chunk in stream:
+            last_chunk = chunk
+            chunk_tokens, chunk_tok_s = _extract_timings(chunk)
+            if chunk_tokens is not None:
+                last_tokens = chunk_tokens
+                last_tok_s = chunk_tok_s
+            if not first_chunk_seen:
+                first_chunk_seen = True
+                if progress is not None:
+                    progress.service("llm", "ok")
+                    progress.llm_start()
+                    llm_started_at = time.monotonic()
+            if not chunk.choices:
+                continue
+            content = chunk.choices[0].delta.content or ""
+            if not content:
+                continue
+            content_count += 1
+            full_text += content
+            if progress is not None:
+                progress.llm_tick()
+        if progress is not None:
+            tokens: int | None
+            tok_s: float | None
+            if last_chunk is not None:
+                tokens, tok_s = _extract_timings(last_chunk)
+            else:
+                tokens, tok_s = None, None
+            if tokens is None and last_tokens is not None:
+                tokens, tok_s = last_tokens, last_tok_s
+            if tokens is None and llm_started_at is not None:
+                elapsed = time.monotonic() - llm_started_at
+                tok_s = content_count / elapsed if elapsed > 0 else 0.0
+            progress.llm_done(content_count, tokens, tok_s)
+            progress.stage("LLM analysis", "done")
     except APIConnectionError as e:
+        if progress is not None:
+            progress.service("llm", "fail", detail=str(e))
         logger.error(f"Failed to connect to LLM server: {e}")
         raise
     except APIStatusError as e:
+        if progress is not None:
+            progress.service("llm", "fail", detail=str(e))
         logger.error(f"LLM server returned error status: {e}")
         raise
 

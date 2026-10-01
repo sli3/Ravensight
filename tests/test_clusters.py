@@ -244,7 +244,6 @@ def test_prompt_caps_clusters_and_reports_omitted(
         alerts,
         {},
         LLM_CONFIG,
-        show_progress=False,
         lookback_hours=24,
     )
 

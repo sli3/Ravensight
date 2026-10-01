@@ -6,19 +6,21 @@ Provides semantic memory for alert retrieval by:
 - Managing ChromaDB collection with SQLite (embedded) or HTTP (networked) backend
 - Migrating existing baseline_state.json entries on every run
 """
+from __future__ import annotations
 
 import json
 import logging
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
-
-from tqdm import tqdm
+from typing import TYPE_CHECKING, Any
 
 import chromadb
 from chromadb.errors import ChromaError
 import httpx
 from openai import OpenAI, APIConnectionError, APITimeoutError
+
+if TYPE_CHECKING:
+    from ravensight.ui import RunReporter
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ def finding_text(finding: Any) -> str:
 class Embedder:
     """Manages embedding and vector retrieval for semantic memory."""
 
-    def __init__(self, config: dict[str, Any], show_progress: bool = False) -> None:
+    def __init__(self, config: dict[str, Any], progress: RunReporter | None = None) -> None:
         """
         Initialise embedder client.
 
@@ -57,7 +59,7 @@ class Embedder:
             config: Embedding config with endpoint, model, chroma_db_path, top_k keys, plus
                 optional chroma_host and chroma_port for networked (server) mode.
         """
-        self.show_progress = show_progress
+        self._progress = progress
         self._endpoint = config.get("endpoint", "http://localhost:8081/v1/embeddings")
         self._model = config.get("model", "Qwen3-Embedding-0.6B")
         self._chroma_path = Path(config.get("chroma_db_path", "data/chroma/embedded"))
@@ -141,6 +143,8 @@ class Embedder:
             return response.model_dump()["data"][0]["embedding"]
         except (APIConnectionError, APITimeoutError, ValueError) as e:
             self._degraded = True
+            if self._progress is not None:
+                self._progress.service("embeddings", "warn", detail=str(e))
             logger.error(f"Failed to encode text: {e}")
             raise
 
@@ -177,9 +181,13 @@ class Embedder:
                 documents=[text],
                 metadatas=[metadata],
             )
+            if self._progress is not None:
+                self._progress.advance("Baseline update")
         except (ChromaError, httpx.HTTPError, OSError) as e:
             self._degraded = True
             self._chroma_failure = _format_cause(e)
+            if self._progress is not None:
+                self._progress.service("embeddings", "warn", detail=self._chroma_failure or "")
             logger.warning(
                 f"ChromaDB unreachable mid-run ({type(e).__name__}: {e}) — "
                 "vector-store writes skipped for the remainder of this run"
@@ -200,9 +208,7 @@ class Embedder:
         k = top_k if top_k is not None else self._top_k
 
         try:
-            with tqdm(total=None, desc="Retrieving similar", unit="", disable=not self.show_progress) as bar:
-                query_embedding = self.encode(query_text)
-                bar.update(1)
+            query_embedding = self.encode(query_text)
 
             # Convert numpy array to list if needed
             if isinstance(query_embedding, list):
@@ -218,6 +224,8 @@ class Embedder:
             except (ChromaError, httpx.HTTPError, OSError) as e:
                 self._degraded = True
                 self._chroma_failure = _format_cause(e)
+                if self._progress is not None:
+                    self._progress.service("embeddings", "warn", detail=self._chroma_failure or "")
                 raise
 
             # Convert ChromaDB response to list of dicts
@@ -265,12 +273,7 @@ class Embedder:
                 logger.warning(f"Failed to clear baseline findings from vector store: {e}")
 
         # Migrate findings
-        for finding in tqdm(
-            baseline_data.get("findings", []),
-            desc="Embedding migration",
-            unit=" entry",
-            disable=not self.show_progress,
-        ):
+        for finding in baseline_data.get("findings", []):
             text = finding_text(finding)
             severity = finding.get("severity") if isinstance(finding, dict) else None
             if not isinstance(severity, str) or not severity:
