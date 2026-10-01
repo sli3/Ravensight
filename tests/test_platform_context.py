@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ravensight.analyser import (
+    _build_host_facts_block,
     _build_platform_context,
     _load_platform_agents,
     _load_platform_hints,
@@ -382,3 +383,65 @@ def test_load_platform_agents_malformed_entries_skipped(
     assert any(
         "missing platform/vendor" in rec.message for rec in caplog.records
     )
+
+
+def test_load_platform_agents_lowercase_key_resolves_opnsense(
+    tmp_path: Path,
+) -> None:
+    """A JSON key 'OPNsense' resolves an alert agent named 'opnsense'."""
+    agents_file = tmp_path / "agents.json"
+    agents_file.write_text(
+        json.dumps({"OPNsense": {"platform": "freebsd", "vendor": "OPNsense"}}),
+        encoding="utf-8",
+    )
+    result = _load_platform_agents(str(agents_file))
+    assert result == {"opnsense": {"platform": "freebsd", "vendor": "OPNsense"}}
+    alerts = [
+        {
+            "_source": {
+                "agent": {"name": "opnsense"},
+                "rule": {"id": "510", "description": "FIM event"},
+            }
+        }
+    ]
+    context = _build_platform_context(alerts, FREEBSD_HINTS, result)
+    assert "- Agent: opnsense (freebsd" in context
+
+
+def test_load_platform_agents_duplicate_casefold_logs_warning(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """A second key that casefolds to an existing one is dropped with a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    agents_file = tmp_path / "agents.json"
+    agents_file.write_text(
+        json.dumps(
+            {
+                "OPNsense": {"platform": "freebsd", "vendor": "OPNsense"},
+                "OPNSense": {"platform": "linux", "vendor": "Other"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = _load_platform_agents(str(agents_file))
+    assert result == {"opnsense": {"platform": "freebsd", "vendor": "OPNsense"}}
+    assert any(
+        "Duplicate platform agents key after casefolding" in rec.message
+        and "OPNSense" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_build_host_facts_block_preserves_alert_casing() -> None:
+    """Host facts lookup casefolds the key but prints the alert's own casing."""
+    clusters = [
+        {
+            "id": "C1",
+            "type": "rule",
+            "description": "FW event",
+            "hosts": ["OPNsense"],
+        }
+    ]
+    platform_agents = {"opnsense": {"platform": "freebsd", "vendor": "OPNsense"}}
+    block = _build_host_facts_block(clusters, platform_agents)
+    assert "- OPNsense: OPNsense (freebsd)." in block

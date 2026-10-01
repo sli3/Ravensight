@@ -19,6 +19,7 @@ MAX_EVIDENCE_VALUES = 5
 MAX_EVIDENCE_NETSTAT_VALUES = 3
 MAX_EVIDENCE_VALUE_CHARS = 100
 MAX_EVIDENCE_LINE_CHARS = 400
+MAX_EVIDENCE_HOST_CHARS = 120
 
 _ELLIPSIS = "…"
 _CONTENT_ATTRIBUTES = frozenset({"md5", "sha1", "sha256", "size"})
@@ -153,6 +154,7 @@ def _empty_shape_acc(shape: str) -> dict[str, Any]:
             "dst_scopes": set(),
             "sources_total": 0,
             "sources_distinct": set(),
+            "sources_by_version": {"ipv4": set(), "ipv6": set()},
         }
     return {"srcips": [], "dstusers": []}
 
@@ -408,6 +410,7 @@ def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
             _add_unique(acc["sources"], src)
             acc["sources_distinct"].add(src)
             acc["sources_total"] = len(acc["sources_distinct"])
+            acc["sources_by_version"][ipversion].add(src)
 
         if protoname in ("tcp", "udp"):
             port_start = 9 + version_slice_len
@@ -543,6 +546,12 @@ def _project_firewall(acc: dict[str, Any]) -> dict[str, Any]:
         out["sources"] = sorted(acc["sources"])
     if acc["sources_total"]:
         out["sources_total"] = acc["sources_total"]
+        if acc["sources_total"] > 1:
+            out["sources_by_version"] = {
+                version: len(acc["sources_by_version"][version])
+                for version in ("ipv4", "ipv6")
+                if acc["sources_by_version"][version]
+            }
     if acc["src_scopes"]:
         out["src_scopes"] = sorted(acc["src_scopes"])
     if acc["dst_scopes"]:
@@ -685,15 +694,21 @@ def _render_firewall(data: dict[str, Any]) -> list[str]:
         dst_side = ", ".join(dst_scopes)
         parts.append(f"scope {src_side} → {dst_side}")
     if data.get("ipversions"):
-        parts.append(", ".join(sorted(data["ipversions"])))
+        parts.append("ip versions " + ", ".join(sorted(data["ipversions"])))
     if data.get("protocols"):
         parts.append("proto " + ", ".join(_sanitise(v) for v in data["protocols"]))
     sources = data.get("sources")
     if sources:
         src_part = "src " + ", ".join(_sanitise(v) for v in sources)
         total = data.get("sources_total")
+        versions = data.get("sources_by_version") or {}
         if isinstance(total, int) and total > 1:
-            src_part += f" ({total} distinct)"
+            suffix = ", ".join(
+                f"{count} {version}"
+                for version, count in versions.items()
+                if count
+            )
+            src_part += f" ({total} distinct: " + suffix + ")"
         parts.append(src_part)
     if data.get("destinations"):
         parts.append("dst " + ", ".join(_sanitise(v) for v in data["destinations"]))
@@ -716,6 +731,32 @@ def _render_generic(data: dict[str, Any]) -> list[str]:
     return parts
 
 
+def _render_per_host(data: dict[str, Any]) -> list[str]:
+    """Render per-host evidence as one bracketed segment per host.
+
+    Each host's inner text is that host's projected evidence rendered with
+    the shape renderers (per_host excluded), fields joined by '; '. Inner
+    text longer than MAX_EVIDENCE_HOST_CHARS is cut with an ellipsis before
+    the closing bracket.
+    """
+    segments: list[str] = []
+    for host in sorted(data):
+        inner_parts: list[str] = []
+        for shape, renderer in _SHAPE_RENDERERS.items():
+            if shape == "per_host":
+                continue
+            inner = data[host].get(shape)
+            if isinstance(inner, dict) and inner:
+                inner_parts.extend(renderer(inner))
+        inner = "; ".join(inner_parts)
+        if len(inner) > MAX_EVIDENCE_HOST_CHARS:
+            inner = inner[: MAX_EVIDENCE_HOST_CHARS - 1] + _ELLIPSIS
+        segments.append(f"[{_sanitise(host)}: {inner}]")
+    if not segments:
+        return []
+    return ["per host " + " ".join(segments)]
+
+
 _SHAPE_RENDERERS = {
     "vulnerability": _render_vulnerability,
     "syscheck": _render_syscheck,
@@ -724,6 +765,7 @@ _SHAPE_RENDERERS = {
     "docker": _render_docker,
     "firewall": _render_firewall,
     "generic": _render_generic,
+    "per_host": _render_per_host,
 }
 
 

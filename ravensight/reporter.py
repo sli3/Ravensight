@@ -64,6 +64,10 @@ def _format_finding(finding: str | dict) -> list[str]:
     for note in finding.get("notes", []):
         lines.append(f"  - Note: {note}")
 
+    if finding.get("flags"):
+        check_label = "  - Check: not in this cluster's evidence: "
+        lines.append(check_label + ", ".join(finding["flags"]))
+
     if finding.get("type") == "vulnerability":
         cves = finding.get("cves", [])
         if cves:

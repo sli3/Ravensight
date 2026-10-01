@@ -2,18 +2,18 @@
 eval_prompt.py — prompt calibration harness for Build 1d.
 
 Runs the fixture alert set through analyser.analyse() against the live local
-LLM several times and scores each run against seven known failure modes
-(F1–F7): wrong vendor naming, scan misreadings, hallucinated ports/paths,
-over-escalated benign syscheck/dpkg language, stray MITRE output and
-over-reaching recommendations. Importing this module has no side effects;
-everything runs under main().
+LLM several times and scores each run against eight known failure modes
+(F1–F8): wrong vendor naming, scan misreadings, hallucinated ports/paths,
+over-escalated benign syscheck/dpkg language, stray MITRE output,
+over-reaching recommendations and unsupported fidelity claims. Works both as
+`uv run python scripts/eval_prompt.py` and `uv run python -m scripts.eval_prompt`.
+Importing this module has no side effects; everything runs under main().
 """
 
 import argparse
 import inspect
 import json
 import logging
-import os
 import re
 import sys
 import tempfile
@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import Any
 
 import tomllib
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ravensight import (  # noqa: F401  (wazuh_client: future fetch path)
     analyser,
@@ -76,9 +79,9 @@ def _score_clusters(
     rendered_evidence_by_id: dict[str, str],
     mitre_tags: list | None = None,
 ) -> dict[str, Any]:
-    """Score one analysis run against the F1–F7 failure modes."""
+    """Score one analysis run against the F1–F8 failure modes."""
     scores: dict[str, Any] = {
-        "F1": 0, "F2": 0, "F3": 0, "F4": 0, "F5": 0, "F6": 0, "F7": 0,
+        "F1": 0, "F2": 0, "F3": 0, "F4": 0, "F5": 0, "F6": 0, "F7": 0, "F8": 0,
     }
     any_mitre = bool(mitre_tags)
     for cluster in clusters:
@@ -97,6 +100,7 @@ def _score_clusters(
             if port not in ev_lowered:
                 scores["F3"] += 1
         for token in lowered.split():
+            token = token.rstrip(".,;:)]}'\\ ")
             if token.startswith("/") and token not in ev_lowered:
                 scores["F3"] += 1
         if "syscheck" in evidence_dict and any(
@@ -116,6 +120,7 @@ def _score_clusters(
             for w in ("restore", "forensic", "isolat", "reimage", "incident response")
         ):
             scores["F7"] += 1
+        scores["F8"] += len(cluster.get("flags") or [])
     scores["F6"] = 1 if any_mitre else 0
     return scores
 
@@ -180,12 +185,23 @@ def main() -> None:
                 clusters, rendered_by_id, mitre_tags=result.get("mitre_tags")
             )
             row["error"] = None
+            row["clusters"] = [
+                {
+                    "id": finding.get("id", ""),
+                    "hosts": finding.get("hosts", []),
+                    "narrative": finding.get("narrative", ""),
+                    "recommendation": finding.get("recommendation", ""),
+                    "evidence": render_evidence(finding.get("evidence")),
+                    "flags": list(finding.get("flags") or []),
+                }
+                for finding in clusters
+                if str(finding.get("id", "")).startswith("C")
+            ]
             rows.append(row)
     finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        Path(tmp_path).unlink(missing_ok=True)
 
-    print(f"{'run':>4} | F1 | F2 | F3 | F4 | F5 | F6 | F7")
+    print(f"{'run':>4} | F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8")
     print("-" * 44)
     for i, row in enumerate(rows, start=1):
         if row.get("error"):
@@ -193,18 +209,22 @@ def main() -> None:
         else:
             print(
                 f"{i:>4} | {row['F1']} | {row['F2']} | {row['F3']} | "
-                f"{row['F4']} | {row['F5']} | {row['F6']} | {row['F7']}"
+                f"{row['F4']} | {row['F5']} | {row['F6']} | {row['F7']} | "
+                f"{row['F8']}"
             )
     ok_rows = [r for r in rows if not r.get("error")]
     if ok_rows:
         means = {
             name: sum(r[name] for r in ok_rows) / len(ok_rows)
-            for name in ("F1", "F2", "F3", "F4", "F5", "F6", "F7")
+            for name in ("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")
         }
         print("-" * 44)
         print(
             "mean | "
-            + " | ".join(f"{means[name]:.1f}" for name in ("F1", "F2", "F3", "F4", "F5", "F6", "F7"))
+            + " | ".join(
+                f"{means[name]:.1f}"
+                for name in ("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")
+            )
         )
     if args.json:
         Path(args.json).write_text(json.dumps(rows, indent=2), encoding="utf-8")

@@ -277,6 +277,21 @@ def test_finding_without_notes_no_note_lines() -> None:
     assert all("  - Note:" not in line for line in lines)
 
 
+def test_finding_with_flags_renders_check_line() -> None:
+    """Findings with fidelity flags render one Check sub-bullet after the notes."""
+    finding = _cluster(flags=["T1100", "8443"], notes=["alpha"])
+    lines = reporter._format_finding(finding)
+    check_line = "  - Check: not in this cluster's evidence: T1100, 8443"
+    assert check_line in lines
+    assert lines.index(check_line) > lines.index("  - Note: alpha")
+
+
+def test_finding_without_flags_no_check_line() -> None:
+    """Findings without flags render no Check sub-bullet."""
+    lines = reporter._format_finding(_cluster())
+    assert all("  - Check:" not in line for line in lines)
+
+
 def test_blank_line_before_mitre_tags_without_similar_incidents(
     tmp_path: Path,
 ) -> None:

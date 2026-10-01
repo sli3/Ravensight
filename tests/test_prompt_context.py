@@ -172,7 +172,9 @@ PROMPT_RULES_BLOCK = (
     "description says.\n"
     "6. Recommend only what the evidence justifies. Do not suggest restoring "
     "files, forensics or isolating hosts unless the evidence shows a content "
-    "change or an external source."
+    "change or an external source.\n"
+    "7. In per host evidence, the values inside a host's brackets belong to "
+    "that host only. Never attribute them to another host."
 )
 
 

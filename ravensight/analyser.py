@@ -2,6 +2,7 @@
 analyser.py — LLM-based security alert analysis via OpenAI-compatible REST API.
 """
 
+import ipaddress
 import json
 import logging
 import math
@@ -34,6 +35,22 @@ RULE_87702_IPV6_ARTEFACT_NOTE = (
 )
 
 _SEVERITY_ORDER = {"High": 0, "Medium": 1, "Low": 2}
+
+_KNOWN_PROVIDERS = (
+    "Cloudflare", "Google", "Amazon", "AWS", "Azure", "Microsoft",
+    "Hetzner", "OVH", "DigitalOcean", "Akamai", "Fastly", "Linode",
+    "Vultr", "Oracle", "Alibaba", "Tencent", "Apple", "Meta", "Facebook",
+)
+
+_TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+_PATH_RE = re.compile(r"(?<![\w/])/(?:[\w.-]+/)+[\w.-]+")
+_PORT_WORD_RE = re.compile(r"\b(?:d?ports?)\s+(\d{1,5})\b")
+_PORT_PROTO_RE = re.compile(r"\b(\d{1,5})/(?:tcp|udp)\b")
+_IPV4_TOKEN_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}(/\d{1,2})?$")
+_COUNT_CLAIM_RE = re.compile(
+    r"\b(\d+)\s+(?:[A-Za-z0-9-]+\s+){0,2}"
+    r"(sources?|hosts?|alerts?|attempts?|events?|files?|addresses|connections?)\b"
+)
 
 
 def _load_asd_data(asd_path: str) -> dict:
@@ -187,7 +204,13 @@ def _load_platform_agents(path: str | None) -> dict:
         if not isinstance(platform, str) or not isinstance(vendor, str):
             logger.debug(f"Platform agents entry {name!r} missing platform/vendor — skipped")
             continue
-        result[name] = {"platform": platform, "vendor": vendor}
+        key = name.casefold()
+        if key in result:
+            logger.warning(
+                f"Duplicate platform agents key after casefolding: {name!r} — keeping first"
+            )
+            continue
+        result[key] = {"platform": platform, "vendor": vendor}
     return result
 
 
@@ -222,7 +245,7 @@ def _build_platform_context(
         if not platform and platform_agents:
             agent_name = agent.get("name")
             if isinstance(agent_name, str):
-                mapped = platform_agents.get(agent_name)
+                mapped = platform_agents.get(agent_name.casefold())
                 if isinstance(mapped, dict):
                     platform = mapped.get("platform")
         if platform is None:
@@ -397,6 +420,8 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
                 cluster["last_seen"] = timestamp
         cluster["cves"].update(cves)
         evidence.accumulate(cluster["evidence_acc"], alert)
+        if cluster["type"] == "rule":
+            evidence.accumulate(cluster["host_accs"].setdefault(host, {}), alert)
         dpkg = evidence.dpkg_event(alert)
         if dpkg is not None and dpkg[1] in ("half-configured", "installed"):
             dpkg_records.setdefault((host, dpkg[0]), []).append(
@@ -442,6 +467,14 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
         evidence_dict = evidence.project_evidence(cluster["evidence_acc"])
         if evidence_dict is not None:
             output["evidence"] = evidence_dict
+            if len(cluster["hosts"]) > 1:
+                per_host = {
+                    h: evidence.project_evidence(cluster["host_accs"][h])
+                    for h in sorted(cluster["hosts"])
+                }
+                per_host = {h: p for h, p in per_host.items() if p is not None}
+                if per_host:
+                    evidence_dict["per_host"] = per_host
         clusters.append(output)
     acc_to_output: dict[int, dict[str, Any]] = {
         id(cluster["evidence_acc"]): output
@@ -555,6 +588,7 @@ def _new_cluster(
         "last_seen": "",
         "cves": set(),
         "evidence_acc": {},
+        "host_accs": {},
     }
 
 
@@ -745,6 +779,18 @@ def analyse(
     ##################################
 
     result = _parse_analysis(analysis_text, tactics=tactics, clusters=clusters)
+    vendor_names = {info["vendor"] for info in platform_agents.values()}
+    for finding in result["findings"]:
+        fid = finding.get("id", "")
+        if not (isinstance(fid, str) and fid.startswith("C")):
+            continue
+        flags = _fidelity_flags(finding, vendor_names)
+        if flags:
+            finding["flags"] = flags
+            logger.warning(
+                f"Fidelity guard: [{fid}] unsupported in analysis: "
+                f"{', '.join(flags)}"
+            )
     result["summary"] = _build_data_summary(alerts, clusters, lookback_hours)
     if formatted:
         result["similar_incidents"] = "\n".join(formatted)
@@ -853,7 +899,7 @@ def _build_host_facts_block(
         for host in cluster.get("hosts", []):
             if host in seen:
                 continue
-            info = platform_agents.get(host)
+            info = platform_agents.get(host.casefold())
             if not info:
                 continue
             seen.add(host)
@@ -864,6 +910,124 @@ def _build_host_facts_block(
     if not lines:
         return ""
     return "Host facts:\n" + "\n".join(lines)
+
+
+def _parse_ips(
+    corpus: str,
+) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Parse every IPv4/IPv6 address token found in the corpus."""
+    ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    for token in re.findall(r"[0-9a-f:.]+", corpus):
+        token = token.strip(".")
+        if not token:
+            continue
+        try:
+            ips.append(ipaddress.ip_address(token))
+        except ValueError:
+            continue
+    return ips
+
+
+def _fidelity_flags(finding: dict, vendor_names: set[str]) -> list[str]:
+    """Flag narrative/recommendation tokens unsupported by the cluster's evidence.
+
+    Read-only: never mutates the finding or anything nested inside it.
+    Comparison is lowercased; flagged tokens are returned as written in the
+    text, de-duplicated, in first-seen order.
+    """
+    corpus_parts: list[str] = [
+        evidence.render_evidence(finding.get("evidence")),
+        finding.get("description", "") or "",
+    ]
+    for key in ("notes", "rule_ids", "cves", "hosts"):
+        for value in finding.get(key) or []:
+            corpus_parts.append(str(value))
+    if finding.get("package") is not None:
+        corpus_parts.append(str(finding.get("package")))
+    corpus_parts.append(str(finding.get("count", 0)))
+    corpus_parts.extend(vendor_names)
+    corpus_lower = " \n ".join(corpus_parts).lower()
+
+    text = f"{finding.get('narrative', '')} {finding.get('recommendation', '')}"
+    corpus_ips = _parse_ips(corpus_lower)
+    cves_lower = {str(c).lower() for c in finding.get("cves") or []}
+    vendors_lower = {v.lower() for v in vendor_names}
+    description_lower = str(finding.get("description", "") or "").lower()
+    count_str = str(finding.get("count", 0))
+    host_count_str = str(len(finding.get("hosts") or []))
+
+    flagged: list[str] = []
+    seen: set[str] = set()
+
+    def _flag(token: str) -> None:
+        if token not in seen:
+            seen.add(token)
+            flagged.append(token)
+
+    # a) MITRE technique ids — allowed only when the cluster's own notes,
+    #    description or evidence already name them (e.g. the 87702 note).
+    for token in _TECHNIQUE_RE.findall(text):
+        if token.lower() not in corpus_lower:
+            _flag(token)
+
+    # b) CVE ids — allowed only when already known for this cluster.
+    for token in _CVE_RE.findall(text):
+        lowered = token.lower()
+        if lowered not in cves_lower and lowered not in description_lower:
+            _flag(token)
+
+    # c) Absolute paths — allowed only when present in the evidence corpus.
+    for token in _PATH_RE.findall(text):
+        cleaned = token.rstrip(".,;:)]}'\\ ").lower()
+        if cleaned not in corpus_lower:
+            _flag(token)
+
+    # d) Port numbers — allowed only as whole tokens in the evidence corpus.
+    for pattern in (_PORT_WORD_RE, _PORT_PROTO_RE):
+        for number in pattern.findall(text):
+            if not re.search(rf"\b{re.escape(number)}\b", corpus_lower):
+                _flag(number)
+
+    # e) IP addresses and networks — allowed when the exact token, or any
+    #    corpus address inside the network, appears in the evidence corpus.
+    for raw_token in text.split():
+        token = raw_token.strip("(.,;)]}{'\" ")
+        if not token:
+            continue
+        looks_ipv4 = bool(_IPV4_TOKEN_RE.match(token))
+        looks_ipv6 = ":" in token and ("::" in token or token.count(":") >= 2)
+        if not (looks_ipv4 or looks_ipv6):
+            continue
+        try:
+            network = ipaddress.ip_network(token, strict=False)
+        except ValueError:
+            continue
+        if token.lower() in corpus_lower:
+            continue
+        if any(addr in network for addr in corpus_ips):
+            continue
+        _flag(token)
+
+    # f) Count claims — allowed when equal to the cluster's alert count or
+    #    host count, or present as a whole token in the evidence corpus.
+    for match in _COUNT_CLAIM_RE.finditer(text):
+        number = match.group(1)
+        if number not in (count_str, host_count_str) and not re.search(
+            rf"\b{re.escape(number)}\b", corpus_lower
+        ):
+            _flag(number)
+
+    # g) Cloud/provider names — allowed only when known for this cluster.
+    for name in _KNOWN_PROVIDERS:
+        match = re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)
+        if (
+            match
+            and name.lower() not in corpus_lower
+            and name.lower() not in vendors_lower
+        ):
+            _flag(match.group(0))
+
+    return flagged
 
 
 def _build_prompt(
@@ -942,6 +1106,7 @@ Rules:
 4. 'content unchanged' means only metadata (such as inode or mtime) changed: treat it as low concern. 'scope internal → external' means hosts on this network were blocked going out, not an outside scan.
 5. Name products and vendors as given in Host facts, not as the rule description says.
 6. Recommend only what the evidence justifies. Do not suggest restoring files, forensics or isolating hosts unless the evidence shows a content change or an external source.
+7. In per host evidence, the values inside a host's brackets belong to that host only. Never attribute them to another host.
 {alert_summary}
 
 {similar_incidents}

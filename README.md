@@ -514,6 +514,9 @@ Ravensight/
     └── skills/
 ```
 
+Prompt calibration harness (needs a running local LLM):
+`uv run python scripts/eval_prompt.py --runs 5 --json ~/Downloads/eval.json`
+
 ---
 
 ## Licence

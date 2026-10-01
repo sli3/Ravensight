@@ -448,12 +448,13 @@ def test_firewall_multiple_fixture_evidence() -> None:
             "src_scopes": ["internal"],
             "dst_scopes": ["external"],
             "sources_total": 3,
+            "sources_by_version": {"ipv6": 3},
         }
     }
     rendered = render_evidence(cluster["evidence"])
     src_part = next(p for p in rendered.split("; ") if p.startswith("src "))
     assert (
-        "fd00:0:0:1::a, fd00:0:0:1::b, fd00:0:0:1::c (3 distinct)"
+        "fd00:0:0:1::a, fd00:0:0:1::b, fd00:0:0:1::c (3 distinct: 3 ipv6)"
         in src_part
     )
     assert "443" not in src_part
@@ -464,8 +465,9 @@ def test_firewall_multiple_fixture_rendering() -> None:
     cluster = _only_cluster([_fixture("firewall-multiple-87702.json")])
     assert render_evidence(cluster["evidence"]) == (
         "action block; dir in; iface vtnet1; scope internal → external; "
-        "ipv6; proto tcp; "
-        "src fd00:0:0:1::a, fd00:0:0:1::b, fd00:0:0:1::c (3 distinct); "
+        "ip versions ipv6; proto tcp; "
+        "src fd00:0:0:1::a, fd00:0:0:1::b, fd00:0:0:1::c "
+        "(3 distinct: 3 ipv6); "
         "dst 2001:db8:100::2, 2001:db8:101::2, 2001:db8:200::5f, "
         "2001:db8:201::84; dport 443"
     )
@@ -492,7 +494,7 @@ def test_firewall_drop_fixture_evidence() -> None:
     rendered = render_evidence(cluster["evidence"])
     assert rendered == (
         "action block; dir in; iface vtnet1; scope internal → external; "
-        "ipv6; proto tcp; "
+        "ip versions ipv6; proto tcp; "
         "src fd00:0:0:1::c; dst 2001:db8:202::5e; dport 80"
     )
     assert "(1 distinct)" not in rendered
@@ -577,7 +579,33 @@ def test_firewall_sources_capped_but_count_kept() -> None:
     assert len(fw["sources"]) == MAX_EVIDENCE_VALUES == 5
     assert fw["sources_total"] == 6
     rendered = render_evidence(cluster["evidence"])
-    assert "(6 distinct)" in rendered
+    assert "(6 distinct: 6 ipv4)" in rendered
+
+
+def test_firewall_mixed_ipv4_ipv6_suffix() -> None:
+    """Mixed-version sources render the per-version breakdown, ipv4 first."""
+    lines = []
+    for i in (1, 2, 3):
+        lines.append(
+            "Sep 30 10:00:00 fw.example.net filterlog[1]: "
+            f"1,,,abc,em0,match,block,in,4,0x0,,64,12345,0,none,6,tcp,"
+            f"60,192.0.2.{i},198.51.100.1,1234,80,0"
+        )
+    for suffix in ("a", "b"):
+        lines.append(
+            "Sep 30 10:00:01 fw.example.net filterlog[1]: "
+            "14,,,00000000000000000000000000000000,em0,match,block,in,6,"
+            "0x00,0x00013,64,tcp,6,40,"
+            f"fd00:0:0:1::{suffix},2001:db8:100::2,40002"
+        )
+    cluster = _only_cluster(
+        [_alert(predecoder={"program_name": "filterlog"}, full_log="\n".join(lines))]
+    )
+    fw = cluster["evidence"]["firewall"]
+    assert fw["sources_total"] == 5
+    assert fw["sources_by_version"] == {"ipv4": 3, "ipv6": 2}
+    rendered = render_evidence(cluster["evidence"])
+    assert "(5 distinct: 3 ipv4, 2 ipv6)" in rendered
 
 
 def test_firewall_scope_survives_400_char_truncation() -> None:
@@ -602,6 +630,61 @@ def test_firewall_scope_survives_400_char_truncation() -> None:
     )
     assert "scope external → external" in cluster_line
     assert cluster_line.endswith("…")
+
+
+# --- per-host evidence (Build 1e) ---
+
+
+def test_per_host_two_syscheck_hosts() -> None:
+    """A two-host rule cluster carries per-host evidence, hosts sorted ASCII."""
+    alerts = [
+        _alert(
+            description="Integrity checksum changed.",
+            level=7,
+            rule_id="550",
+            groups=["ossec", "syscheck"],
+            agent="kamaji",
+            syscheck={"path": "/etc/ld.so.cache", "event": "modified"},
+        ),
+        _alert(
+            description="Integrity checksum changed.",
+            level=7,
+            rule_id="550",
+            groups=["ossec", "syscheck"],
+            agent="OPNsense",
+            syscheck={"path": "/etc/passwd", "event": "modified"},
+        ),
+    ]
+    cluster = _only_cluster(alerts)
+    per_host = cluster["evidence"]["per_host"]
+    assert sorted(per_host) == ["OPNsense", "kamaji"]
+    assert per_host["kamaji"]["syscheck"]["paths"] == ["/etc/ld.so.cache"]
+    assert per_host["OPNsense"]["syscheck"]["paths"] == ["/etc/passwd"]
+    rendered = render_evidence(cluster["evidence"])
+    assert "per host [OPNsense: paths /etc/passwd; event modified]" in rendered
+    assert "[kamaji: paths /etc/ld.so.cache; event modified]" in rendered
+    assert rendered.index("[OPNsense:") < rendered.index("[kamaji:")
+
+
+def test_per_host_absent_for_single_host_cluster() -> None:
+    """A single-host cluster never carries a per_host evidence key."""
+    cluster = _only_cluster([_syscheck_alert(path="/etc/ld.so.cache")])
+    assert "per_host" not in cluster["evidence"]
+    rendered = render_evidence(cluster["evidence"])
+    assert "per host" not in rendered
+
+
+def test_per_host_segment_truncated_at_max_host_chars() -> None:
+    """A host's inner text longer than 120 chars cuts to 119 chars + ellipsis."""
+    evidence_dict = {
+        "per_host": {
+            "longhost": {
+                "dpkg": {"packages": ["a" * 200]},
+            }
+        }
+    }
+    segment = "[longhost: " + "a" * 119 + "…]"
+    assert render_evidence(evidence_dict) == "per host " + segment
 
 
 # --- generic ---
