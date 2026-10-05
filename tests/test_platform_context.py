@@ -618,8 +618,8 @@ def test_platform_context_non_string_agent_name_does_not_crash() -> None:
 # --- ASD Essential Eight context (Build 2b) ---
 
 
-def test_build_asd_context_strategy_line_format() -> None:
-    """Strategy lines include the ML range and control count."""
+def test_build_asd_context_omits_essential_eight_block_with_ism() -> None:
+    """With both essential_eight and ism present, only the ISM block is rendered."""
     asd_data: dict[str, Any] = {
         "essential_eight": [
             {
@@ -630,39 +630,41 @@ def test_build_asd_context_strategy_line_format() -> None:
                 ],
             },
         ],
-        "ism": [],
+        "ism": [
+            {"id": "ISM-1175", "category": "Patching", "description": "A control."}
+        ],
     }
     context = _build_asd_context(asd_data)
-    assert "- Patch applications (ML1-ML3, 2 controls)" in context
+    assert context.startswith("Relevant ISM Controls:")
+    assert "Patch applications" not in context
+    assert "Essential Eight" not in context
+    assert "ISM-1175" in context
 
 
-def test_build_asd_context_single_level_no_range() -> None:
-    """A strategy with one level renders MLN without a range."""
+# The old test_build_asd_context_single_level_no_range was deleted: its only
+# assertion was on a strategy line format, and the single-ML case is covered
+# by test_build_asd_context_omits_essential_eight_block_with_ism above.
+
+
+# The old test_build_asd_context_empty_strategy_controls_omitted was deleted:
+# "Patch applications" not in context is now trivially true for any input,
+# because the function never emits strategy names at all.
+
+
+def test_build_asd_context_returns_empty_when_only_essential_eight() -> None:
+    """Schema 2 data with essential_eight but no ISM controls yields an empty string."""
     asd_data: dict[str, Any] = {
         "essential_eight": [
             {
-                "strategy": "Patch operating systems",
+                "strategy": "Patch applications",
                 "controls": [
-                    {"id": "ISM-1873", "levels": [2], "description": "x"},
+                    {"id": "ISM-1690", "levels": [1, 2, 3], "description": "x"},
                 ],
             },
         ],
         "ism": [],
     }
-    context = _build_asd_context(asd_data)
-    assert "- Patch operating systems (ML2, 1 controls)" in context
-
-
-def test_build_asd_context_empty_strategy_controls_omitted() -> None:
-    """A strategy with no controls is omitted from the context."""
-    asd_data: dict[str, Any] = {
-        "essential_eight": [
-            {"strategy": "Patch applications", "controls": []},
-        ],
-        "ism": [],
-    }
-    context = _build_asd_context(asd_data)
-    assert "Patch applications" not in context
+    assert _build_asd_context(asd_data) == ""
 
 
 def test_build_asd_context_missing_essential_eight_omits_block() -> None:
@@ -675,6 +677,25 @@ def test_build_asd_context_missing_essential_eight_omits_block() -> None:
     context = _build_asd_context(asd_data)
     assert "Essential Eight Strategies:" not in context
     assert "ISM-1175" in context
+
+
+def test_build_asd_context_multi_ism_controls_in_multiple_categories() -> None:
+    """Category headers are emitted exactly once each, in grouping order."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [],
+        "ism": [
+            {"id": "ISM-1175", "category": "Patching", "description": "First."},
+            {"id": "ISM-1234", "category": "Logging", "description": "Second."},
+            {"id": "ISM-5678", "category": "Logging", "description": "Third."},
+        ],
+    }
+    context = _build_asd_context(asd_data)
+    assert context.startswith("Relevant ISM Controls:")
+    assert context.count("Patching:") == 1
+    assert context.count("Logging:") == 1
+    assert context.index("Patching:") < context.index("Logging:")
+    for control_id in ("ISM-1175", "ISM-1234", "ISM-5678"):
+        assert context.count(control_id) == 1
 
 
 def test_load_asd_data_schema_one_logs_warning(tmp_path: Path, caplog: Any) -> None:

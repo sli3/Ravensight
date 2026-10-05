@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ravensight.e8_scorer import score_findings
+from ravensight.e8_scorer import match_ism_controls, score_findings
 
 
 def _finding(**overrides: Any) -> dict[str, Any]:
@@ -78,8 +78,15 @@ def test_one_shared_keyword_does_not_relate() -> None:
     assert result["Application control"]["related_controls"] == []
 
 
-def test_two_shared_keywords_relate() -> None:
-    """Two overlapping keywords meet the minimum match score."""
+def test_two_shared_keywords_no_longer_relate() -> None:
+    """Two overlapping keywords are below the threshold of three."""
+    finding = _finding(narrative="Unauthorised applications running")
+    result = score_findings([finding], _asd_data())
+    assert result["Application control"]["related_controls"] == []
+
+
+def test_three_shared_keywords_relate() -> None:
+    """Three overlapping keywords meet the minimum match score."""
     finding = _finding(narrative="Unauthorised applications execute on host-1")
     result = score_findings([finding], _asd_data())
     assert result["Application control"]["related_findings"] == ["C1"]
@@ -110,8 +117,9 @@ def test_related_controls_capped_at_three() -> None:
 def test_blocklist_applied_casefold_key() -> None:
     """Blocked keywords from a title-cased override key apply to lower-case strategy."""
     asd_data = _asd_data()
-    # Two keywords relate; blocking one leaves only one and drops below threshold.
-    finding = _finding(narrative="Unauthorised applications detected")
+    # Three keywords relate at the threshold; blocking one leaves two,
+    # which is below the threshold of three.
+    finding = _finding(narrative="Unauthorised applications execute detected")
     overrides = {
         "strategy_blocklist": {
             "Application Control": ["applications"],
@@ -135,7 +143,8 @@ def test_blocklist_applied_casefold_key() -> None:
 
 
 def test_narrative_only_keywords_count() -> None:
-    """Keywords appearing only in the narrative still contribute to matching."""
+    """Keywords appearing only in the narrative still contribute to matching
+    (three shared keywords reach the MIN_E8_MATCH_SCORE threshold of 3)."""
     finding = _finding(narrative="Unauthorised applications execute on host-1")
     result = score_findings([finding], _asd_data())
     assert result["Application control"]["related_findings"] == ["C1"]
@@ -219,7 +228,10 @@ def test_strategy_name_keywords_count_toward_match() -> None:
         ],
         "ism": [],
     }
-    finding = _finding(id="C9", narrative="Multi-factor authentication rolled out")
+    finding = _finding(
+        id="C9",
+        narrative="Multi-factor authentication rolled out and users enrolled",
+    )
     result = score_findings([finding], asd_data)
     assert result["Multi-factor authentication"]["related_findings"] == ["C9"]
 
@@ -315,3 +327,81 @@ def test_strategy_with_no_controls_returns_empty_cells() -> None:
             "related_controls": [],
         }
     }
+
+
+def test_three_shared_generic_words_do_not_relate() -> None:
+    """Even three shared E8_GENERIC_WORDS tokens never count toward matching."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [
+            {
+                "strategy": "Application control",
+                "controls": [
+                    {
+                        "id": "ISM-GEN",
+                        "levels": [1],
+                        "description": "system services changed access content events",
+                    },
+                ],
+            },
+        ],
+        "ism": [],
+    }
+    finding = _finding(
+        narrative="system services changed access content events local required only"
+    )
+    result = score_findings([finding], asd_data)
+    assert result["Application control"]["related_controls"] == []
+    assert result["Application control"]["related_findings"] == []
+
+
+def test_regression_benign_findings_do_not_relate() -> None:
+    """Benign live-run findings produce no related controls or findings after tuning."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [
+            {
+                "strategy": "Access control",
+                "controls": [
+                    {
+                        "id": "ISM-AC",
+                        "levels": [1, 2, 3],
+                        "description": (
+                            "Privileged access to systems and their resources is "
+                            "limited to only what is required for users to "
+                            "undertake their duties or functions"
+                        ),
+                    },
+                ],
+            },
+        ],
+        "ism": [],
+    }
+    findings: list[dict[str, Any] | str] = [
+        _finding(
+            id="C1",
+            description="FIM event",
+            narrative="only inode metadata changed",
+            recommendation="No action required",
+        ),
+        _finding(id="C2", narrative="local-only listener, benign local service"),
+        _finding(id="C3", narrative="credential-access interpretation does not fit the events"),
+    ]
+    result = score_findings(findings, asd_data)
+    for row in result.values():
+        assert row["related_controls"] == []
+        assert row["related_findings"] == []
+
+
+def test_match_ism_controls_still_matches_generic_words() -> None:
+    """The ISM matcher does not subtract E8_GENERIC_WORDS; generic words still match."""
+    asd_data: dict[str, Any] = {
+        "ism": [
+            {
+                "id": "ISM-LOG",
+                "category": "Logging",
+                "description": "Access to systems is logged",
+            },
+        ],
+    }
+    finding = _finding(narrative="system access denied")
+    matched = match_ism_controls([finding], asd_data)
+    assert any(control["id"] == "ISM-LOG" for control in matched)

@@ -99,51 +99,28 @@ def _build_asd_context(asd_data: dict) -> str:
     if not asd_data:
         return ""
 
-    lines = []
-
-    # Section 1 — Essential Eight summary (one line per strategy showing ML range)
-    essential_eight = asd_data.get("essential_eight", [])
-    if essential_eight:
-        lines.append("Essential Eight Strategies:")
-        for entry in essential_eight:
-            strategy = entry.get("strategy", "")
-            controls = entry.get("controls", [])
-            if not controls:
-                continue
-            levels = sorted({
-                level
-                for control in controls
-                for level in control.get("levels", [])
-            })
-            if not levels:
-                continue
-            min_ml = min(levels)
-            max_ml = max(levels)
-            ml_range = f"ML{min_ml}-ML{max_ml}" if min_ml < max_ml else f"ML{min_ml}"
-            lines.append(f"- {strategy} ({ml_range}, {len(controls)} controls)")
-
-    # Section 2 — ISM controls grouped by category (compact format)
     ism_controls = asd_data.get("ism", [])
-    if ism_controls:
-        lines.append("")
-        lines.append("Relevant ISM Controls:")
+    if not ism_controls:
+        return ""
 
-        # Group by category
-        by_category: dict[str, list[dict]] = {}
-        for control in ism_controls:
-            cat = control.get("category", "Uncategorized")
-            if cat not in by_category:
-                by_category[cat] = []
-            by_category[cat].append(control)
+    lines = ["Relevant ISM Controls:"]
 
-        for category, controls in by_category.items():
-            lines.append(f"{category}:")
-            for control in controls:
-                desc = control.get("description", "")
-                # Collapse whitespace first, then truncate to 120 characters
-                collapsed = " ".join(desc.split())
-                truncated = evidence.truncate_words(collapsed, 120)
-                lines.append(f"  {control.get('id', 'Unknown')}: {truncated}")
+    # Group by category
+    by_category: dict[str, list[dict]] = {}
+    for control in ism_controls:
+        cat = control.get("category", "Uncategorized")
+        if cat not in by_category:
+            by_category[cat] = []
+        by_category[cat].append(control)
+
+    for category, controls in by_category.items():
+        lines.append(f"{category}:")
+        for control in controls:
+            desc = control.get("description", "")
+            # Collapse whitespace first, then truncate to 120 characters
+            collapsed = " ".join(desc.split())
+            truncated = evidence.truncate_words(collapsed, 120)
+            lines.append(f"  {control.get('id', 'Unknown')}: {truncated}")
 
     return "\n".join(lines)
 

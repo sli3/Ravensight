@@ -31,10 +31,18 @@ MIN_KEYWORD_LENGTH = 4
 MIN_ISM_MATCH_SCORE = 1
 
 # Minimum keyword overlap for a finding to relate to an Essential Eight control
-MIN_E8_MATCH_SCORE = 2
+MIN_E8_MATCH_SCORE = 3
 
 # Maximum related controls returned per strategy
 MAX_E8_RELATED_CONTROLS = 3
+
+# Generic words that carry no matching signal for Essential Eight scoring.
+# These are removed from control keyword sets in score_findings only; the ISM
+# matcher (match_ism_controls) intentionally does not subtract them.
+E8_GENERIC_WORDS = {
+    "only", "required", "event", "events", "access", "content",
+    "local", "service", "services", "changed", "system", "systems",
+}
 
 
 def _load_overrides(overrides_path: str | None) -> dict[str, set[str]]:
@@ -196,6 +204,7 @@ def score_findings(
             description = control.get("description", "")
             control_keywords = _extract_keywords(f"{strategy} {description}")
             control_keywords -= blocked
+            control_keywords -= E8_GENERIC_WORDS
             control_keyword_sets.append(control_keywords)
 
         scored: list[tuple[dict[str, Any], int, set[str]]] = []
