@@ -1,7 +1,7 @@
 ---
 description: Implementation subagent. Implements features, fixes, and refactors in ravensight/ only after a plan has been explicitly approved by Prin. Writes and edits source and test files, runs bash (pytest, smoke tests). NEVER edits config.toml (contains credentials) — only config.example.toml. Governance docs (AGENTS.md, RAVENSIGHT_ROADMAP.md), opencode.json, and .opencode/agents/** are OUT of its remit.
 mode: subagent
-model: opencode-go/deepseek-v4-pro
+model: opencode-go/kimi-k2.7-code
 temperature: 0.1
 permission:
   edit:
