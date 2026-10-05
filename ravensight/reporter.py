@@ -100,29 +100,57 @@ def _render_asd_section(
 
     lines = ["## ASD Framework", ""]
 
-    # Essential Eight Maturity Summary
-    lines.extend(["### Essential Eight Maturity Summary", "",])
-
+    # Essential Eight
     essential_eight = asd_data.get("essential_eight", [])
-    strategies: dict[str, list[int]] = {}
-    for entry in essential_eight:
-        s = entry.get("strategy", "")
-        ml = entry.get("maturity_level", 0)
-        strategies.setdefault(s, []).append(ml)
+    if essential_eight:
+        lines.extend([
+            "### Essential Eight",
+            "",
+            "> Not assessed. Ravensight reads alerts, not system configuration, so it cannot measure maturity. Related controls are pointers for review, not gaps.",
+            "",
+            "| Strategy | Status | Related findings | Related controls |",
+            "|----------|--------|------------------|------------------|",
+        ])
 
-    if strategies:
-        header = "| Strategy | ML1 | ML2 | ML3 | ML4 |"
-        separator = "|----------|-----|-----|-----|-----|"
-        lines.extend([header, separator])
-        for strategy, mls in strategies.items():
-            row = f"| {strategy} |"
-            for level in [1, 2, 3, 4]:
-                if e8_scores and strategy in e8_scores:
-                    score = e8_scores[strategy].get(level)
-                    row += " ✓ |" if score is True else " - |"
-                else:
-                    row += " ✓ |" if level in mls else " - |"
-            lines.append(row)
+        for entry in essential_eight:
+            strategy = entry.get("strategy", "")
+            score = e8_scores.get(strategy) if e8_scores else None
+
+            if score:
+                finding_ids = score.get("related_findings", [])
+                controls = score.get("related_controls", [])
+            else:
+                finding_ids = []
+                controls = []
+
+            if finding_ids:
+                findings_cell = sanitise_cell(", ".join(str(fid) for fid in finding_ids))
+            else:
+                findings_cell = "—"
+
+            if controls:
+                control_parts = []
+                for control in controls:
+                    control_id = sanitise_cell(control.get("id", "Unknown"))
+                    levels = control.get("levels", [])
+                    if levels:
+                        min_ml = min(levels)
+                        max_ml = max(levels)
+                        if min_ml < max_ml:
+                            level_str = f"ML{min_ml}–ML{max_ml}"
+                        else:
+                            level_str = f"ML{min_ml}"
+                        control_parts.append(f"{control_id} ({level_str})")
+                    else:
+                        control_parts.append(control_id)
+                controls_cell = sanitise_cell(", ".join(control_parts))
+            else:
+                controls_cell = "—"
+
+            lines.append(
+                f"| {sanitise_cell(strategy)} | Not assessed | {findings_cell} | {controls_cell} |"
+            )
+
         lines.append("")
 
     # Relevant ISM Controls

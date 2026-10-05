@@ -12,6 +12,7 @@ from ravensight.analyser import (
     _build_asd_context,
     _build_host_facts_block,
     _build_platform_context,
+    _load_asd_data,
     _load_platform_agents,
     _load_platform_hints,
     _rewrite_cluster_vendor_names,
@@ -612,3 +613,106 @@ def test_platform_context_non_string_agent_name_does_not_crash() -> None:
     agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
     context = _build_platform_context(alerts, hints, platform_agents=agents)
     assert "- Agent: 7 (freebsd — FreeBSD)" in context
+
+
+# --- ASD Essential Eight context (Build 2b) ---
+
+
+def test_build_asd_context_strategy_line_format() -> None:
+    """Strategy lines include the ML range and control count."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [
+            {
+                "strategy": "Patch applications",
+                "controls": [
+                    {"id": "ISM-1690", "levels": [1, 2, 3], "description": "x"},
+                    {"id": "ISM-1691", "levels": [1, 2], "description": "y"},
+                ],
+            },
+        ],
+        "ism": [],
+    }
+    context = _build_asd_context(asd_data)
+    assert "- Patch applications (ML1-ML3, 2 controls)" in context
+
+
+def test_build_asd_context_single_level_no_range() -> None:
+    """A strategy with one level renders MLN without a range."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [
+            {
+                "strategy": "Patch operating systems",
+                "controls": [
+                    {"id": "ISM-1873", "levels": [2], "description": "x"},
+                ],
+            },
+        ],
+        "ism": [],
+    }
+    context = _build_asd_context(asd_data)
+    assert "- Patch operating systems (ML2, 1 controls)" in context
+
+
+def test_build_asd_context_empty_strategy_controls_omitted() -> None:
+    """A strategy with no controls is omitted from the context."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [
+            {"strategy": "Patch applications", "controls": []},
+        ],
+        "ism": [],
+    }
+    context = _build_asd_context(asd_data)
+    assert "Patch applications" not in context
+
+
+def test_build_asd_context_missing_essential_eight_omits_block() -> None:
+    """ASD data without essential_eight renders only the ISM block."""
+    asd_data: dict[str, Any] = {
+        "ism": [
+            {"id": "ISM-1175", "category": "Patching", "description": "A control."}
+        ],
+    }
+    context = _build_asd_context(asd_data)
+    assert "Essential Eight Strategies:" not in context
+    assert "ISM-1175" in context
+
+
+def test_load_asd_data_schema_one_logs_warning(tmp_path: Path, caplog: Any) -> None:
+    """A schema 1 file is rejected with a warning and returns {}."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    path = tmp_path / "asd.json"
+    path.write_text(json.dumps({"schema": 1, "essential_eight": []}), encoding="utf-8")
+    result = _load_asd_data(str(path))
+    assert result == {}
+    assert "older format" in caplog.text
+
+
+def test_load_asd_data_missing_schema_logs_warning(tmp_path: Path, caplog: Any) -> None:
+    """A file without a schema key is rejected with a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    path = tmp_path / "asd.json"
+    path.write_text(json.dumps({"essential_eight": []}), encoding="utf-8")
+    result = _load_asd_data(str(path))
+    assert result == {}
+    assert "older format" in caplog.text
+
+
+def test_load_asd_data_non_dict_root_returns_empty(tmp_path: Path, caplog: Any) -> None:
+    """A JSON file whose root is not a dict is rejected with a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    path = tmp_path / "asd.json"
+    path.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+    result = _load_asd_data(str(path))
+    assert result == {}
+    assert "older format" in caplog.text
+
+
+def test_load_asd_data_schema_two_loads(tmp_path: Path, caplog: Any) -> None:
+    """A schema 2 file loads and returns its contents."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    data: dict[str, Any] = {"schema": 2, "essential_eight": [], "ism": []}
+    path = tmp_path / "asd.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    result = _load_asd_data(str(path))
+    assert result == data
+    assert "older format" not in caplog.text

@@ -15,8 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 from chromadb.errors import ChromaError
-from openai import OpenAI
-from openai import APIConnectionError, APIStatusError, APITimeoutError
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 from ravensight import evidence
 
@@ -47,6 +46,7 @@ _KNOWN_PROVIDERS = (
 )
 
 _TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+_ISM_RE = re.compile(r"\bISM-\d{4}\b", re.IGNORECASE)
 _PATH_RE = re.compile(r"(?<![\w/])/(?:[\w.-]+/)+[\w.-]+")
 _PORT_WORD_RE = re.compile(r"\b(?:d?ports?)\s+(\d{1,5})\b")
 _PORT_PROTO_RE = re.compile(r"\b(\d{1,5})/(?:tcp|udp)\b")
@@ -64,17 +64,27 @@ def _load_asd_data(asd_path: str) -> dict:
         asd_path: Path to data/asd_framework.json
 
     Returns:
-        Parsed ASD data dict, or empty dict if file absent or unreadable.
+        Parsed ASD data dict, or empty dict if file absent, unreadable, or from an older schema.
     """
     try:
         with Path(asd_path).open("r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except FileNotFoundError:
         logger.warning(f"ASD framework file not found: {asd_path}")
         return {}
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse ASD framework file {asd_path}: {e}")
         return {}
+
+    if not isinstance(data, dict) or data.get("schema") != 2:
+        logger.warning(
+            f"ASD framework file {asd_path} is from an older format — "
+            "regenerate it with `uv run python scripts/asd_sync.py` "
+            "(or `docker run <image> sync` in Docker)"
+        )
+        return {}
+
+    return data
 
 
 def _build_asd_context(asd_data: dict) -> str:
@@ -93,20 +103,24 @@ def _build_asd_context(asd_data: dict) -> str:
 
     # Section 1 — Essential Eight summary (one line per strategy showing ML range)
     essential_eight = asd_data.get("essential_eight", [])
-    strategies: dict[str, list[int]] = {}
-    for entry in essential_eight:
-        strategy = entry.get("strategy", "")
-        ml = entry.get("maturity_level", 0)
-        if strategy not in strategies:
-            strategies[strategy] = []
-        strategies[strategy].append(ml)
-
-    lines.append("Essential Eight Strategies:")
-    for strategy, mls in strategies.items():
-        min_ml = min(mls)
-        max_ml = max(mls)
-        ml_range = f"ML{min_ml}-ML{max_ml}" if min_ml < max_ml else f"ML{min_ml}"
-        lines.append(f"- {strategy} ({ml_range})")
+    if essential_eight:
+        lines.append("Essential Eight Strategies:")
+        for entry in essential_eight:
+            strategy = entry.get("strategy", "")
+            controls = entry.get("controls", [])
+            if not controls:
+                continue
+            levels = sorted({
+                level
+                for control in controls
+                for level in control.get("levels", [])
+            })
+            if not levels:
+                continue
+            min_ml = min(levels)
+            max_ml = max(levels)
+            ml_range = f"ML{min_ml}-ML{max_ml}" if min_ml < max_ml else f"ML{min_ml}"
+            lines.append(f"- {strategy} ({ml_range}, {len(controls)} controls)")
 
     # Section 2 — ISM controls grouped by category (compact format)
     ism_controls = asd_data.get("ism", [])
@@ -905,11 +919,12 @@ def analyse(
 
     result = _parse_analysis(analysis_text, tactics=tactics, clusters=clusters)
     vendor_names = {info["vendor"] for info in platform_agents.values()}
+    ism_ids = set(asd_data.get("ism_ids", []))
     for finding in result["findings"]:
         fid = finding.get("id", "")
         if not (isinstance(fid, str) and fid.startswith("C")):
             continue
-        flags = _fidelity_flags(finding, vendor_names)
+        flags = _fidelity_flags(finding, vendor_names, ism_ids=ism_ids)
         if flags:
             finding["flags"] = flags
             logger.warning(
@@ -1053,7 +1068,12 @@ def _parse_ips(
     return ips
 
 
-def _fidelity_flags(finding: dict, vendor_names: set[str]) -> list[str]:
+def _fidelity_flags(
+    finding: dict,
+    vendor_names: set[str],
+    *,
+    ism_ids: set[str] | None = None,
+) -> list[str]:
     """Flag narrative/recommendation tokens unsupported by the cluster's evidence.
 
     Read-only: never mutates the finding or anything nested inside it.
@@ -1151,6 +1171,12 @@ def _fidelity_flags(finding: dict, vendor_names: set[str]) -> list[str]:
             and name.lower() not in vendors_lower
         ):
             _flag(match.group(0))
+
+    # h) ISM control ids — allowed only when present in the current catalogue.
+    if ism_ids:
+        for token in _ISM_RE.findall(text):
+            if token.upper() not in ism_ids:
+                _flag(token)
 
     return flagged
 

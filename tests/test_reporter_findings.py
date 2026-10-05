@@ -385,3 +385,105 @@ def test_ism_fallback_table_sanitises_cells() -> None:
 def test_truncate_words_no_space_before_ellipsis() -> None:
     """A word-boundary cut drops the boundary space."""
     assert truncate_words("aaa bbb ccc ddd", 10) == "aaa bbb…"
+
+
+# --- Essential Eight related-controls table (Build 2b) ---
+
+
+def _make_asd_data() -> dict[str, Any]:
+    """Build ASD data with two strategies for reporter tests."""
+    return {
+        "essential_eight": [
+            {
+                "strategy": "Patch applications",
+                "controls": [
+                    {"id": "ISM-1690", "levels": [1, 2, 3], "description": "Patch apps"},
+                    {"id": "ISM-1691", "levels": [1, 2], "description": "Patch apps ml2"},
+                ],
+            },
+            {
+                "strategy": "Patch operating systems",
+                "controls": [
+                    {"id": "ISM-1873", "levels": [2], "description": "OS patch ml2"},
+                ],
+            },
+        ],
+        "ism": [
+            {"id": "ISM-1175", "category": "Patching", "description": "A patching control."}
+        ],
+    }
+
+
+def _make_e8_scores() -> dict[str, Any]:
+    """Build E8 scores with one related finding and multiple controls."""
+    return {
+        "Patch applications": {
+            "status": "Not assessed",
+            "related_findings": ["C1", "C2"],
+            "related_controls": [
+                {"id": "ISM-1690", "levels": [1, 2, 3]},
+                {"id": "ISM-1691", "levels": [1, 2]},
+            ],
+        },
+        "Patch operating systems": {
+            "status": "Not assessed",
+            "related_findings": ["C3"],
+            "related_controls": [
+                {"id": "ISM-1873", "levels": [2]},
+            ],
+        },
+    }
+
+
+def test_e8_table_renders_not_assessed() -> None:
+    """The E8 table renders with Not assessed status and no ticks."""
+    section = reporter._render_asd_section(_make_asd_data(), e8_scores=_make_e8_scores())
+    assert "### Essential Eight" in section
+    assert "Not assessed" in section
+    assert "✓" not in section
+    assert "ML4" not in section
+
+
+def test_e8_table_level_range_and_single_level() -> None:
+    """Level ranges use an en dash; single levels render without a range."""
+    section = reporter._render_asd_section(_make_asd_data(), e8_scores=_make_e8_scores())
+    assert "ISM-1690 (ML1–ML3)" in section
+    assert "ISM-1873 (ML2)" in section
+
+
+def test_e8_table_em_dash_when_nothing_relates() -> None:
+    """Empty related cells render an em dash."""
+    section = reporter._render_asd_section(_make_asd_data(), e8_scores={})
+    # Two strategies, each with empty findings and controls cells.
+    assert section.count("—") >= 4
+
+
+def test_e8_table_pipe_in_description_escaped() -> None:
+    """A pipe in a strategy name or control id is escaped in markdown."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [
+            {
+                "strategy": "Patch | applications",
+                "controls": [
+                    {"id": "ISM-1690", "levels": [1], "description": "x"},
+                ],
+            }
+        ],
+        "ism": [],
+    }
+    section = reporter._render_asd_section(asd_data, e8_scores={})
+    assert "Patch \\| applications" in section
+
+
+def test_e8_table_missing_when_essential_eight_empty() -> None:
+    """When essential_eight is missing, the ISM table still renders."""
+    section = reporter._render_asd_section({"ism": _make_asd_data()["ism"]})
+    assert "### Essential Eight" not in section
+    assert "### Relevant ISM Controls" in section
+    assert "ISM-1175" in section
+
+
+def test_e8_table_related_findings_rendered() -> None:
+    """Related findings appear comma-separated in the table."""
+    section = reporter._render_asd_section(_make_asd_data(), e8_scores=_make_e8_scores())
+    assert "| Patch applications | Not assessed | C1, C2 |" in section

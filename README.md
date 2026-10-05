@@ -30,7 +30,8 @@ markdown security reports with baseline memory tracking and historical trending.
 - Tracks **historical alert trends** per rule group — surfaces slow-burn threats
   that single-run baseline comparison misses
 - Tags findings against **MITRE ATT&CK** and the **ASD Essential Eight / ISM**
-  for Australian-aligned reporting
+  for Australian-aligned reporting; Essential Eight strategies are reported as
+  Not assessed with related ISM controls
 - Retrieves **similar past incidents** via a local ChromaDB vector store for
   semantic context
 - Runs on a local homelab — designed for self-hosted Wazuh deployments
@@ -48,7 +49,7 @@ ravensight/
 ├── baseline.py        # Baseline memory persistence (JSON store)
 ├── trending.py        # Historical trend analysis and anomaly detection
 ├── embedder.py        # ChromaDB vector store and embedding client
-└── e8_scorer.py       # Essential Eight compliance scoring + ISM control matching
+└── e8_scorer.py       # Essential Eight related-control scoring + ISM control matching
 scripts/
 ├── mitre_sync.py      # MITRE ATT&CK dataset sync
 └── asd_sync.py        # ASD Essential Eight / ISM dataset sync
@@ -441,11 +442,13 @@ Findings are tagged against the **MITRE ATT&CK** framework and Australia's
 
 - `scripts/mitre_sync.py` pulls the MITRE ATT&CK enterprise dataset (STIX JSON)
   to `data/mitre_attack.json`
-- `scripts/asd_sync.py` pulls the ASD ISM catalog (OSCAL JSON) to
-  `data/asd_framework.json`
+- `scripts/asd_sync.py` pulls the ASD ISM catalog (OSCAL JSON) from ASD's ISM
+  OSCAL catalogue (GitHub first, cyber.gov.au fallback) to `data/asd_framework.json`
 - Both datasets are synced once and used fully offline afterwards — re-run the
   sync scripts manually (or `docker run ravensight sync` in Docker) to pick up
   a new release
+- `data/defaults/e8_strategy_map.json` holds the control-to-strategy map used by
+  `asd_sync.py`; an `asd_framework.json` from before this change must be regenerated
 - `data/e8_keyword_overrides.json` reduces Essential Eight scoring false
   positives via a keyword blocklist
 - `data/platform_hints.json` is a hand-edited false-positive hint table

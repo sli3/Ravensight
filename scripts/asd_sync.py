@@ -1,14 +1,16 @@
 """
-asd_sync.py — Fetch ASD ISM OSCAL catalog and combine with Essential Eight dataset.
+asd_sync.py — Fetch ASD ISM OSCAL catalog and build Essential Eight strategy map.
 
 Usage:
     python scripts/asd_sync.py [--output data/asd_framework.json] [--categories ...]
+                              [--strategy-map data/defaults/e8_strategy_map.json]
 """
 
 import argparse
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,216 +30,103 @@ DEFAULT_CATEGORIES = [
     "Logging",
 ]
 
-ISM_CATALOG_URL = "https://www.cyber.gov.au/ism/oscal/latest-version/artifacts/ISM_catalog.json"
+ISM_CATALOG_PRIMARY_URL = (
+    "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/main/ISM_catalog.json"
+)
+ISM_CATALOG_FALLBACK_URL = (
+    "https://www.cyber.gov.au/ism/oscal/latest-version/artifacts/ISM_catalog.json"
+)
+
+RETRY_DELAY_SECONDS = 5
 
 
-# Essential Eight dataset: 8 strategies × 4 maturity levels = 32 entries
-ESSENTIAL_EIGHT_DATA: list[dict[str, Any]] = [
-    # Strategy 1: Patch Applications
-    {
-        "strategy": "Patch Applications",
-        "maturity_level": 1,
-        "description": "Identify applications requiring patches through vendor notifications and IT asset management.",
-    },
-    {
-        "strategy": "Patch Applications",
-        "maturity_level": 2,
-        "description": "Automate patch identification and testing in a controlled environment before deployment.",
-    },
-    {
-        "strategy": "Patch Applications",
-        "maturity_level": 3,
-        "description": "Implement automated patch management with defined timelines and exception handling processes.",
-    },
-    {
-        "strategy": "Patch Applications",
-        "maturity_level": 4,
-        "description": "Fully enforce patch compliance across all systems with continuous verification and reporting.",
-    },
-    # Strategy 2: Patch Operating Systems
-    {
-        "strategy": "Patch Operating Systems",
-        "maturity_level": 1,
-        "description": "Identify operating systems requiring patches through vendor notifications and asset inventory.",
-    },
-    {
-        "strategy": "Patch Operating Systems",
-        "maturity_level": 2,
-        "description": "Automate patch identification and testing for operating systems in a controlled environment.",
-    },
-    {
-        "strategy": "Patch Operating Systems",
-        "maturity_level": 3,
-        "description": "Implement automated OS patch management with defined timelines and security exception approval process.",
-    },
-    {
-        "strategy": "Patch Operating Systems",
-        "maturity_level": 4,
-        "description": "Fully enforce OS patch compliance across all systems with continuous monitoring and verification.",
-    },
-    # Strategy 3: Multi-Factor Authentication
-    {
-        "strategy": "Multi-Factor Authentication",
-        "maturity_level": 1,
-        "description": "Implement multi-factor authentication for remote access to critical systems.",
-    },
-    {
-        "strategy": "Multi-Factor Authentication",
-        "maturity_level": 2,
-        "description": "Extend MFA to all remote access solutions and cloud-based applications.",
-    },
-    {
-        "strategy": "Multi-Factor Authentication",
-        "maturity_level": 3,
-        "description": "Implement phishing-resistant authentication methods and enforce MFA for all privileged accounts.",
-    },
-    {
-        "strategy": "Multi-Factor Authentication",
-        "maturity_level": 4,
-        "description": "Enforce hardware-based or biometric MFA across all access vectors with continuous compliance monitoring.",
-    },
-    # Strategy 4: Restrict Administrative Privileges
-    {
-        "strategy": "Restrict Administrative Privileges",
-        "maturity_level": 1,
-        "description": "Identify accounts with administrative privileges and document justification.",
-    },
-    {
-        "strategy": "Restrict Administrative Privileges",
-        "maturity_level": 2,
-        "description": "Document and review administrative accounts regularly; limit local administrator accounts.",
-    },
-    {
-        "strategy": "Restrict Administrative Privileges",
-        "maturity_level": 3,
-        "description": "Implement least privilege access with automated monitoring of privilege escalation attempts.",
-    },
-    {
-        "strategy": "Restrict Administrative Privileges",
-        "maturity_level": 4,
-        "description": "Enforce least privilege across all systems with continuous monitoring and automated remediation.",
-    },
-    # Strategy 5: Application Control
-    {
-        "strategy": "Application Control",
-        "maturity_level": 1,
-        "description": "Identify devices requiring application control and whitelist approved applications.",
-    },
-    {
-        "strategy": "Application Control",
-        "maturity_level": 2,
-        "description": "Implement application whitelisting on all devices with defined approval process.",
-    },
-    {
-        "strategy": "Application Control",
-        "maturity_level": 3,
-        "description": "Enforce application control across all endpoints with automated enforcement and exception management.",
-    },
-    {
-        "strategy": "Application Control",
-        "maturity_level": 4,
-        "description": "Fully enforce application control with continuous monitoring and zero-trust architecture integration.",
-    },
-    # Strategy 6: Restrict Microsoft Office Macros
-    {
-        "strategy": "Restrict Microsoft Office Macros",
-        "maturity_level": 1,
-        "description": "Disable macros in Microsoft Office by default on all devices.",
-    },
-    {
-        "strategy": "Restrict Microsoft Office Macros",
-        "maturity_level": 2,
-        "description": "Block all macros except digitally signed ones; document business justification for exceptions.",
-    },
-    {
-        "strategy": "Restrict Microsoft Office Macros",
-        "maturity_level": 3,
-        "description": "Implement strict macro policies with automated detection and blocking of unsigned macros.",
-    },
-    {
-        "strategy": "Restrict Microsoft Office Macros",
-        "maturity_level": 4,
-        "description": "Enforce zero-trust macro execution policies with continuous monitoring and threat intelligence integration.",
-    },
-    # Strategy 7: User Application Hardening
-    {
-        "strategy": "User Application Hardening",
-        "maturity_level": 1,
-        "description": "Configure web browsers to disable unnecessary features and plugins.",
-    },
-    {
-        "strategy": "User Application Hardening",
-        "maturity_level": 2,
-        "description": "Implement browser hardening standards across all devices with regular configuration reviews.",
-    },
-    {
-        "strategy": "User Application Hardening",
-        "maturity_level": 3,
-        "description": "Enforce hardened browser configurations with automated compliance checking and exception management.",
-    },
-    {
-        "strategy": "User Application Hardening",
-        "maturity_level": 4,
-        "description": "Fully enforce application hardening across all platforms with continuous monitoring and threat-based adjustments.",
-    },
-    # Strategy 8: Regular Backups
-    {
-        "strategy": "Regular Backups",
-        "maturity_level": 1,
-        "description": "Implement regular backups of critical data with documented retention policies.",
-    },
-    {
-        "strategy": "Regular Backups",
-        "maturity_level": 2,
-        "description": "Test backup restoration procedures regularly and store copies in off-site locations.",
-    },
-    {
-        "strategy": "Regular Backups",
-        "maturity_level": 3,
-        "description": "Implement automated backups with immutability features and regular integrity verification.",
-    },
-    {
-        "strategy": "Regular Backups",
-        "maturity_level": 4,
-        "description": "Maintain immutable, air-gapped backups with continuous monitoring and disaster recovery testing.",
-    },
-]
+def fetch_ism_catalog(
+    primary_url: str = ISM_CATALOG_PRIMARY_URL,
+    fallback_url: str = ISM_CATALOG_FALLBACK_URL,
+) -> tuple[dict[str, Any], str]:
+    """Fetch the ASD ISM OSCAL catalog, primary URL first then fallback.
 
-
-def fetch_ism_catalog() -> dict[str, Any]:
-    """
-    Fetch the ASD ISM OSCAL catalog from the official source.
+    Args:
+        primary_url: Preferred ISM catalog URL.
+        fallback_url: Fallback ISM catalog URL.
 
     Returns:
-        Parsed JSON catalog data.
+        Tuple of (parsed catalog, URL that succeeded).
 
     Raises:
-        requests.RequestException: If fetch fails after retries.
+        requests.RequestException: If both URLs fail after retries.
     """
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(ISM_CATALOG_URL, timeout=30)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            logger.warning(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
-            if attempt == max_retries - 1:
-                raise
-            logger.info(f"Retrying in 30 seconds...")
-            time.sleep(30)
+    urls = [primary_url, fallback_url]
+    max_attempts = 2
+
+    for url in urls:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                logger.info(f"Fetched ISM catalog from {url}")
+                return response.json(), url
+            except requests.RequestException as e:
+                logger.warning(f"Attempt {attempt}/{max_attempts} failed for {url}: {e}")
+                if attempt < max_attempts:
+                    logger.info(f"Retrying in {RETRY_DELAY_SECONDS} seconds...")
+                    time.sleep(RETRY_DELAY_SECONDS)
+
+    raise requests.RequestException(
+        f"Failed to fetch ISM catalog from both {primary_url} and {fallback_url}"
+    )
+
+
+def load_strategy_map(path: Path) -> dict[str, list[str]]:
+    """Load the Essential Eight strategy map from JSON.
+
+    Args:
+        path: Path to e8_strategy_map.json.
+
+    Returns:
+        Dict mapping strategy name to list of lower-case control ids.
+
+    Raises:
+        SystemExit: If the map is missing, unreadable, or malformed.
+    """
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        logger.error(f"Strategy map not found: {path}")
+        raise SystemExit(1)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse strategy map {path}: {e}")
+        raise SystemExit(1)
+
+    strategies = data.get("strategies")
+    if not isinstance(strategies, dict):
+        logger.error(f"Strategy map {path} has no 'strategies' object")
+        raise SystemExit(1)
+
+    return {strategy: [str(cid).casefold() for cid in controls] for strategy, controls in strategies.items()}
+
+
+def _extract_e8_levels(control: dict[str, Any]) -> list[int]:
+    """Extract Essential Eight maturity levels from a control's props."""
+    levels: set[int] = set()
+    for prop in control.get("props", []):
+        if isinstance(prop, dict) and prop.get("name") == "essential-eight-applicability":
+            value = prop.get("value", "")
+            if value in ("ML1", "ML2", "ML3"):
+                levels.add(int(value[-1]))
+    return sorted(levels)
 
 
 def walk_control_tree(obj: Any, category: str = "") -> list[dict[str, Any]]:
-    """
-    Recursively walk the OSCAL catalog groups and extract controls.
+    """Recursively walk the OSCAL catalog groups and extract controls.
 
     Args:
         obj: Group/control dictionary or list from the catalog.
-        category: The top-level group title for categorizing controls.
+        category: The top-level group title for categorising controls.
 
     Returns:
-        List of dictionaries with control id, category, and description.
+        List of dictionaries with control id, category, description, e8_levels, and kind.
     """
     results: list[dict[str, Any]] = []
 
@@ -270,17 +159,18 @@ def walk_control_tree(obj: Any, category: str = "") -> list[dict[str, Any]]:
 
         description = extract_control_description(control)
         results.append({
-            "id": control_id.upper().replace("-", "-"),
+            "id": control_id.upper(),
             "category": current_category,
             "description": description,
+            "e8_levels": _extract_e8_levels(control),
+            "kind": "control" if control.get("class") == "ISM-control" else "principle",
         })
 
     return results
 
 
 def extract_control_description(control: dict[str, Any]) -> str:
-    """
-    Extract the prose description from a control's statement part.
+    """Extract the prose description from a control's statement part.
 
     Args:
         control: Control dictionary from OSCAL catalog.
@@ -306,30 +196,96 @@ def extract_control_description(control: dict[str, Any]) -> str:
 def filter_controls_by_category(
     controls: list[dict[str, Any]], categories: list[str]
 ) -> list[dict[str, Any]]:
-    """
-    Filter controls to include only those matching category keywords.
+    """Filter controls to include only those matching category keywords.
 
     Args:
         controls: List of all extracted controls.
         categories: List of category keywords for matching.
 
     Returns:
-        Filtered list of controls.
+        Filtered list of controls (id, category, description only).
     """
     filtered = []
     category_patterns = [cat.lower() for cat in categories]
 
     for control in controls:
+        if control.get("kind") != "control":
+            continue
         category = control["category"].lower()
         if any(pattern in category for pattern in category_patterns):
-            filtered.append(control)
+            filtered.append({
+                "id": control["id"],
+                "category": control["category"],
+                "description": control["description"],
+            })
 
     return filtered
 
 
-def save_output(data: dict[str, Any], output_path: Path) -> None:
+def _build_essential_eight(
+    strategy_map: dict[str, list[str]],
+    controls: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build the essential_eight list in map order, plus an Unmapped entry.
+
+    Args:
+        strategy_map: Strategy name -> list of lower-case control ids.
+        controls: All catalogue controls with e8_levels, kind, etc.
+
+    Returns:
+        List of strategy entries in map order; Unmapped appended when needed.
     """
-    Save combined data to JSON file.
+    control_by_id = {str(c["id"]).casefold(): c for c in controls if c.get("kind") == "control"}
+    mapped_ids: set[str] = set()
+    result: list[dict[str, Any]] = []
+
+    for strategy, ids in strategy_map.items():
+        strategy_controls: list[dict[str, Any]] = []
+        for cid in ids:
+            control = control_by_id.get(cid)
+            if control is None:
+                logger.warning(f"Strategy '{strategy}' references unknown control {cid}")
+                continue
+            levels = control.get("e8_levels", [])
+            if not levels:
+                logger.warning(f"Strategy '{strategy}' references control {cid} with no E8 levels")
+                continue
+            strategy_controls.append({
+                "id": control["id"].upper(),
+                "levels": levels,
+                "description": control["description"],
+            })
+            mapped_ids.add(cid)
+
+        result.append({
+            "strategy": strategy,
+            "controls": strategy_controls,
+        })
+
+    unmapped: list[dict[str, Any]] = []
+    for control in controls:
+        if control.get("kind") != "control":
+            continue
+        cid = str(control["id"]).casefold()
+        levels = control.get("e8_levels", [])
+        if levels and cid not in mapped_ids:
+            unmapped.append({
+                "id": control["id"].upper(),
+                "levels": levels,
+                "description": control["description"],
+            })
+
+    if unmapped:
+        result.append({
+            "strategy": "Unmapped",
+            "controls": unmapped,
+        })
+
+    return result
+
+
+def save_output(data: dict[str, Any], output_path: Path) -> None:
+    """Save combined data to JSON file.
 
     Args:
         data: Combined Essential Eight and ISM data dictionary.
@@ -340,6 +296,22 @@ def save_output(data: dict[str, Any], output_path: Path) -> None:
     logger.info(f"Output written to {output_path}")
 
 
+def _find_strategy_map(repo_root: Path, arg_path: str | None) -> Path:
+    """Resolve the strategy map path from argument or default locations."""
+    if arg_path is not None:
+        return Path(arg_path)
+
+    candidates = [
+        repo_root / "data" / "defaults" / "e8_strategy_map.json",
+        repo_root / "defaults" / "e8_strategy_map.json",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    return candidates[0]
+
+
 def main() -> None:
     """CLI entry point."""
     logging.basicConfig(
@@ -347,8 +319,10 @@ def main() -> None:
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
+    repo_root = Path(__file__).resolve().parent.parent
+
     parser = argparse.ArgumentParser(
-        description="Sync ASD ISM OSCAL catalog with Essential Eight dataset."
+        description="Sync ASD ISM OSCAL catalog with Essential Eight strategy map."
     )
     parser.add_argument(
         "--output",
@@ -361,17 +335,33 @@ def main() -> None:
         default=DEFAULT_CATEGORIES,
         help=f"Category keywords for filtering (default: {', '.join(DEFAULT_CATEGORIES)})",
     )
+    parser.add_argument(
+        "--strategy-map",
+        default=None,
+        help="Path to e8_strategy_map.json (default: data/defaults/e8_strategy_map.json)",
+    )
 
     args = parser.parse_args()
 
     output_path = Path(args.output)
+    strategy_map_path = _find_strategy_map(repo_root, args.strategy_map)
+
+    if not strategy_map_path.is_file():
+        logger.error(f"Strategy map not found: {strategy_map_path}")
+        raise SystemExit(1)
+
+    try:
+        strategy_map = load_strategy_map(strategy_map_path)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load strategy map {strategy_map_path}: {e}")
+        raise SystemExit(1)
 
     # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        logger.info(f"Fetching ISM catalog from {ISM_CATALOG_URL}")
-        catalog = fetch_ism_catalog()
+        logger.info("Fetching ISM catalog")
+        catalog, source_url = fetch_ism_catalog()
 
         logger.info("Walking control tree...")
         all_controls = walk_control_tree(
@@ -380,29 +370,51 @@ def main() -> None:
         )
         total_controls = len(all_controls)
 
-        logger.info(f"Filtering controls by category keywords...")
-        filtered_controls = filter_controls_by_category(all_controls, args.categories)
-        ism_controls = filtered_controls
+        logger.info("Filtering controls by category keywords...")
+        ism_controls = filter_controls_by_category(all_controls, args.categories)
 
         logger.info(
             f"Found {len(ism_controls)} matching ISM controls "
             f"(filtered from {total_controls} total)"
         )
 
+        essential_eight = _build_essential_eight(strategy_map, all_controls)
+        ism_ids = sorted({
+            c["id"].upper()
+            for c in all_controls
+            if c.get("kind") == "control"
+        })
+
         output_data = {
+            "schema": 2,
             "generated_at": iso_timestamp(),
-            "ism_source": ISM_CATALOG_URL,
-            "essential_eight": ESSENTIAL_EIGHT_DATA,
+            "ism_source": source_url,
+            "ism_version": catalog.get("catalog", {}).get("metadata", {}).get("version", ""),
+            "essential_eight": essential_eight,
             "ism": ism_controls,
+            "ism_ids": ism_ids,
         }
 
         save_output(output_data, output_path)
 
-        ee_count = len(ESSENTIAL_EIGHT_DATA)
+        strategy_count = len(essential_eight)
+        mapped_count = len({
+            control["id"]
+            for entry in essential_eight if entry["strategy"] != "Unmapped"
+            for control in entry["controls"]
+        })
+        unmapped_count = sum(
+            len(entry["controls"])
+            for entry in essential_eight
+            if entry["strategy"] == "Unmapped"
+        )
+
         logger.info(
-            f"Essential Eight entries: {ee_count}\n"
-            f"ISM controls fetched:    {len(ism_controls)} (filtered from {total_controls} total)\n"
-            f"Output written to:       {output_path}"
+            f"Essential Eight strategies: {strategy_count}\n"
+            f"Total mapped controls:      {mapped_count}\n"
+            f"Unmapped controls:          {unmapped_count}\n"
+            f"ISM controls fetched:       {len(ism_controls)} (filtered from {total_controls} total)\n"
+            f"Output written to:          {output_path}"
         )
 
     except requests.RequestException as e:
@@ -415,17 +427,18 @@ def main() -> None:
 
 def iso_timestamp() -> str:
     """Generate ISO 8601 timestamp for output."""
-    from datetime import datetime, timezone
-
     return datetime.now(timezone.utc).isoformat()
 
 
 __all__ = [
-    "main",
-    "fetch_ism_catalog",
-    "walk_control_tree",
+    "_build_essential_eight",
     "extract_control_description",
+    "fetch_ism_catalog",
     "filter_controls_by_category",
+    "load_strategy_map",
+    "main",
+    "save_output",
+    "walk_control_tree",
 ]
 
 

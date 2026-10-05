@@ -1,28 +1,28 @@
 {
   "_comment": "Per-strategy keyword blocklists for e8_scorer.py. Words in 'blocked_keywords' are excluded from keyword matching for that strategy to reduce false positives.",
   "strategy_blocklist": {
-    "Patch Applications": [
+    "Patch applications": [
       "persistent", "maintain", "automated", "evasion", "detection",
       "monitoring", "firewall", "block", "reconnaissance"
     ],
-    "Patch Operating Systems": [
+    "Patch operating systems": [
       "persistent", "maintain", "automated", "evasion", "detection",
       "monitoring", "firewall", "block", "reconnaissance"
     ],
-    "Application Control": [
+    "Application control": [
       "persistent", "maintain", "automated", "evasion", "detection",
       "monitoring", "firewall", "block"
     ],
-    "User Application Hardening": [
+    "User application hardening": [
       "persistent", "maintain", "automated", "evasion", "detection",
       "monitoring", "firewall", "block"
     ],
-    "Regular Backups": [
+    "Regular backups": [
       "persistent", "maintain", "automated", "evasion", "detection",
       "monitoring", "firewall", "block", "attempts", "brute", "force",
       "probe", "probing", "perimeter", "source", "volume"
     ],
-    "Restrict Microsoft Office Macros": [
+    "Restrict Microsoft Office macros": [
       "persistent", "maintain", "automated", "evasion", "detection",
       "monitoring", "firewall", "block"
     ]

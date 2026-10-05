@@ -200,3 +200,56 @@ def test_technique_id_in_notes_not_flagged() -> None:
         set(),
     )
     assert flags == ["T1078"]
+
+
+# --- ISM control id checks (Build 2b) ---
+
+
+def test_unknown_ism_id_flagged() -> None:
+    """An ISM id not in the catalogue is flagged."""
+    flags = _fidelity_flags(
+        _finding(narrative="Review ISM-9999 for this cluster."),
+        set(),
+        ism_ids={"ISM-1654"},
+    )
+    assert "ISM-9999" in flags
+
+
+def test_known_ism_id_not_flagged() -> None:
+    """An ISM id present in the catalogue is not flagged."""
+    flags = _fidelity_flags(
+        _finding(narrative="Review ISM-1654 for this cluster."),
+        set(),
+        ism_ids={"ISM-1654"},
+    )
+    assert "ISM-1654" not in flags
+
+
+def test_lowercase_ism_id_handled() -> None:
+    """A lower-case ism-nnnn token is flagged when not in the catalogue."""
+    flags = _fidelity_flags(
+        _finding(narrative="Review ism-9999 for this cluster."),
+        set(),
+        ism_ids={"ISM-1654"},
+    )
+    assert "ism-9999" in flags
+
+
+def test_ism_check_disabled_when_ism_ids_none() -> None:
+    """When ism_ids is None, no ISM id is flagged."""
+    flags = _fidelity_flags(
+        _finding(narrative="Review ISM-9999 for this cluster."),
+        set(),
+        ism_ids=None,
+    )
+    assert "ISM-9999" not in flags
+
+
+def test_ism_check_disabled_when_ism_ids_empty() -> None:
+    """When ism_ids is empty, no ISM id is flagged."""
+    flags = _fidelity_flags(
+        _finding(narrative="Review ISM-9999 for this cluster."),
+        set(),
+        ism_ids=set(),
+    )
+    assert "ISM-9999" not in flags
