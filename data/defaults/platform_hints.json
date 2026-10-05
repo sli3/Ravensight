@@ -2,6 +2,7 @@
   "freebsd": {
     "description": "FreeBSD and derivatives (OPNsense, pfSense)",
     "filesystem_notes": "FAT32 (EFI partition) does not implement Unix hard link counts.",
+    "vendors": ["OPNsense", "pfSense"],
     "rules": {
       "510": {
         "paths": ["/boot/efi"],

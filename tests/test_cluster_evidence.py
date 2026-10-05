@@ -17,6 +17,9 @@ from ravensight.evidence import (
     MAX_EVIDENCE_VALUE_CHARS,
     MAX_EVIDENCE_VALUES,
     _classify_ip_scope,
+    _empty_shape_acc,
+    _project_firewall,
+    _render_firewall,
     accumulate,
     dpkg_event,
     render_evidence,
@@ -188,8 +191,8 @@ def test_syscheck_fixture_rendering() -> None:
     """Syscheck fixture evidence renders as the documented example line."""
     cluster = _only_cluster([_fixture("syscheck-550.json")])
     assert render_evidence(cluster["evidence"]) == (
-        "paths /etc/resolv.conf; event modified; changed inode, mtime; "
-        "content unchanged"
+        "content unchanged; event modified; changed inode, mtime; "
+        "paths /etc/resolv.conf"
     )
 
 
@@ -447,6 +450,7 @@ def test_firewall_multiple_fixture_evidence() -> None:
             "dstports": ["443"],
             "src_scopes": ["internal"],
             "dst_scopes": ["external"],
+            "direction_scopes": {"in": [["internal", "external"]]},
             "sources_total": 3,
             "sources_by_version": {"ipv6": 3},
         }
@@ -488,6 +492,7 @@ def test_firewall_drop_fixture_evidence() -> None:
             "dstports": ["80"],
             "src_scopes": ["internal"],
             "dst_scopes": ["external"],
+            "direction_scopes": {"in": [["internal", "external"]]},
             "sources_total": 1,
         }
     }
@@ -632,6 +637,54 @@ def test_firewall_scope_survives_400_char_truncation() -> None:
     assert cluster_line.endswith("…")
 
 
+def test_firewall_mixed_direction_fixture_evidence() -> None:
+    """Mixed-direction fixture accumulates per-direction scope pairs."""
+    cluster = _only_cluster([_fixture("firewall-mixed-dir-87702.json")])
+    fw = cluster["evidence"]["firewall"]
+    assert set(fw["direction_scopes"]) == {"in", "out"}
+    assert fw["direction_scopes"]["in"] == [["external", "internal"]]
+    assert fw["direction_scopes"]["out"] == [["internal", "external"]]
+
+
+def test_firewall_mixed_direction_fixture_rendering() -> None:
+    """Mixed-direction fixture renders scope with direction groups."""
+    cluster = _only_cluster([_fixture("firewall-mixed-dir-87702.json")])
+    rendered = render_evidence(cluster["evidence"])
+    assert "scope in external → internal / out internal → external" in rendered
+
+
+def test_firewall_single_direction_renders_flat_scope() -> None:
+    """A single direction still renders the flat src → dst scope."""
+    cluster = _only_cluster([_fixture("firewall-drop-87701.json")])
+    rendered = render_evidence(cluster["evidence"])
+    assert "scope internal → external" in rendered
+    assert " / " not in rendered
+
+
+def test_firewall_direction_scopes_capped_at_two_pairs() -> None:
+    """Per-direction scope groups keep only the first two sorted pairs."""
+    acc = _empty_shape_acc("firewall")
+    acc["direction_scopes"] = {
+        "in": {
+            ("external", "internal"),
+            ("external", "internal2"),
+            ("external", "internal3"),
+        },
+        "out": {("internal", "external")},
+    }
+    projected = _project_firewall(acc)
+    assert len(projected["direction_scopes"]["in"]) == 2
+    rendered = _render_firewall(projected)
+    scope_part = next(p for p in rendered if p.startswith("scope "))
+    assert scope_part.count("→") == 3
+
+
+def test_firewall_legacy_dict_renders_flat_scope() -> None:
+    """A legacy evidence dict without direction_scopes renders the flat scope."""
+    rendered = _render_firewall({"src_scopes": ["internal"], "dst_scopes": ["external"]})
+    assert rendered == ["scope internal → external"]
+
+
 # --- per-host evidence (Build 1e) ---
 
 
@@ -661,8 +714,8 @@ def test_per_host_two_syscheck_hosts() -> None:
     assert per_host["kamaji"]["syscheck"]["paths"] == ["/etc/ld.so.cache"]
     assert per_host["OPNsense"]["syscheck"]["paths"] == ["/etc/passwd"]
     rendered = render_evidence(cluster["evidence"])
-    assert "per host [OPNsense: paths /etc/passwd; event modified]" in rendered
-    assert "[kamaji: paths /etc/ld.so.cache; event modified]" in rendered
+    assert "per host [OPNsense: event modified; paths /etc/passwd]" in rendered
+    assert "[kamaji: event modified; paths /etc/ld.so.cache]" in rendered
     assert rendered.index("[OPNsense:") < rendered.index("[kamaji:")
 
 
@@ -685,6 +738,26 @@ def test_per_host_segment_truncated_at_max_host_chars() -> None:
     }
     segment = "[longhost: " + "a" * 119 + "…]"
     assert render_evidence(evidence_dict) == "per host " + segment
+
+
+def test_per_host_syscheck_content_first_when_paths_long() -> None:
+    """Even when a host's path list exceeds the per-host cap, content leads."""
+    long_path = "/etc/" + "a" * 200
+    evidence_dict = {
+        "per_host": {
+            "host1": {
+                "syscheck": {
+                    "content": "unchanged",
+                    "events": ["modified"],
+                    "changed": ["inode"],
+                    "paths": [long_path],
+                }
+            }
+        }
+    }
+    rendered = render_evidence(evidence_dict)
+    segment_start = rendered.find("[host1: ") + len("[host1: ")
+    assert rendered[segment_start:].startswith("content ")
 
 
 # --- generic ---

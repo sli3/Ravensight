@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from ravensight.analyser import (
+    _build_asd_context,
     _build_host_facts_block,
     _build_platform_context,
     _load_platform_agents,
     _load_platform_hints,
+    _rewrite_cluster_vendor_names,
 )
 
 FREEBSD_HINT = (
@@ -342,7 +344,7 @@ def test_build_platform_context_falls_back_to_agents_map() -> None:
     platform_agents = {"fw1": {"platform": "freebsd", "vendor": "OPNsense"}}
     context = _build_platform_context(alerts, FREEBSD_HINTS, platform_agents)
     assert context.startswith("Platform context:\n")
-    assert "- Agent: fw1 (freebsd — FreeBSD and derivatives" in context
+    assert "- Agent: fw1 (freebsd — OPNsense)" in context
     assert "Rule 510 on /boot/efi" in context
 
 
@@ -445,3 +447,168 @@ def test_build_host_facts_block_preserves_alert_casing() -> None:
     platform_agents = {"opnsense": {"platform": "freebsd", "vendor": "OPNsense"}}
     block = _build_host_facts_block(clusters, platform_agents)
     assert "- OPNsense: OPNsense (freebsd)." in block
+
+
+# --- vendor name rewrite (Build 2a) ---
+
+
+def _cluster_for_rewrite(hosts: list[str], description: str) -> dict[str, Any]:
+    """Build a minimal cluster dict for vendor rewrite tests."""
+    return {
+        "id": "C1",
+        "type": "rule",
+        "description": description,
+        "hosts": hosts,
+    }
+
+
+def test_rewrite_vendor_name_positive_control() -> None:
+    """A cluster with one mapped host rewrites vendor names to the mapped vendor."""
+    clusters = [
+        _cluster_for_rewrite(
+            ["fw-a"],
+            "PFONTEND pfSense firewall blocks events from same source.",
+        )
+    ]
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    platform_hints = {
+        "freebsd": {"description": "FreeBSD", "vendors": ["OPNsense", "pfSense"]}
+    }
+    _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
+    assert clusters[0]["description"] == (
+        "PFONTEND OPNsense firewall blocks events from same source."
+    )
+    assert "pfSense" not in clusters[0]["description"]
+
+
+def test_rewrite_vendor_name_case_variants() -> None:
+    """Vendor candidates are replaced case-insensitively with word boundaries."""
+    for desc_in, desc_out in (
+        ("PFSENSE firewall", "OPNsense firewall"),
+        ("pfsense firewall", "OPNsense firewall"),
+    ):
+        clusters = [_cluster_for_rewrite(["fw-a"], desc_in)]
+        platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+        platform_hints = {
+            "freebsd": {"description": "FreeBSD", "vendors": ["OPNsense", "pfSense"]}
+        }
+        _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
+        assert clusters[0]["description"] == desc_out
+
+
+def test_rewrite_vendor_name_unmapped_host_unchanged() -> None:
+    """A cluster with an unmapped host is left untouched."""
+    clusters = [_cluster_for_rewrite(["fw-x"], "pfSense firewall")]
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    platform_hints = {
+        "freebsd": {"description": "FreeBSD", "vendors": ["OPNsense", "pfSense"]}
+    }
+    _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
+    assert clusters[0]["description"] == "pfSense firewall"
+
+
+def test_rewrite_vendor_name_mixed_vendors_unchanged() -> None:
+    """A cluster whose hosts map to different vendors is left untouched."""
+    clusters = [_cluster_for_rewrite(["fw-a", "fw-b"], "pfSense firewall")]
+    platform_agents = {
+        "fw-a": {"platform": "freebsd", "vendor": "OPNsense"},
+        "fw-b": {"platform": "freebsd", "vendor": "pfSense"},
+    }
+    platform_hints = {
+        "freebsd": {"description": "FreeBSD", "vendors": ["OPNsense", "pfSense"]}
+    }
+    _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
+    assert clusters[0]["description"] == "pfSense firewall"
+
+
+def test_rewrite_vendor_name_no_vendors_key_unchanged() -> None:
+    """A hint entry without a vendors key leaves descriptions untouched."""
+    clusters = [_cluster_for_rewrite(["fw-a"], "pfSense firewall")]
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    platform_hints = {"freebsd": {"description": "FreeBSD"}}
+    _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
+    assert clusters[0]["description"] == "pfSense firewall"
+
+
+def test_rewrite_vendor_name_candidate_equals_vendor_skipped() -> None:
+    """A candidate identical to the mapped vendor is skipped, not self-replaced."""
+    clusters = [_cluster_for_rewrite(["fw-a"], "OPNsense firewall")]
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    platform_hints = {
+        "freebsd": {"description": "FreeBSD", "vendors": ["OPNsense", "pfSense"]}
+    }
+    _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
+    assert clusters[0]["description"] == "OPNsense firewall"
+
+
+def test_rewrite_vendor_name_empty_vendor_treated_as_unmapped() -> None:
+    """A mapped host with an empty vendor string is treated as unmapped."""
+    clusters = [_cluster_for_rewrite(["fw-a"], "pfSense firewall")]
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": ""}}
+    platform_hints = {
+        "freebsd": {"description": "FreeBSD", "vendors": ["OPNsense", "pfSense"]}
+    }
+    _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
+    assert clusters[0]["description"] == "pfSense firewall"
+
+
+def test_build_platform_context_uses_mapped_vendor_name() -> None:
+    """The platform context agent line shows the mapped vendor when available."""
+    alerts = [
+        {
+            "_source": {
+                "agent": {"name": "fw-a"},
+                "rule": {"id": "510", "description": "FIM event"},
+            }
+        }
+    ]
+    platform_agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    context = _build_platform_context(alerts, FREEBSD_HINTS, platform_agents)
+    assert "- Agent: fw-a (freebsd — OPNsense)" in context
+
+
+# --- ASD context truncation (Build 2a) ---
+
+
+def test_build_asd_context_collapses_before_truncating() -> None:
+    """Newlines collapse before the 120-character truncation is applied."""
+    asd_data = {
+        "ism": [
+            {
+                "id": "ISM-1175",
+                "category": "Patching",
+                "description": "a\n" + "b " * 80,
+            }
+        ]
+    }
+    context = _build_asd_context(asd_data)
+    control_line = next(line for line in context.splitlines() if line.startswith("  ISM-1175"))
+    assert "\n" not in control_line
+    assert "  ISM-1175: a b b" in control_line
+    assert len(control_line.split(": ", 1)[1]) <= 120
+
+
+# --- data file parity ---
+
+
+def test_platform_hints_defaults_match_source() -> None:
+    """The defaults copy of platform hints is byte-identical to the source."""
+    source = Path("data/platform_hints.json").read_bytes()
+    default = Path("data/defaults/platform_hints.json").read_bytes()
+    assert source == default
+
+
+def test_platform_context_non_string_agent_name_does_not_crash() -> None:
+    """A non-string agent name keeps the hints description and does not raise."""
+    alerts = [
+        {
+            "_source": {
+                "agent": {"name": 7, "os": {"platform": "freebsd"}},
+                "rule": {"id": "510", "description": "x"},
+            }
+        }
+    ]
+    hints = {"freebsd": {"description": "FreeBSD", "filesystem_notes": "note"}}
+    agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    context = _build_platform_context(alerts, hints, platform_agents=agents)
+    assert "- Agent: 7 (freebsd — FreeBSD)" in context

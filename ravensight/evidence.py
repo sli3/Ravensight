@@ -66,9 +66,22 @@ def _clean(value: Any) -> str:
     return text
 
 
-def _sanitise(value: Any) -> str:
+def sanitise_cell(value: Any) -> str:
     """Collapse whitespace and escape pipes in one rendered value."""
     return " ".join(str(value).split()).replace("|", "\\|")
+
+
+_sanitise = sanitise_cell
+
+
+def truncate_words(text: str, limit: int) -> str:
+    """Truncate text to at most limit characters, breaking at a word boundary."""
+    if len(text) <= limit:
+        return text
+    cut = text.rfind(" ", 0, limit - 1)
+    if cut == -1:
+        return text[: limit - 1] + _ELLIPSIS
+    return text[:cut] + _ELLIPSIS
 
 
 def _add_unique(
@@ -152,6 +165,7 @@ def _empty_shape_acc(shape: str) -> dict[str, Any]:
             "dstports": [],
             "src_scopes": set(),
             "dst_scopes": set(),
+            "direction_scopes": {},
             "sources_total": 0,
             "sources_distinct": set(),
             "sources_by_version": {"ipv4": set(), "ipv6": set()},
@@ -404,6 +418,10 @@ def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
         dst_scope = _classify_ip_scope(dst)
         if dst_scope:
             acc["dst_scopes"].add(dst_scope)
+        if src_scope and dst_scope and direction:
+            acc["direction_scopes"].setdefault(direction, set()).add(
+                (src_scope, dst_scope)
+            )
         _add_unique(acc["destinations"], dst)
 
         if src:
@@ -462,17 +480,19 @@ def accumulate(acc: dict[str, Any], alert: dict[str, Any]) -> None:
 def _project_syscheck(acc: dict[str, Any]) -> dict[str, Any]:
     """Project the syscheck accumulator, deriving the three-state content verdict."""
     out: dict[str, Any] = {}
-    if acc["paths"]:
-        out["paths"] = sorted(acc["paths"])
-    if acc["events"]:
-        out["events"] = sorted(acc["events"])
-    if acc["changed"]:
-        changed = sorted(acc["changed"])
+    paths = sorted(acc["paths"]) if acc["paths"] else []
+    events = sorted(acc["events"]) if acc["events"] else []
+    changed = sorted(acc["changed"]) if acc["changed"] else []
+    if changed:
+        out["content"] = (
+            "changed" if _CONTENT_ATTRIBUTES.intersection(changed) else "unchanged"
+        )
+    if events:
+        out["events"] = events
+    if changed:
         out["changed"] = changed
-        if _CONTENT_ATTRIBUTES.intersection(changed):
-            out["content"] = "changed"
-        else:
-            out["content"] = "unchanged"
+    if paths:
+        out["paths"] = paths
     return out
 
 
@@ -556,6 +576,11 @@ def _project_firewall(acc: dict[str, Any]) -> dict[str, Any]:
         out["src_scopes"] = sorted(acc["src_scopes"])
     if acc["dst_scopes"]:
         out["dst_scopes"] = sorted(acc["dst_scopes"])
+    if acc["direction_scopes"]:
+        out["direction_scopes"] = {
+            direction: sorted([list(pair) for pair in pairs])[:2]
+            for direction, pairs in sorted(acc["direction_scopes"].items())
+        }
     return out
 
 
@@ -602,16 +627,16 @@ def project_evidence(acc: dict[str, Any]) -> dict[str, Any] | None:
 def _render_syscheck(data: dict[str, Any]) -> list[str]:
     """Render syscheck evidence fields."""
     parts = []
-    if data.get("paths"):
-        parts.append("paths " + ", ".join(_sanitise(p) for p in data["paths"]))
+    if data.get("content"):
+        parts.append("content " + _sanitise(data["content"]))
     if data.get("events"):
         parts.append("event " + ", ".join(_sanitise(e) for e in data["events"]))
     if data.get("changed"):
         parts.append(
             "changed " + ", ".join(_sanitise(a) for a in data["changed"])
         )
-    if data.get("content"):
-        parts.append("content " + _sanitise(data["content"]))
+    if data.get("paths"):
+        parts.append("paths " + ", ".join(_sanitise(p) for p in data["paths"]))
     return parts
 
 
@@ -689,7 +714,15 @@ def _render_firewall(data: dict[str, Any]) -> list[str]:
         )
     src_scopes = data.get("src_scopes") or []
     dst_scopes = data.get("dst_scopes") or []
-    if src_scopes and dst_scopes:
+    direction_scopes = data.get("direction_scopes") or {}
+    if direction_scopes and len(direction_scopes) >= 2:
+        per_direction_groups = []
+        for dir_ in sorted(direction_scopes):
+            pairs = sorted(direction_scopes[dir_])[:2]
+            group = ", ".join(f"{src_} → {dst_}" for src_, dst_ in pairs)
+            per_direction_groups.append(f"{_sanitise(dir_)} {group}")
+        parts.append("scope " + " / ".join(per_direction_groups))
+    elif src_scopes and dst_scopes:
         src_side = ", ".join(src_scopes)
         dst_side = ", ".join(dst_scopes)
         parts.append(f"scope {src_side} → {dst_side}")

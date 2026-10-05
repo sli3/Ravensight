@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from ravensight import reporter
+from ravensight.evidence import truncate_words
 from ravensight.reporter import REPORT_MAX_CVES, Reporter
 
 
@@ -198,8 +199,8 @@ def test_evidence_sub_bullet_renders(tmp_path: Path) -> None:
     evidence_lines = [line for line in lines if line.strip().startswith("- Evidence:")]
     assert len(evidence_lines) == 1
     assert evidence_lines[0] == (
-        "  - Evidence: paths /etc/resolv.conf; event modified; "
-        "changed inode, mtime; content unchanged"
+        "  - Evidence: content unchanged; event modified; "
+        "changed inode, mtime; paths /etc/resolv.conf"
     )
     # sub-bullet sits between the narrative line and any CVEs line
     narrative_idx = lines.index(
@@ -308,3 +309,79 @@ def test_blank_line_before_mitre_tags_without_similar_incidents(
     assert lines[idx - 1] == ""
     bullet_idx = next(i for i, line in enumerate(lines) if line.startswith("- **[C3]"))
     assert idx - bullet_idx >= 2
+
+
+# --- ASD/ISM table cell sanitisation (Build 2a) ---
+
+
+def test_ism_table_sanitises_newline_pipe_and_long_description() -> None:
+    """ISM table rows are single-line, pipe-escaped and description-capped."""
+    description = "Line one\nLine two " + "x" * 200
+    control = {
+        "id": "ISM-1175",
+        "category": "A | B",
+        "description": description,
+    }
+    section = reporter._render_asd_section(
+        asd_data={"ism": [control]}, matched_controls=[control]
+    )
+    row_lines = [
+        line for line in section.splitlines() if line.startswith("| ISM-1175")
+    ]
+    assert len(row_lines) == 1
+    row = row_lines[0]
+    assert "\n" not in row
+    assert "A \\| B" in row
+    assert "…" in row
+    desc_cell = row.rsplit("|", 2)[1].strip()
+    assert len(desc_cell) <= 120
+
+
+def test_ism_table_description_exactly_120_chars_unchanged() -> None:
+    """A description that collapses to exactly 120 chars needs no ellipsis."""
+    description = "x" * 120
+    control = {
+        "id": "ISM-1175",
+        "category": "Patching",
+        "description": description,
+    }
+    section = reporter._render_asd_section(
+        asd_data={"ism": [control]}, matched_controls=[control]
+    )
+    row = next(line for line in section.splitlines() if line.startswith("| ISM-1175"))
+    desc_cell = row.rsplit("|", 2)[1].strip()
+    assert "…" not in desc_cell
+    assert len(desc_cell) == 120
+
+
+def test_truncate_words_hard_cut_when_no_space() -> None:
+    """truncate_words hard-cuts at limit-1 chars when no word boundary exists."""
+    text = "a" * 130
+    result = truncate_words(text, 120)
+    assert len(result) == 120
+    assert result.endswith("…")
+    assert result.startswith("a" * 119)
+
+
+def test_ism_fallback_table_sanitises_cells() -> None:
+    """The no-match fallback ISM table gets the same cell treatment."""
+    control = {
+        "id": "ISM-0917",
+        "category": "A | B",
+        "description": "Line one\nLine two " + "word " * 60,
+    }
+    section = reporter._render_asd_section(asd_data={"ism": [control]})
+    row_lines = [
+        line for line in section.splitlines() if line.startswith("| ISM-0917")
+    ]
+    assert len(row_lines) == 1
+    row = row_lines[0]
+    assert "A \\| B" in row
+    desc_cell = row.rsplit("|", 2)[1].strip()
+    assert len(desc_cell) <= 120
+    assert desc_cell.endswith("word…")
+
+
+def test_truncate_words_no_space_before_ellipsis() -> None:
+    """A word-boundary cut drops the boundary space."""
+    assert truncate_words("aaa bbb ccc ddd", 10) == "aaa bbb…"

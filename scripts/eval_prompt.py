@@ -12,6 +12,7 @@ Importing this module has no side effects; everything runs under main().
 
 import argparse
 import inspect
+import itertools
 import json
 import logging
 import re
@@ -36,6 +37,24 @@ from ravensight.evidence import render_evidence
 logger = logging.getLogger(__name__)
 
 FIXTURE_AGENTS = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+
+NEGATORS = frozenset(
+    {
+        "no",
+        "not",
+        "never",
+        "without",
+        "nor",
+        "neither",
+        "cannot",
+        "unlikely",
+        "absent",
+        "lacks",
+        "lacking",
+        "none",
+        "nothing",
+    }
+)
 
 
 def _load_config(path: str) -> dict:
@@ -74,6 +93,55 @@ def _make_platform_agents_tmpfile() -> str:
         return f.name
 
 
+def _unnegated_count(text_lower: str, term: str) -> int:
+    """Return the number of non-negated occurrences of term in lower-cased text."""
+
+    def _is_negated(
+        tokens: list[tuple[str, int, int]],
+        index: int,
+        position: int,
+        clause: str,
+    ) -> bool:
+        start = max(0, index - 4)
+        for token, _, _ in tokens[start:index]:
+            if token in NEGATORS or token.endswith(("n't", "n’t")):
+                return True
+        window = [token for token, _, _ in tokens[start:index]]
+        for pair in itertools.pairwise(window):
+            if pair in (("rather", "than"), ("instead", "of")):
+                return True
+        before = clause[:position].rstrip()
+        return before.endswith((" rather than", " instead of")) or before in (
+            "rather than",
+            "instead of",
+        )
+
+    count = 0
+    for clause in re.split(r"[.!?;\n]", text_lower):
+        tokens: list[tuple[str, int, int]] = []
+        for match in re.finditer(r"\S+", clause):
+            raw = match.group()
+            cleaned = raw.strip(".,;:()[]{}'\"‘“” ")
+            if cleaned:
+                tokens.append((cleaned, match.start(), match.end()))
+        if " " in term:
+            for match in re.finditer(re.escape(term), clause):
+                phrase_start = match.start()
+                idx = -1
+                for i, (_, start, end) in enumerate(tokens):
+                    if end <= phrase_start:
+                        idx = i
+                    else:
+                        break
+                if not _is_negated(tokens, idx + 1, phrase_start, clause):
+                    count += 1
+        else:
+            for i, (token, start, _) in enumerate(tokens):
+                if term in token and not _is_negated(tokens, i, start, clause):
+                    count += 1
+    return count
+
+
 def _score_clusters(
     clusters: list[dict],
     rendered_evidence_by_id: dict[str, str],
@@ -89,14 +157,15 @@ def _score_clusters(
         lowered = text.lower()
         evidence_text = rendered_evidence_by_id.get(cluster.get("id", ""), "")
         ev_lowered = evidence_text.lower()
-        if "pfsense" in lowered:
+        if _unnegated_count(lowered, "pfsense") > 0:
             scores["F1"] += 1
         evidence_dict = cluster.get("evidence") or {}
-        if "firewall" in evidence_dict and (
-            "scan" in lowered or "external interface" in lowered
+        if "firewall" in evidence_dict and any(
+            _unnegated_count(lowered, term) > 0
+            for term in ("scan", "external interface")
         ):
             scores["F2"] += 1
-        for port in re.findall(r"\bport\s+(\d+)", lowered):
+        for port in re.findall(r"\bports?\s+(\d+)", lowered):
             if port not in ev_lowered:
                 scores["F3"] += 1
         for token in lowered.split():
@@ -104,20 +173,20 @@ def _score_clusters(
             if token.startswith("/") and token not in ev_lowered:
                 scores["F3"] += 1
         if "syscheck" in evidence_dict and any(
-            w in lowered
-            for w in ("alter", "tamper", "restore", "malicious", "compromis")
+            _unnegated_count(lowered, term) > 0
+            for term in ("alter", "tamper", "restore", "malicious", "compromis")
         ):
             scores["F4"] += 1
         if "dpkg" in evidence_dict and any(
-            w in lowered
-            for w in ("interrupt", "incomplete", "fail", "broken")
+            _unnegated_count(lowered, term) > 0
+            for term in ("interrupt", "incomplete", "fail", "broken")
         ):
             scores["F5"] += 1
         if "mitre" in lowered:
             any_mitre = True
         if any(
-            w in lowered
-            for w in ("restore", "forensic", "isolat", "reimage", "incident response")
+            _unnegated_count(lowered, term) > 0
+            for term in ("restore", "forensic", "isolat", "reimage", "incident response")
         ):
             scores["F7"] += 1
         scores["F8"] += len(cluster.get("flags") or [])

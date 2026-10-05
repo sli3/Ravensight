@@ -148,3 +148,108 @@ def test_error_row_is_only_error_key(
     assert len(rows) == 1
     assert set(rows[0].keys()) == {"error"}
     assert "RuntimeError" in rows[0]["error"]
+
+
+# --- negation-aware scoring (Build 2a) ---
+
+
+def test_unnegated_count_basic_cases() -> None:
+    """_unnegated_count respects negators, clause boundaries and 'rather than'."""
+    assert eval_prompt._unnegated_count("no evidence of tampering", "tamper") == 0
+    assert eval_prompt._unnegated_count("files were not altered", "alter") == 0
+    assert eval_prompt._unnegated_count("this is not a scan", "scan") == 0
+    assert (
+        eval_prompt._unnegated_count(
+            "completed without any signs of compromise", "compromis"
+        )
+        == 0
+    )
+    assert eval_prompt._unnegated_count("didn't fail", "fail") == 0
+    assert eval_prompt._unnegated_count("tampering with files occurred", "tamper") == 1
+    assert (
+        eval_prompt._unnegated_count("No change. The file was altered.", "alter") == 1
+    )
+    assert (
+        eval_prompt._unnegated_count(
+            "it was not a scan but rather a normal connection", "scan"
+        )
+        == 0
+    )
+
+
+def test_score_clusters_negation_heavy_cluster_scores_zero() -> None:
+    """Negating every failure-mode term yields zero for F1/F2/F4/F5/F7."""
+    cluster = {
+        "id": "C1",
+        "narrative": (
+            "no pfsense, not a scan, no external interface, not altered, "
+            "no tamper, never restore, neither malicious nor compromise, "
+            "without interrupt, not incomplete, cannot fail, not broken, "
+            "no forensic isolation, no reimage, no incident response"
+        ),
+        "recommendation": "",
+        "evidence": {
+            "firewall": {},
+            "syscheck": {},
+            "dpkg": {},
+        },
+        "flags": [],
+    }
+    scores = eval_prompt._score_clusters([cluster], {})
+    for name in ("F1", "F2", "F4", "F5", "F7"):
+        assert scores[name] == 0, name
+
+
+def test_score_clusters_positive_control_cluster_scores_one() -> None:
+    """Mentioning every failure-mode term without negation yields one each."""
+    cluster = {
+        "id": "C1",
+        "narrative": (
+            "pfsense scan external interface alter tamper restore malicious "
+            "compromise interrupt incomplete fail broken forensic isolat "
+            "reimage incident response"
+        ),
+        "recommendation": "",
+        "evidence": {
+            "firewall": {},
+            "syscheck": {},
+            "dpkg": {},
+        },
+        "flags": [],
+    }
+    scores = eval_prompt._score_clusters([cluster], {})
+    for name in ("F1", "F2", "F4", "F5", "F7"):
+        assert scores[name] == 1, name
+
+
+def test_score_clusters_f3_accepts_ports_plural() -> None:
+    """F3 regex matches 'ports 443' as well as 'port 443'."""
+    cluster = {
+        "id": "C1",
+        "narrative": "traffic on ports 443 only",
+        "recommendation": "",
+        "evidence": {"firewall": {}},
+        "flags": [],
+    }
+    scores = eval_prompt._score_clusters([cluster], {})
+    assert scores["F3"] == 1
+
+
+def test_unnegated_count_review_fix_cases() -> None:
+    """Curly apostrophes, 'rather than', brackets and none/nothing negate."""
+    assert eval_prompt._unnegated_count("it didn’t fail", "fail") == 0
+    assert eval_prompt._unnegated_count("blocks rather than scans", "scan") == 0
+    assert eval_prompt._unnegated_count("logged instead of tampering", "tamper") == 0
+    assert eval_prompt._unnegated_count("(not altered)", "alter") == 0
+    assert eval_prompt._unnegated_count("nothing was altered", "alter") == 0
+    assert eval_prompt._unnegated_count("none were tampered with", "tamper") == 0
+    assert eval_prompt._unnegated_count("rather a scan than a block", "scan") == 1
+
+
+def test_unnegated_count_rather_than_with_words_between() -> None:
+    """'rather than an inbound scan' is negated even with words in between."""
+    text = "consistent with routine outbound filtering rather than an inbound scan"
+    assert eval_prompt._unnegated_count(text, "scan") == 0
+    text = "normal filtering instead of an external scan"
+    assert eval_prompt._unnegated_count(text, "scan") == 0
+    assert eval_prompt._unnegated_count("rather a scan than a block", "scan") == 1

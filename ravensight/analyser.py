@@ -126,10 +126,9 @@ def _build_asd_context(asd_data: dict) -> str:
             lines.append(f"{category}:")
             for control in controls:
                 desc = control.get("description", "")
-                # Truncate to 120 characters
-                truncated = desc[:120] if len(desc) > 120 else desc
-                # Remove newlines for compact format and strip trailing whitespace
-                truncated = " ".join(truncated.split())
+                # Collapse whitespace first, then truncate to 120 characters
+                collapsed = " ".join(desc.split())
+                truncated = evidence.truncate_words(collapsed, 120)
                 lines.append(f"  {control.get('id', 'Unknown')}: {truncated}")
 
     return "\n".join(lines)
@@ -216,6 +215,55 @@ def _load_platform_agents(path: str | None) -> dict:
             continue
         result[key] = {"platform": platform, "vendor": vendor}
     return result
+
+
+def _rewrite_cluster_vendor_names(
+    clusters: list[dict[str, Any]],
+    platform_agents: dict[str, dict[str, str]],
+    platform_hints: dict[str, Any],
+) -> None:
+    """Rewrite vendor names in cluster descriptions when every host agrees."""
+    for cluster in clusters:
+        hosts = cluster.get("hosts", [])
+        if not hosts:
+            continue
+        common_vendor: str | None = None
+        common_platform: str | None = None
+        all_mapped = True
+        for host in hosts:
+            mapped = (
+                platform_agents.get(host.casefold()) if isinstance(host, str) else None
+            )
+            if not isinstance(mapped, dict):
+                all_mapped = False
+                break
+            vendor = mapped.get("vendor")
+            platform = mapped.get("platform")
+            if not isinstance(vendor, str) or not isinstance(platform, str) or not vendor:
+                all_mapped = False
+                break
+            if common_vendor is None:
+                common_vendor = vendor
+                common_platform = platform
+            elif vendor != common_vendor or platform != common_platform:
+                all_mapped = False
+                break
+        if not all_mapped or common_vendor is None or common_platform is None:
+            continue
+        vendors = platform_hints.get(common_platform, {}).get("vendors")
+        if not isinstance(vendors, list):
+            continue
+        for candidate in vendors:
+            if not isinstance(candidate, str) or not candidate:
+                continue
+            if candidate.lower() == common_vendor.lower():
+                continue
+            cluster["description"] = re.sub(
+                r"\b" + re.escape(candidate) + r"\b",
+                common_vendor,
+                cluster["description"],
+                flags=re.IGNORECASE,
+            )
 
 
 def _build_platform_context(
@@ -310,7 +358,17 @@ def _build_platform_context(
         if not matching_hints and not filesystem_notes:
             continue
 
-        lines = [f"- Agent: {info['agent_name']} ({platform} — {description})"]
+        agent_name = info["agent_name"]
+        mapped = (
+            platform_agents.get(agent_name.casefold())
+            if platform_agents and isinstance(agent_name, str)
+            else None
+        )
+        if isinstance(mapped, dict) and mapped.get("vendor"):
+            label = mapped["vendor"]
+        else:
+            label = description
+        lines = [f"- Agent: {info['agent_name']} ({platform} — {label})"]
         if filesystem_notes:
             lines.append(f"- Filesystem notes: {filesystem_notes}")
         if matching_hints:
@@ -706,7 +764,12 @@ def analyse(
         timeout=300.0,
     )
 
+    hints_file = platform_hints_path or "data/platform_hints.json"
+    platform_hints = _load_platform_hints(hints_file)
+    platform_agents = _load_platform_agents(platform_agents_path)
+
     clusters = extract_alert_clusters(alerts)
+    _rewrite_cluster_vendor_names(clusters, platform_agents, platform_hints)
 
     similar_incidents = ""
     formatted: list[str] = []
@@ -749,9 +812,6 @@ def analyse(
         except Exception as e:
             logger.warning(f"Failed to load MITRE tactics: {e}")
 
-    hints_file = platform_hints_path or "data/platform_hints.json"
-    platform_hints = _load_platform_hints(hints_file)
-    platform_agents = _load_platform_agents(platform_agents_path)
     platform_context = _build_platform_context(
         alerts, platform_hints, platform_agents=platform_agents
     )

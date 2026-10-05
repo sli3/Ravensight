@@ -352,7 +352,7 @@ def test_cluster_line_carries_evidence_segment(
     cluster_line = next(
         line for line in prompt_text.splitlines() if line.startswith("[C1]")
     )
-    assert " — evidence: paths /etc/resolv.conf; event modified; " in cluster_line
+    assert " — evidence: content unchanged; event modified; " in cluster_line
     assert "content unchanged" in cluster_line
 
 

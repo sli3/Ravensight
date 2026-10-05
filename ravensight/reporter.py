@@ -3,12 +3,11 @@ reporter.py — Markdown security report generation.
 """
 
 import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
-from ravensight.evidence import render_evidence
-
+from ravensight.evidence import render_evidence, sanitise_cell, truncate_words
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +134,12 @@ def _render_asd_section(
         lines.append("|------------|----------|-------------|")
 
         for control in matched_controls:
-            control_id = control.get("id", "Unknown")
-            category = control.get("category", "Unknown")
+            control_id = sanitise_cell(control.get("id", "Unknown"))
+            category = sanitise_cell(control.get("category", "Unknown"))
             description = control.get("description", "")
-            truncated_desc = description[:120] if len(description) > 120 else description
-            lines.append(f"| {control_id} | {category} | {truncated_desc} |")
+            collapsed_desc = " ".join(str(description).split())
+            truncated_desc = truncate_words(collapsed_desc, 120)
+            lines.append(f"| {control_id} | {category} | {sanitise_cell(truncated_desc)} |")
 
         lines.append("")
     elif matched_controls and len(matched_controls) == 0:
@@ -152,11 +152,12 @@ def _render_asd_section(
             lines.append("|------------|----------|-------------|")
 
             for control in ism_controls:
-                control_id = control.get("id", "Unknown")
-                category = control.get("category", "Unknown")
+                control_id = sanitise_cell(control.get("id", "Unknown"))
+                category = sanitise_cell(control.get("category", "Unknown"))
                 description = control.get("description", "")
-                truncated_desc = description[:120] if len(description) > 120 else description
-                lines.append(f"| {control_id} | {category} | {truncated_desc} |")
+                collapsed_desc = " ".join(str(description).split())
+                truncated_desc = truncate_words(collapsed_desc, 120)
+                lines.append(f"| {control_id} | {category} | {sanitise_cell(truncated_desc)} |")
 
             lines.append("")
 
