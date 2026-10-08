@@ -695,7 +695,7 @@ Matching approach (no second LLM call — keyword only):
 | Model — analysis | `Qwen3.6-35B-A3B` (~2.8GB VRAM, ~7-8GB RAM experts, ~17 t/s) |
 | Model — triage (unused) | `Qwen2.5-Coder` (~5.9GB VRAM) |
 | Model — embeddings | `Qwen3-Embedding-0.6B` (~0.5GB VRAM) |
-| Model — coding (OpenCode) | `Qwen3.5-9B` (~5.5GB VRAM, ~42 t/s) |
+| Model — coding (local, unused by Claude Code) | `Qwen3.5-9B` (~5.5GB VRAM, ~42 t/s) |
 | Router mode | Enabled in llama.cpp via `model.ini` |
 | MoE offload | `cpu-moe = true` for Qwen3.6-35B and Gemma4-26B |
 | Vector store | ChromaDB (local SQLite backend) |
