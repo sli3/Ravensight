@@ -3,7 +3,11 @@
     "graft": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@nanonets/graft", "mcp"]
+      "args": [
+        "-y",
+        "@nanonets/graft",
+        "mcp"
+      ]
     },
     "context7": {
       "type": "http",
@@ -11,6 +15,10 @@
       "headers": {
         "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
       }
+    },
+    "hindsight": {
+      "type": "http",
+      "url": "http://192.168.0.10:8888/mcp/ravensight/"
     }
   }
 }
