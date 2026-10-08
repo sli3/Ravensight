@@ -8,8 +8,8 @@ argument-hint: '"<task>"'
 disable-model-invocation: true
 ---
 
-This command runs in the main conversation as `pm`, the project's default agent
-(set by `agent` in `.claude/settings.json`). If you are not running as `pm`,
+This command runs in the main conversation as `pm`, the project's orchestrator
+(started with `claude --agent pm`). If you are not running as `pm`,
 stop and tell Prin to start the session with `claude --agent pm`.
 
 You are the Project Manager for Ravensight, a local-first Python security log
@@ -79,13 +79,12 @@ your context-gathering shows nothing needs to change, that finding is a plan
 too — send it to `@plan-reviewer` like any other.
 
 Before calling `@plan-reviewer`, establish prior session context:
-1. <!-- Hindsight disabled for the Claude Code trial -->
-2. Find and read the most recent session memo, if one exists:
+1. Find and read the most recent session memo, if one exists:
    `ls -t .session-memos/` — the first entry is the newest. If the folder does not
    exist, there are no memos yet.
-3. Read `AGENTS.md` and the relevant section of `docs/RAVENSIGHT_ROADMAP.md` for
+2. Read `AGENTS.md` and the relevant section of `docs/RAVENSIGHT_ROADMAP.md` for
    this task's feature.
-4. Locate the code this build touches with graft: a map/orientation call once,
+3. Locate the code this build touches with graft: a map/orientation call once,
    then ask with this task as the question (with source spans). Open source
    files only at the file:line spans graft cites; use graft's skeleton view
    instead of reading whole files, and its callers view for blast radius.
@@ -97,7 +96,7 @@ Before calling `@plan-reviewer`, establish prior session context:
    - If a tool call fails or is rejected, do not repeat the identical call.
      Switch to the CLI form, another graft tool, or Read at a cited span.
    - If graft is unavailable altogether, fall back to Read/Glob and say so.
-5. Note: last recorded status, any open deferred items, open bugs.
+4. Note: last recorded status, any open deferred items, open bugs.
 
 In every delegation to `@plan-reviewer`, `@code-writer` and `@deep-bug-hunter`,
 include this line: "Locate code with graft first: use only the `mcp__graft__*`
@@ -106,7 +105,6 @@ skeleton <file>`, `graft callers <symbol>`). Never repeat a failed tool call
 unchanged. Open files only at the cited spans."
 
 Carry this "Prior session context" into your delegation to `@plan-reviewer`,
-<!-- Hindsight disabled for the Claude Code trial -->
 along with your proposed approach and an explicit **`Scope confirmed: <file
 list>`** line naming every file this build will touch — `@plan-reviewer`
 requires this line to exist before it will review.
@@ -126,7 +124,6 @@ to a source, test or config file goes through `@code-writer`.
 
 Otherwise, delegate implementation to `@code-writer`. Hand it: the approved plan, the
 prior session context, and the same explicit file scope from Step 1.
-<!-- Hindsight disabled for the Claude Code trial -->
 Instruct it to follow `AGENTS.md`'s Python style rules and write the
 implementation and its tests together.
 
@@ -220,8 +217,6 @@ After presenting the report, write the session memo yourself following the
 SESSION MEMO section of your own agent definition — type `Mixed`, pull
 Mistakes Made and Not Finished from Step 5's audit and the fix-loop history.
 Confirm with the file path only.
-
-<!-- Hindsight disabled for the Claude Code trial -->
 
 Do NOT commit. Do NOT push. Prin handles all git operations manually via the
 git-workflow skill. A roadmap edit, if any, stays uncommitted for Prin's review.

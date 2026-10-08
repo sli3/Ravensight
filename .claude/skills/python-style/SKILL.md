@@ -20,7 +20,7 @@ import requests
 from openai import OpenAI
 
 # 3. Local modules
-from wazuh_client import WazuhClient
+from ravensight.wazuh_client import WazuhClient
 ```
 
 ---

@@ -5,8 +5,7 @@ Claude Code permission rules in settings.json apply to every agent alike. The
 PreToolUse hook input, however, carries `agent_type`: the subagent's name when
 the hook fires inside a subagent, or the main-thread agent's name when the
 session runs as a named agent (the `agent` setting or `claude --agent`). This
-script reads that field and blocks the calls each agent's OpenCode permissions
-did not allow.
+script reads that field and blocks the calls each agent is not permitted to make.
 
 Exit 0 with no output leaves the call to the normal permission rules, so the
 global deny and ask rules in settings.json still apply on top of this guard.
@@ -86,16 +85,14 @@ CODE_WRITER_DENY_NAMES = {
     "CLAUDE.md",
     "ROADMAP.md",
     "RAVENSIGHT_ROADMAP.md",
-    "opencode.json",
-    "opencode.jsonc",
     ".mcp.json",
 }
 # Top-level directories code-writer must never edit.
-CODE_WRITER_DENY_DIRS = {".opencode", ".claude"}
+CODE_WRITER_DENY_DIRS = {".claude"}
 # The same protected names, spotted anywhere in a code-writer Bash command.
 CODE_WRITER_BASH_DENY = re.compile(
-    r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|opencode\.jsonc?|\.mcp\.json"
-    r"|\.opencode/|\.claude/"
+    r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|\.mcp\.json"
+    r"|\.claude/"
 )
 
 # Shell constructs that could write files or run hidden commands.

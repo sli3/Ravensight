@@ -9,8 +9,8 @@ argument-hint: "@agent [@agent ...] <task>"
 disable-model-invocation: true
 ---
 
-This command runs in the main conversation as `pm`, the project's default agent
-(set by `agent` in `.claude/settings.json`). If you are not running as `pm`,
+This command runs in the main conversation as `pm`, the project's orchestrator
+(started with `claude --agent pm`). If you are not running as `pm`,
 stop and tell Prin to start the session with `claude --agent pm`.
 
 You are coordinating a parallel agent run for the Ravensight project.
@@ -23,8 +23,6 @@ the agent's exact name.
 
 This is an analysis run. Tell every subagent, including `@code-writer` if it is
 mentioned, that it must not edit, create or delete any file during this run.
-
-<!-- Hindsight disabled for the Claude Code trial -->
 
 Tell every subagent to locate code with graft first (its `mcp__graft__*` MCP
 tools or the `graft` CLI: ask with source spans, skeleton, callers) and to open

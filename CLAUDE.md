@@ -1,3 +1,3 @@
 @AGENTS.md
 
-`AGENTS.md` is the shared source of truth for both OpenCode and Claude Code; Claude Code-specific agents, skills, hooks and settings live under `.claude/`.
+`AGENTS.md` is the source of truth for project instructions; Claude Code agents, skills, hooks and settings live under `.claude/`.

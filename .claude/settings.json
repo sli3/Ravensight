@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "agent": "pm",
   "permissions": {
     "allow": [
       "Bash(uv run pytest *)",
@@ -35,9 +34,6 @@
       "Read(!.env.example)",
       "Edit(config.toml)",
       "Edit(/AGENTS.md)",
-      "Edit(/opencode.json)",
-      "Edit(/opencode.jsonc)",
-      "Edit(/.opencode/**)",
       "Bash(*config.toml*)",
       "Bash(git push *)",
       "Bash(git * --force*)",
