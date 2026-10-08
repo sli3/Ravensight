@@ -5,6 +5,9 @@ description: Secure Git workflow with review gates and UK English commit standar
 
 ## Secure Git Workflow
 
+> **Session-type gate (AGENTS.md):** permitted only in Code sessions. If this is
+> not a Code session, stop and say so.
+
 ### Steps
 
 1. **Stage Check**
@@ -49,6 +52,10 @@ description: Secure Git workflow with review gates and UK English commit standar
    > "Shall I push to `main`? (Yes / No)"
 
    Never push without an explicit **"Yes"**.
+
+   In Claude Code, `git push` is denied in `.claude/settings.json`. On "Yes",
+   do not attempt the push or work around the deny: give Prin the exact
+   `git push` command to run in their own terminal.
 
 5. **Safety**
    Never use `--force` or `-f` under any circumstance.

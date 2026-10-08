@@ -5,6 +5,9 @@ description: Deep root cause analysis before bug fixing. Triggers on "deep bug h
 
 ## Deep Bug Analysis Protocol
 
+> **Session-type gate (AGENTS.md):** permitted only in Debug sessions. If this is
+> not a Debug session, stop and say so.
+
 ### When to use this skill
 
 Use instead of jumping straight to `bug-hunt-loop` when:
@@ -36,6 +39,7 @@ Wait for the answer before continuing.
 
 #### 2. Invoke @deep-bug-hunter
 
+Use the Agent tool with `subagent_type: deep-bug-hunter` (no `model` override).
 Pass a structured brief using this format:
 
 ```

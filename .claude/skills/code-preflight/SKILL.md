@@ -5,6 +5,9 @@ description: Pre-flight checklist for Code sessions ONLY. Triggers on "run prefl
 
 ## Code Pre-Flight Checklist
 
+> **Session-type gate (AGENTS.md):** permitted only in Code sessions. If this is
+> not a Code session, stop and say so.
+
 You do not edit files yourself in this skill — once the plan is approved,
 the change is delegated to `@code-writer`, which holds the only edit
 permission in this project.
@@ -43,7 +46,8 @@ permission in this project.
    `WAITING FOR OK — do not proceed until user explicitly types "OK"`
 
 7. **Delegate the edit to `@code-writer`:**
-   On explicit OK, hand `@code-writer` the exact scope from Step 3 and the
+   On explicit OK, hand `@code-writer` (the Agent tool, `subagent_type:
+   code-writer`) the exact scope from Step 3 and the
    plan shown in Step 5 — do not let it broaden scope. Wait for it to report
    the change complete before continuing.
 

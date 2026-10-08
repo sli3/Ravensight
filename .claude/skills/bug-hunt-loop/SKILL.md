@@ -5,6 +5,10 @@ description: Run a file, capture errors, apply a targeted fix, and re-run. Loops
 
 ## Bug Hunt Loop
 
+> **Session-type gate (AGENTS.md):** permitted only in Code and Debug sessions,
+> and only after `deep-bug-analysis` has run, except for trivial one-liner errors
+> (syntax, typo, missing import). If neither applies, stop and say so.
+
 ### Purpose
 
 Run a file, observe failures, apply a targeted fix, and re-run — up to three times.
@@ -27,7 +31,8 @@ Wait for explicit confirmation. Do not proceed without it.
 
 ### Delegating to @code-writer
 
-On confirmation, hand `@code-writer` the following brief in full — it runs
+On confirmation, hand `@code-writer` (the Agent tool, `subagent_type:
+code-writer`) the following brief in full — it runs
 the entire loop internally (detect → run → diagnose → diff → fix → re-run,
 up to 3 iterations) and reports back once:
 

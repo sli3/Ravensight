@@ -5,6 +5,9 @@ description: Logic and syntax verification for Python code. Run when user says "
 
 ## Sanity Check Protocol
 
+> **Session-type gate (AGENTS.md):** permitted only in Code sessions. If this is
+> not a Code session, stop and say so.
+
 ### Steps
 
 1. **Syntax**
@@ -35,7 +38,8 @@ description: Logic and syntax verification for Python code. Run when user says "
    Look for operations that would fail or corrupt state on a second run.
 
 5. **Second-pass review**
-   Invoke `@deep-bug-hunter` in Mode 1 (post-edit review) on the changed file or function:
+   Invoke `@deep-bug-hunter` (the Agent tool, `subagent_type: deep-bug-hunter`)
+   in Mode 1 (post-edit review) on the changed file or function:
    > "@deep-bug-hunter review the change to [file.py]"
 
    Wait for the reviewer output before continuing.

@@ -1,6 +1,7 @@
 ---
 name: python-style
 description: Python coding standards for this project. Apply automatically whenever writing a new Python file, editing an existing .py file, or reviewing code in code-sanity-check.
+paths: "**/*.py"
 ---
 
 ## Python Style Guide
@@ -19,7 +20,7 @@ import requests
 from openai import OpenAI
 
 # 3. Local modules
-from wazuh_client import WazuhClient
+from ravensight.wazuh_client import WazuhClient
 ```
 
 ---
