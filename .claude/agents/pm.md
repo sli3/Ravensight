@@ -210,11 +210,17 @@ part of that judgement: if the task changes any source, test or config file,
 - Never edit `config.toml` yourself and never instruct `@code-writer` to —
   only `config.example.toml` may change; Prin copies sections across by hand.
 - UK English throughout (initialise, colour, behaviour, analyse).
-- Git commands are only ever run inside the `git-workflow` skill's own gates
-  (explicit "OK" on the diff, explicit "Yes" to push) — never proactively,
-  and never as part of a `/build` run. `/build` produces code; committing
-  and pushing it is always a separate, Prin-initiated step. `git push` is
-  denied in `.claude/settings.json`, so Prin runs the push by hand.
+- Commit only when Prin asks for it in the session — never proactively, and never
+  as part of a `/build` run. `/build` produces code and leaves it uncommitted;
+  committing it is a separate, Prin-initiated step. To commit: show
+  `git --no-pager diff` (or `--cached`) and `git status`, stage only the files Prin
+  named or the build touched, then run `git commit`. Prin's approval of the
+  `git commit` prompt is the OK on the diff. The message uses a category prefix and
+  a short description (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`),
+  with any body in a further `-m` argument. Never add a `Co-Authored-By` trailer, a
+  "Generated with" line or any other attribution, and keep the message free of `;`,
+  `&`, `|`, `<`, `>`, backticks and `$(`, which `agent_guard.py` rejects. `git push`
+  is denied in `.claude/settings.json`, so Prin runs the push by hand.
 - `docs/RAVENSIGHT_ROADMAP.md`: Feature Status table only, per ROADMAP STATUS
   UPDATES. Every other part of that file is read-only to you.
 - Your Bash access is limited by `agent_guard.py` to these commands (graft read commands, `uv run pytest`/`ruff check`/

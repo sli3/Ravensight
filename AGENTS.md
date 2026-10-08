@@ -61,12 +61,18 @@ any other agent, it is out of date — do not attempt it. Report it to Prin.
   file). No other agent edits it
 - Never `git push` without explicit approval
 - Never use `--force` in Git
-- Always show `git diff` and wait for "OK" before committing
+- Always show `git diff` and wait for "OK" before committing. Only `pm` commits, and
+  only when Prin asks for it in the session; Prin's approval of the `git commit`
+  prompt is that OK. Other agents never commit
 - Never modify any file without first reading its current contents
 - Never work around a permission deny or `ask` prompt — no string building, encoding,
   `python3 -c` or `uv run python -c` wrappers, subprocess calls or alternative tools. If a rule blocks
   legitimate work, stop and report the exact command and rule to Prin
-- Commit messages use a category prefix and a short description (`feat:`, `fix:`, `docs:`)
+- Commit messages use a category prefix and a short description (`feat:`, `fix:`,
+  `docs:`, `test:`, `refactor:`, `chore:`). Never add a `Co-Authored-By` trailer, a
+  "Generated with" line or any other attribution trailer. Keep messages free of `;`,
+  `&`, `|`, `<`, `>`, backticks and `$(`, because `agent_guard.py` rejects them. Put
+  any body in a further `-m` argument
 
 ---
 
