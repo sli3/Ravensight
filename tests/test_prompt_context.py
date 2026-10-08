@@ -9,21 +9,11 @@ Tests that confirm:
 These tests do not touch the network, ChromaDB or the LLM. The OpenAI client
 is monkeypatched via the ``captured_prompt`` fixture.
 """
-from datetime import datetime, timedelta
-from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import pytest
-
-from ravensight import analyser
 from ravensight.analyser import _build_prompt, analyse
 from ravensight.evidence import MAX_EVIDENCE_LINE_CHARS
-
-
-LLM_TEXT = (
-    "<findings>\n- Finding A\n</findings>\n"
-    "<recommendations>\n- Rec A\n</recommendations>"
-)
 
 LLM_CONFIG = {
     "base_url": "http://llm.invalid/v1",
@@ -54,45 +44,6 @@ class _FakeEmbedder:
 
     def retrieve_similar(self, query_text: str) -> list[dict[str, Any]]:
         return list(self._items)
-
-
-def _make_fake_stream(text: str) -> Any:
-    """Build a streaming response whose only chunk contains ``text``."""
-    class _FakeStream:
-        def __iter__(self) -> "_FakeStream":
-            self._yielded = False
-            return self
-
-        def __next__(self) -> Any:
-            if self._yielded:
-                raise StopIteration
-            self._yielded = True
-            return SimpleNamespace(
-                choices=[SimpleNamespace(delta=SimpleNamespace(content=text))]
-            )
-
-    return _FakeStream()
-
-
-@pytest.fixture()
-def captured_prompt(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """Replace analyser.OpenAI with a fake that records the prompt."""
-    sink: dict[str, Any] = {}
-
-    class _Chat:
-        def __init__(self) -> None:
-            self.completions = self
-
-        def create(self, **kwargs: Any) -> Any:
-            sink["messages"] = kwargs.get("messages", [])
-            return _make_fake_stream(LLM_TEXT)
-
-    class _Client:
-        def __init__(self) -> None:
-            self.chat = _Chat()
-
-    monkeypatch.setattr(analyser, "OpenAI", lambda **kw: _Client())
-    return sink
 
 
 def _run_analyse(
@@ -145,7 +96,7 @@ def test_similar_incident_header_in_prompt_not_in_result(
     captured_prompt: dict[str, Any],
 ) -> None:
     """Prompt gets the header; result['similar_incidents'] does not."""
-    old_ts = (datetime.now() - timedelta(hours=48)).isoformat()
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
     result = _run_analyse(
         [_item(old_ts, "High", "Old SSH brute force")],
         {"findings": [], "recommendations": []},
@@ -417,7 +368,7 @@ def test_prompt_evidence_segment_truncated_at_max_line_chars() -> None:
 
 def test_unknown_severity_not_rendered(captured_prompt: dict[str, Any]) -> None:
     """Empty or 'unknown' severity is omitted from the bullet line."""
-    old = (datetime.now() - timedelta(hours=48)).isoformat()
+    old = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
     result = _run_analyse(
         [
             _item(old, "unknown", "Unknown-sev entry"),

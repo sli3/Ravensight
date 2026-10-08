@@ -5,13 +5,13 @@ Uses a fake LLM (monkeypatched analyser.OpenAI) — no network.
 """
 
 import logging
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from ravensight import analyser
 from ravensight.analyser import _build_prompt, _parse_analysis, extract_alert_clusters
+from tests.conftest import _make_fake_stream
 
 
 def _alert(description: str, level: int, agent: str = "host-1") -> dict[str, Any]:
@@ -164,24 +164,6 @@ LLM_CONFIG = {
     "max_tokens": 512,
     "temperature": 0.0,
 }
-
-
-def _make_fake_stream(text: str) -> Any:
-    """Build a streaming response whose only chunk contains ``text``."""
-    class _FakeStream:
-        def __iter__(self) -> "_FakeStream":
-            self._yielded = False
-            return self
-
-        def __next__(self) -> Any:
-            if self._yielded:
-                raise StopIteration
-            self._yielded = True
-            return SimpleNamespace(
-                choices=[SimpleNamespace(delta=SimpleNamespace(content=text))]
-            )
-
-    return _FakeStream()
 
 
 def test_summary_is_data_built(monkeypatch: pytest.MonkeyPatch) -> None:
