@@ -12,7 +12,8 @@ graft/
 
 # Repo and editor metadata
 .git/
-.opencode/
+.claude/
+.session-memos/
 
 # Runtime output and logs
 *.log

@@ -1,6 +1,8 @@
-# OpenCode — session memos are working notes, not part of the codebase
+# Session memos are working notes, not part of the codebase
 .session-memos/
-node_modules/
+
+# Claude Code — personal local settings
+.claude/settings.local.json
 
 # Python
 .venv/
@@ -8,14 +10,13 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 dist/
-build/
+/build/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 
 # Config — contains credentials and server details
 config.toml
-opencode.json
 docs/yubaba-server-reference.md
 .env
 
@@ -40,7 +41,6 @@ Thumbs.db
 
 # Logs
 *.log
-session.log
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/

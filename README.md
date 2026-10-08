@@ -476,8 +476,8 @@ the full server specification (gitignored — contains local network details).
 
 ## Development Workflow
 
-This project uses the [Huginn](https://github.com/sli3/Huginn) OpenCode workflow
-template — structured sessions, safety gates, and session memos.
+This project uses the [Huginn](https://github.com/sli3/Huginn) workflow template,
+adapted for Claude Code — structured sessions, safety gates, and session memos.
 
 ```
 Ravensight/
@@ -511,13 +511,14 @@ Ravensight/
 ├── docs/
 │   └── RAVENSIGHT_ROADMAP.md
 ├── AGENTS.md
-├── opencode.json
+├── CLAUDE.md
+├── .mcp.json
 ├── LICENSE
 ├── .gitignore
 ├── .session-memos/           # Gitignored working notes
-└── .opencode/
+└── .claude/
     ├── agents/
-    ├── commands/
+    ├── hooks/
     └── skills/
 ```
 
