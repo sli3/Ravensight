@@ -34,6 +34,9 @@ subagents. Each agent's behaviour, permissions and model are defined in its own 
 under `.opencode/agents/` — this file deliberately does not restate them, so it
 cannot drift out of date.
 
+Both OpenCode and Claude Code read this file (Claude Code via `CLAUDE.md`'s `@AGENTS.md` import).
+OpenCode agents live in `.opencode/agents/`; Claude Code agents live in `.claude/agents/` and must be kept in step.
+
 | Agent | Mode | Purpose |
 |-------|------|---------|
 | `pm` | primary | Orchestrates a build, gates output, writes the session memo, keeps the roadmap's Feature Status table current |
@@ -54,7 +57,7 @@ date — do not attempt it. Report it to Prin instead.
 
 - Never edit `config.toml`, and never open, print or quote its contents — it holds live
   credentials. Only `config.example.toml` changes; Prin copies new sections across by hand
-- `AGENTS.md`, `opencode.json` and everything under `.opencode/` are edited by
+- `AGENTS.md`, `CLAUDE.md`, `opencode.json`, `.mcp.json`, and everything under `.opencode/` and `.claude/` are edited by
   Prin only. `docs/RAVENSIGHT_ROADMAP.md` is also Prin's, with one exception: `pm`
   updates its Feature Status table after a `/build` run (rules in `pm`'s own
   file). No other agent edits it
@@ -110,6 +113,8 @@ The plugin's automatic recall is broken upstream (vectorize-io/hindsight#2656): 
 is injected into your context automatically, either at session start or after
 compaction. Automatic retain still works. Memories reach you only when you call
 `hindsight_recall`. Remove this paragraph once #2656 is fixed and verified.
+
+Claude Code has no Hindsight integration during the trial: under Claude Code, skip every hindsight step and say so once.
 
 - At the start of a Plan, Code or Debug session run directly (not via `/build`), call
   `hindsight_recall` once with a short query describing the task, before planning. Call
