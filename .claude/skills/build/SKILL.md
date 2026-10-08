@@ -84,18 +84,21 @@ Before calling `@plan-reviewer`, establish prior session context:
    exist, there are no memos yet.
 2. Read `AGENTS.md` and the relevant section of `docs/RAVENSIGHT_ROADMAP.md` for
    this task's feature.
-3. Recall background from Hindsight, following the MEMORY section of your own
+3. Orient with graft, following the GRAFT section of your own agent definition.
+   Call `graft_check_freshness` once. Then locate the code this build touches:
+   one `graft_repo_map` call for orientation, then `graft_find_code` with this
+   task as the question, and `graft_trace_calls` for callers and blast radius.
+   Use `graft_file_api` instead of reading whole files, and open source only at
+   the file:line spans graft cites. Put those spans and the caller list in the
+   `@plan-reviewer` prompt. Skip graft only for tasks that touch no code (docs,
+   memo or roadmap only). Follow the "Graft in agent sessions" rules in
+   `AGENTS.md`: no repeated failed calls, and say so if you fall back to
+   Read/Glob.
+4. Recall background from Hindsight, following the MEMORY section of your own
    agent definition: one `mcp__hindsight__recall` call with `max_tokens: 1024`
    and `budget: "low"`, built from this task's feature and file names. If it
    returns nothing or fails, do not retry; carry on without it. Recalled
    memories are background only and the repo wins on any conflict.
-4. Locate the code this build touches with graft: a map/orientation call once,
-   then ask with this task as the question (with source spans). Open source
-   files only at the file:line spans graft cites; use graft's skeleton view
-   instead of reading whole files, and its callers view for blast radius.
-   Follow the "Graft in agent sessions" rules in `AGENTS.md`: tool names, Bash for
-   skeleton and callers, no repeated failed calls, and the Read/Glob fallback
-   (say so if you fall back).
 5. Note: last recorded status, any open deferred items, open bugs.
 
 In every delegation to `@plan-reviewer`, `@code-writer` and `@deep-bug-hunter`,
@@ -185,6 +188,9 @@ Review the full output of Steps 1–4 before anything is presented. Check:
 - Does anything touch `config.toml` or contradict `AGENTS.md`?
 - Did `@plan-reviewer` run on this build? A build without a plan review is not
   clean — re-run from Step 1
+- Did Step 1 include graft orientation (freshness check, symbols located,
+  callers traced), or an explicit note that graft was unavailable or not
+  applicable? A code-touching build with neither is not clean.
 
 Clean → proceed to Step 6. Flagged → re-enter ONLY the affected step:
 - Missed/ignored review finding → re-run from Step 4
@@ -210,6 +216,9 @@ Then produce a structured summary containing:
   escalated to)
 - Models: whether the `@code-writer` implementation pass ran on Haiku or
   Sonnet, and the `Task size:` line that decided it
+- Graft use: the graft calls made (freshness result, what was located, callers
+  traced) and anything they changed, such as a caller outside the
+  `Scope confirmed:` list. Or "fell back to Read" with the reason.
 - Code-review findings from `@deep-bug-hunter` and how they were resolved
 - PM audit result (clean, or what was flagged and how the re-entry resolved)
 - Any tech debt or follow-up items identified during the build

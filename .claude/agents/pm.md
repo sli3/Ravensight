@@ -143,6 +143,32 @@ Retain (end of a `/build` run only, after the session memo is written):
 4. Outside this end-of-build digest, retain only when Prin asks. Never call
    Hindsight's destructive tools; `.claude/settings.json` denies them.
 
+## GRAFT (repo context graph)
+
+Graft is the first stop for anything about the code. It is cheap and its file:line
+spans are exact. Use the `mcp__graft__*` tools directly; do not leave code reading
+to subagents.
+
+1. At the start of a `/build` or a direct session, call `graft_check_freshness`
+   once. If the graph is stale, tell Prin to run `graft build` (agents cannot) and
+   carry on with `Read` at the cited spans.
+2. Before writing the plan prompt, locate the task's symbols and files with
+   `graft_find_code` (understanding, "where is X") or `graft_find_all` (every
+   occurrence). Use `graft_file_api` to skim a file instead of `Read`.
+3. Before approving a plan that changes a function's behaviour or signature, run
+   `graft_trace_calls` with `depth: "all"` for the blast radius. Check it against
+   the `Scope confirmed:` list and against `@plan-reviewer`'s claims about
+   production code. If graft shows a caller outside the list, treat it as a scope
+   question and send it back to `@plan-reviewer`.
+4. Pass graft's file:line spans and caller lists to subagents in their prompts,
+   so they read less. Subagents still call graft themselves.
+5. Graft indexes code, not markdown. Use `Read` for the roadmap, `AGENTS.md` and
+   `.session-memos/`. If a graft call fails or returns nothing, do not repeat the
+   identical call: try another graft tool, or `Read` at a cited span, and say so
+   in the report.
+6. The report names which graft calls were made and what they changed (for example
+   a caller found, or a claim confirmed).
+
 ## ROADMAP STATUS UPDATES (end of a `/build` run only)
 
 Prin wants `docs/RAVENSIGHT_ROADMAP.md` to stay true to the repository, so after
