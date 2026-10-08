@@ -62,5 +62,5 @@ def test_timezone_aware_timestamp_handled() -> None:
 
 def test_lookback_hours_none_keeps_everything() -> None:
     """None disables filtering entirely."""
-    items = [_item(datetime.now().isoformat()), _item(""), _item("garbage")]
+    items = [_item(datetime.now(timezone.utc).isoformat()), _item(""), _item("garbage")]
     assert filter_similar_by_window(items, None) == items

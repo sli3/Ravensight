@@ -13,8 +13,8 @@ from ravensight.trending import Trending
 
 
 def _ts(days_ago: float) -> str:
-    """Return a naive local ISO timestamp ``days_ago`` days before now."""
-    return (datetime.now() - timedelta(days=days_ago)).isoformat()
+    """Return an aware UTC ISO timestamp ``days_ago`` days before now."""
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
 
 
 def _run(
@@ -179,7 +179,7 @@ def test_sigma_spread_rendered_when_prior_not_flat() -> None:
 
 def test_same_day_reruns_collapse_to_last_run() -> None:
     """Two runs on one calendar day use the last run's counts."""
-    today = datetime.now()
+    today = datetime.now(timezone.utc)
     earlier = (today - timedelta(hours=2)).isoformat()
     later = (today - timedelta(hours=1)).isoformat()
     output = _generate(
@@ -303,7 +303,11 @@ def test_no_scan_history_keeps_existing_empty_message() -> None:
 
 def test_note_line_counts_daily_runs() -> None:
     """The note reports the number of collapsed daily runs in the window."""
-    today_noon = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    today_noon = (
+        datetime.now(timezone.utc)
+        .astimezone()
+        .replace(hour=12, minute=0, second=0, microsecond=0)
+    )
     output = _generate(
         _run(2, {"rule|a": 1}, timestamp=(today_noon - timedelta(days=2)).isoformat()),
         _run(0, {"rule|a": 1}, timestamp=(today_noon - timedelta(hours=3)).isoformat()),

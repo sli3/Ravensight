@@ -5,7 +5,7 @@ No network — embedder interactions are faked with a stub.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -137,7 +137,7 @@ def test_update_doc_id_stable_same_day_and_unique_per_key(tmp_path: Path) -> Non
         clusters=[_cluster(), _vuln_cluster()],
         run_params=DEFAULT_PARAMS,
     )
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
     rule_key = analyser.cluster_key(_cluster())
     vuln_key = analyser.cluster_key(_vuln_cluster())
     _, _, rule_doc_id = stub.calls[0]
@@ -269,8 +269,8 @@ def test_scan_history_pruned_to_ninety_days(tmp_path: Path) -> None:
     """Entries older than SCAN_HISTORY_MAX_DAYS are dropped; unparseable kept."""
     path = tmp_path / "baseline.json"
     manager = baseline.Manager({"path": str(path)})
-    old_ok = (datetime.now() - timedelta(days=100)).isoformat()
-    recent = (datetime.now() - timedelta(days=2)).isoformat()
+    old_ok = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
+    recent = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     manager.load()["scan_history"] = [
         {"timestamp": old_ok, "cluster_counts": {"rule|stale": 1}},
         {"timestamp": "not-a-date", "cluster_counts": {"rule|kept": 1}},
