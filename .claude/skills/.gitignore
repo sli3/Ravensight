@@ -1,0 +1,2 @@
+# The root .gitignore ignores build/ (Python build output); re-include the /build skill.
+!build/
