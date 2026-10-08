@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "agent": "pm",
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest *)",
+      "Bash(uv run python -m pytest *)",
+      "Bash(uv run ruff check *)",
+      "Bash(uv run pyright *)",
+      "Bash(uv run python -m py_compile *)",
+      "Bash(graft map *)",
+      "Bash(graft ask *)",
+      "Bash(graft grep *)",
+      "Bash(graft skeleton *)",
+      "Bash(graft callers *)",
+      "Bash(graft build *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git --no-pager diff *)",
+      "Bash(git log *)",
+      "Bash(git --no-pager log *)",
+      "Bash(git add *)",
+      "Bash(mkdir -p .session-memos)",
+      "Bash(date *)",
+      "mcp__graft"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(uv run python -c *)"
+    ],
+    "deny": [
+      "Read(config.toml)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)",
+      "Edit(config.toml)",
+      "Edit(/AGENTS.md)",
+      "Edit(/opencode.json)",
+      "Edit(/opencode.jsonc)",
+      "Edit(/.opencode/**)",
+      "Bash(*config.toml*)",
+      "Bash(git push *)",
+      "Bash(git * --force*)",
+      "Bash(git * -f)",
+      "Bash(git * -f *)",
+      "Bash(git reset --hard *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/agent_guard.py"],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
