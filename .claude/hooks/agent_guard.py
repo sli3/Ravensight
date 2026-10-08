@@ -30,6 +30,10 @@ TEAM = (PLAN_REVIEWER, CODE_WRITER, DEEP_BUG_HUNTER)
 
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
+# Per-call model overrides pm may pass, by subagent. Every subagent's own model
+# is set in its definition file; code-writer may be run on haiku for light tasks.
+ALLOWED_MODEL_OVERRIDES = {CODE_WRITER: ("haiku",)}
+
 ROADMAP = "docs/RAVENSIGHT_ROADMAP.md"
 MEMO_DIR = ".session-memos/"
 
@@ -124,9 +128,7 @@ def code_writer_may_edit(rel: str) -> bool:
     name = parts[-1]
     if parts[0] in CODE_WRITER_DENY_DIRS or name in CODE_WRITER_DENY_NAMES:
         return False
-    if name == ".env" or (name.startswith(".env.") and name != ".env.example"):
-        return False
-    return True
+    return not (name == ".env" or (name.startswith(".env.") and name != ".env.example"))
 
 
 def roadmap_edit_in_table(tool_input: dict, project_dir: Path) -> str | None:
@@ -217,8 +219,11 @@ def check_agent(agent: str, tool_input: dict) -> None:
                 "never substitute a built-in agent such as general-purpose"
             )
         model = tool_input.get("model")
-        if model and not (subagent == DEEP_BUG_HUNTER and model == "opus"):
-            block("a model override is allowed only as opus on the deep-bug-hunter Mode 2 escalation")
+        if model and model not in ALLOWED_MODEL_OVERRIDES.get(subagent, ()):
+            block(
+                "a model override is allowed only as haiku on a code-writer call "
+                "for a light task; omit the model parameter otherwise"
+            )
 
 
 def main() -> None:
@@ -244,5 +249,6 @@ if __name__ == "__main__":
         main()
     except SystemExit:
         raise
-    except Exception as err:  # fail closed: a broken guard must not let calls through
+    # Fail closed: a broken guard must not let calls through.
+    except Exception as err:  # noqa: BLE001
         block(f"guard error, call blocked: {err!r}")

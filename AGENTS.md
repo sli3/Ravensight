@@ -103,6 +103,24 @@ any other agent, it is out of date — do not attempt it. Report it to Prin.
 
 ---
 
+## Graft in agent sessions
+
+Rules for using graft from an agent session. The generated Graft block at the end of
+this file explains what each command does.
+
+- Call only graft MCP tools that appear in your tool list (their names start with
+  `mcp__graft__`). Never invent a tool name from a CLI command name
+- `graft skeleton <file>` and `graft callers <symbol>` are CLI commands: run them
+  through Bash. There is no `mcp__graft__graft_skeleton` tool
+- Agents may run only `graft map`, `graft ask`, `graft grep`, `graft skeleton` and
+  `graft callers`. `graft build` is on no agent's Bash allowlist, so Prin runs it after
+  big code changes
+- If a graft call fails or is rejected, do not repeat the identical call. Switch to the
+  CLI form, another graft tool, or Read at a cited span
+- If graft is unavailable altogether, fall back to Read and Glob, and say so
+
+---
+
 ## Memory
 
 Hindsight (MCP server `hindsight`, bank `ravensight`) holds decisions, conventions

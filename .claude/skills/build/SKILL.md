@@ -84,28 +84,28 @@ Before calling `@plan-reviewer`, establish prior session context:
    exist, there are no memos yet.
 2. Read `AGENTS.md` and the relevant section of `docs/RAVENSIGHT_ROADMAP.md` for
    this task's feature.
-3. Locate the code this build touches with graft: a map/orientation call once,
+3. Recall background from Hindsight, following the MEMORY section of your own
+   agent definition: one `mcp__hindsight__recall` call with `max_tokens: 1024`
+   and `budget: "low"`, built from this task's feature and file names. If it
+   returns nothing or fails, do not retry; carry on without it. Recalled
+   memories are background only and the repo wins on any conflict.
+4. Locate the code this build touches with graft: a map/orientation call once,
    then ask with this task as the question (with source spans). Open source
    files only at the file:line spans graft cites; use graft's skeleton view
    instead of reading whole files, and its callers view for blast radius.
-   - Call only graft MCP tools that appear in your tool list (they start with
-     `mcp__graft__`). Never invent a tool name from a CLI command name.
-   - The skeleton and callers views are CLI commands. Run them through Bash:
-     `graft skeleton <file>` and `graft callers <symbol>`. There is no
-     `mcp__graft__graft_skeleton` tool.
-   - If a tool call fails or is rejected, do not repeat the identical call.
-     Switch to the CLI form, another graft tool, or Read at a cited span.
-   - If graft is unavailable altogether, fall back to Read/Glob and say so.
-4. Note: last recorded status, any open deferred items, open bugs.
+   Follow the "Graft in agent sessions" rules in `AGENTS.md`: tool names, Bash for
+   skeleton and callers, no repeated failed calls, and the Read/Glob fallback
+   (say so if you fall back).
+5. Note: last recorded status, any open deferred items, open bugs.
 
 In every delegation to `@plan-reviewer`, `@code-writer` and `@deep-bug-hunter`,
-include this line: "Locate code with graft first: use only the `mcp__graft__*`
-MCP tools in your tool list, and run skeleton and callers through Bash (`graft
-skeleton <file>`, `graft callers <symbol>`). Never repeat a failed tool call
-unchanged. Open files only at the cited spans."
+include this line: "Locate code with graft first, following the 'Graft in agent
+sessions' rules in AGENTS.md. Never repeat a failed tool call unchanged. Open files
+only at the cited spans."
 
-Carry this "Prior session context" into your delegation to `@plan-reviewer`,
-along with your proposed approach and an explicit **`Scope confirmed: <file
+Carry this "Prior session context" into your delegation to `@plan-reviewer`
+(include only the relevant recalled lines, under the heading "Recalled
+background (may be stale; the repo wins)"), along with your proposed approach and an explicit **`Scope confirmed: <file
 list>`** line naming every file this build will touch — `@plan-reviewer`
 requires this line to exist before it will review.
 
@@ -122,7 +122,10 @@ config file (verification only), skip Steps 2 to 4, say that you did so and why,
 and go to Step 5. This applies only after `@plan-reviewer` has run. Any change
 to a source, test or config file goes through `@code-writer`.
 
-Otherwise, delegate implementation to `@code-writer`. Hand it: the approved plan, the
+Otherwise, delegate implementation to `@code-writer`. Choose its model by
+`@plan-reviewer`'s final `Task size:` line, per MODEL ROUTING in your agent
+definition: `light` runs this first pass with `model: "haiku"`, anything else
+omits the model parameter. Hand it: the approved plan, the
 prior session context, and the same explicit file scope from Step 1.
 Instruct it to follow `AGENTS.md`'s Python style rules and write the
 implementation and its tests together.
@@ -144,11 +147,11 @@ straight to Step 4 (the loop body never runs).
 
 Otherwise, for each iteration (max 3):
 a. Iterations 1 and 2: hand the raw failure output and stack trace straight
-   back to `@code-writer` to fix.
+   back to `@code-writer` to fix (no model override, so it runs on Sonnet).
    Iteration 3 (only if failures persist): escalate to `@deep-bug-hunter`
-   in Mode 2 (deep root-cause analysis) first — pass `model: "opus"` on that
-   one Agent call only, per MODEL ESCALATION in your agent definition — then
-   hand its diagnosis to `@code-writer` to apply.
+   in Mode 2 (deep root-cause analysis) first — it already runs on Opus from
+   its own definition, so pass no model parameter — then hand its diagnosis to
+   `@code-writer` to apply.
 b. Rerun the suite yourself with `uv run pytest`. Do not apply the fix yourself — you
    may not edit source files.
 c. Evaluate the rerun result:
@@ -205,6 +208,8 @@ Then produce a structured summary containing:
   live count; do not carry forward a number from an earlier step
 - Fix-loop summary (how many iterations ran, whether `@deep-bug-hunter` was
   escalated to)
+- Models: whether the `@code-writer` implementation pass ran on Haiku or
+  Sonnet, and the `Task size:` line that decided it
 - Code-review findings from `@deep-bug-hunter` and how they were resolved
 - PM audit result (clean, or what was flagged and how the re-entry resolved)
 - Any tech debt or follow-up items identified during the build
@@ -217,6 +222,13 @@ After presenting the report, write the session memo yourself following the
 SESSION MEMO section of your own agent definition — type `Mixed`, pull
 Mistakes Made and Not Finished from Step 5's audit and the fix-loop history.
 Confirm with the file path only.
+
+Then retain the build digest, following the MEMORY section of your own agent
+definition: one `mcp__hindsight__retain` call, at most about 150 words,
+starting with the task name and covering what was built, decisions with their
+reasons, and gotchas with their fixes. Nothing recoverable from the repo.
+`retain` asks for approval; if it is declined or fails, do not retry, and say
+so in one line.
 
 Do NOT commit. Do NOT push. Prin handles all git operations manually via the
 git-workflow skill. A roadmap edit, if any, stays uncommitted for Prin's review.

@@ -61,6 +61,14 @@ Review the plan against `docs/RAVENSIGHT_ROADMAP.md` and the actual source files
    - If Context7 has no entry or returns nothing relevant, flag it as
      ⚠️ WARNING: <claim> could not be verified against live docs.
 
+## TASK SIZE (only when the plan is approved, with no blockers)
+
+End your review with one final bullet, `- Task size: light`, `- Task size: medium` or `- Task size: none`:
+- `light`: every edit is in a single file from the SESSION FILE LIST, and is tests, docs, comments or docstrings only, or a purely mechanical rename. No logic change in `ravensight/` source.
+- `medium`: anything else that changes files, including any logic change, more than one file, or any config key change.
+- `none`: the plan changes no files (verification only).
+When unsure, choose `medium`. Omit this bullet if you raised a ❌ BLOCKER.
+
 ## OUTPUT FORMAT
 
 Respond in bullet points only.

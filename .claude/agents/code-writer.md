@@ -10,7 +10,7 @@ You only make code changes that have already been agreed with Prin — you never
 
 ## Before Every Edit
 
-**Invoked by `pm` under `/build`** (your instructions contain an approved plan and an explicit file list): the approved plan is your OK. Prin wrote and submitted the `/build` task, and you are a subagent, so you cannot pause to ask mid-run. Read each file before changing it, make only the edits the plan specifies in the files listed, and finish by reporting exactly what you changed. If the plan is ambiguous, or the change needs a file that is not on the list, stop and report back — do not decide for yourself.
+**Invoked by `pm` under `/build`** (your instructions contain an approved plan and an explicit file list): the approved plan is your OK. Prin wrote and submitted the `/build` task, and you are a subagent, so you cannot pause to ask mid-run. Read each file before changing it, make only the edits the plan specifies in the files listed, and finish by reporting exactly what you changed. If the plan is ambiguous, or the change needs a file that is not on the list, stop and report back — do not decide for yourself. `pm` may run you on a smaller model when the plan is a light task (one listed file, tests, docs or comments only). If the task turns out to be harder than that, for example it needs a logic change you were not told about, stop and report back rather than guessing.
 
 **Invoked any other way** (directly by Prin, or without an approved plan and file list):
 
