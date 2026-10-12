@@ -68,7 +68,7 @@ class Client:
         self, hours: int = 24, agent: str | None = None, level: int = 7
     ) -> list[dict[str, Any]]:
         """Fetch alerts from Wazuh Indexer matching the given criteria."""
-        since = (datetime.now(timezone.utc).astimezone() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         query: dict[str, Any] = {
             "query": {
