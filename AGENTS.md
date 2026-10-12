@@ -38,7 +38,7 @@ Claude Code reads this file via `CLAUDE.md`'s `@AGENTS.md` import.
 
 | Agent | Mode | Purpose |
 |-------|------|---------|
-| `pm` | primary | Orchestrates a build, gates output, writes the session memo, keeps the roadmap's Feature Status table current |
+| `pm` | primary | Orchestrates a build, gates output, writes the session memo, keeps the roadmap current |
 | `plan-reviewer` | subagent | Read-only plan and scope gate |
 | `code-writer` | subagent | Writes and edits source and tests |
 | `deep-bug-hunter` | subagent | Read-only post-edit review and root-cause analysis |
@@ -57,8 +57,9 @@ any other agent, it is out of date — do not attempt it. Report it to Prin.
   credentials. Only `config.example.toml` changes; Prin copies new sections across by hand
 - `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, and everything under `.claude/` are edited by
   Prin only. `docs/RAVENSIGHT_ROADMAP.md` is also Prin's, with one exception: `pm`
-  updates its Feature Status table after a `/build` run (rules in `pm`'s own
-  file). No other agent edits it
+  may edit it, with targeted Edit calls only, to update the Feature Status table
+  after a `/build` run or to make a change Prin asks for in the session (rules in
+  `pm`'s own file). No other agent edits it
 - Never `git push` without explicit approval
 - Never use `--force` in Git
 - Always show `git diff` and wait for "OK" before committing. Only `pm` commits, and

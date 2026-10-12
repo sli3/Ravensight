@@ -202,7 +202,7 @@ not resolve it → hard stop, escalate to Prin.
 
 ### STEP 6 — ROADMAP STATUS, THEN REPORT
 
-First, follow the ROADMAP STATUS UPDATES section of your own agent definition:
+First, follow the ROADMAP UPDATES section (part A) of your own agent definition:
 decide whether this build changed any feature's status. If it did, update the
 Feature Status table in `docs/RAVENSIGHT_ROADMAP.md` (and nothing else in that
 file), then run `git --no-pager diff docs/RAVENSIGHT_ROADMAP.md`. If nothing

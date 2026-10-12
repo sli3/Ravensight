@@ -131,25 +131,20 @@ def code_writer_may_edit(rel: str) -> bool:
     return not (name == ".env" or (name.startswith(".env.") and name != ".env.example"))
 
 
-def roadmap_edit_in_table(tool_input: dict, project_dir: Path) -> str | None:
-    """Return a reason to block a pm roadmap Edit, or None if it stays in the table."""
-    text = (project_dir / ROADMAP).read_text(encoding="utf-8")
-    header = text.find("\n## Feature Status\n")
-    if header == -1:
-        return "cannot find the '## Feature Status' heading in the roadmap"
-    start = header + len("\n## Feature Status\n")
-    end = text.find("\n---\n", start)
-    if end == -1:
-        return "cannot find the '---' line that ends the Feature Status section"
+def roadmap_edit_problem(tool_input: dict, project_dir: Path) -> str | None:
+    """Return a reason to block a pm roadmap Edit, or None if it may go ahead.
+
+    pm may edit any part of the roadmap, but only with targeted Edit calls: a
+    non-empty old_string that matches exactly once. Whole-file Write is refused
+    in check_file_tool. Which parts pm should touch, and when, is governed by
+    pm.md (ROADMAP UPDATES), not by this guard.
+    """
     old = tool_input.get("old_string", "")
-    new = tool_input.get("new_string", "")
     if not old:
-        return "roadmap edits need a non-empty old_string inside the Feature Status table"
-    in_table = text[start:end].count(old)
-    if in_table == 0 or in_table != text.count(old):
-        return "this edit reaches outside the Feature Status table of the roadmap"
-    if re.search(r"^(#{1,6} |---\s*$)", new, re.MULTILINE):
-        return "a roadmap edit may not add headings or '---' lines"
+        return "roadmap edits need a non-empty old_string"
+    text = (project_dir / ROADMAP).read_text(encoding="utf-8")
+    if text.count(old) != 1:
+        return "old_string must match exactly one place in the roadmap; widen it"
     return None
 
 
@@ -168,19 +163,19 @@ def check_file_tool(agent: str, tool: str, tool_input: dict, project_dir: Path) 
 
     if agent == PM:
         if rel is None:
-            block("pm may only write inside .session-memos/ and the roadmap's Feature Status table")
+            block("pm may only write inside .session-memos/ and the roadmap")
         if rel.startswith(MEMO_DIR) and tool in ("Edit", "Write"):
             if tool == "Write" and (project_dir / rel).exists():
                 block(f"{rel} already exists; never overwrite a session memo")
             return
         if rel == ROADMAP:
             if tool != "Edit":
-                block("pm may change the roadmap only with Edit, inside the Feature Status table")
-            reason = roadmap_edit_in_table(tool_input, project_dir)
+                block("pm may change the roadmap only with targeted Edit calls, never a whole-file write")
+            reason = roadmap_edit_problem(tool_input, project_dir)
             if reason:
                 block(reason)
             return
-        block(f"pm may not edit {rel}; only .session-memos/ and the roadmap's Feature Status table")
+        block(f"pm may not edit {rel}; only .session-memos/ and the roadmap")
 
 
 def check_bash(agent: str, command: str) -> None:
