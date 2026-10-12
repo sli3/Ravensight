@@ -45,7 +45,7 @@ def test_dict_finding_renders_data_fields(tmp_path: Path) -> None:
     rep = _make_reporter(tmp_path)
     report = rep._build_report({"summary": "s", "findings": [_cluster()]})
     assert "- **[C3] High** — SSHD brute force attempts — 174 alerts" in report
-    assert "on host-1, host-2 (2026-09-24 08:15 → 2026-09-24 10:30)" in report
+    assert "on host-1, host-2 (2026-09-24 08:15 → 2026-09-24 10:30 UTC)" in report
     assert "  - Repeated password guessing from external addresses." in report
     # no Python repr artefacts
     assert "{' '" not in report
@@ -149,6 +149,51 @@ def test_no_time_clause_when_timestamps_missing() -> None:
     lines = reporter._format_finding(finding)
     assert "→" not in lines[0]
     assert "( → )" not in lines[0]
+    assert "UTC" not in lines[0]
+
+
+@pytest.mark.parametrize(
+    ("first", "last", "clause"),
+    [
+        ("2026-09-24T08:15:00Z", "2026-09-24T10:30:00Z",
+         "(2026-09-24 08:15 → 2026-09-24 10:30 UTC)"),
+        ("2026-09-24T08:15:00+0000", "2026-09-24T10:30:00+0000",
+         "(2026-09-24 08:15 → 2026-09-24 10:30 UTC)"),
+        ("2026-09-24T08:15:00+00:00", "2026-09-24T10:30:00+00:00",
+         "(2026-09-24 08:15 → 2026-09-24 10:30 UTC)"),
+        ("2026-09-24T08:15:00Z", "2026-09-24T08:15:30Z",
+         "(2026-09-24 08:15 UTC)"),
+        ("2026-09-24T08:15:00+0000", "2026-09-24T08:15:30+0000",
+         "(2026-09-24 08:15 UTC)"),
+        ("2026-09-24T08:15:00+00:00", "2026-09-24T08:15:30+00:00",
+         "(2026-09-24 08:15 UTC)"),
+        ("2026-09-24T08:15:00Z", "", "(2026-09-24 08:15 →  UTC)"),
+        ("", "2026-09-24T10:30:00Z", "( → 2026-09-24 10:30 UTC)"),
+        ("2026-09-24T08:15:00+1030", "2026-09-24T10:30:00+1030",
+         "(2026-09-24 08:15 → 2026-09-24 10:30)"),
+        ("2026-09-24T08:15:00", "2026-09-24T10:30:00",
+         "(2026-09-24 08:15 → 2026-09-24 10:30)"),
+        ("2026-09-24T08:15:00Z", "2026-09-24T10:30:00+1030",
+         "(2026-09-24 08:15 → 2026-09-24 10:30)"),
+        ("2026-09-24T08:15:00+0000", "2026-09-24T10:30:00",
+         "(2026-09-24 08:15 → 2026-09-24 10:30)"),
+        ("2026-09-24T08:15:00-0000", "2026-09-24T10:30:00-00:00",
+         "(2026-09-24 08:15 → 2026-09-24 10:30)"),
+    ],
+)
+def test_utc_label_only_when_all_timestamps_utc(
+    first: str, last: str, clause: str
+) -> None:
+    """The UTC label appears only when every non-empty raw timestamp is UTC."""
+    lines = reporter._format_finding(_cluster(first_seen=first, last_seen=last))
+    assert f"on host-1, host-2 {clause}" in lines[0]
+
+
+def test_no_clause_and_no_utc_when_both_empty() -> None:
+    """Both timestamps empty gives no time clause and no UTC label."""
+    lines = reporter._format_finding(_cluster(first_seen="", last_seen=""))
+    assert lines[0].endswith("on host-1, host-2")
+    assert "UTC" not in lines[0]
 
 
 @pytest.mark.parametrize(("count", "word"), [(1, "alert"), (2, "alerts")])
@@ -168,7 +213,7 @@ def test_single_timestamp_rendered_once(tmp_path: Path) -> None:
         last_seen="2026-09-24T08:15:30.000Z",
     )
     lines = reporter._format_finding(finding)
-    assert "(2026-09-24 08:15)" in lines[0]
+    assert "(2026-09-24 08:15 UTC)" in lines[0]
     assert "→" not in lines[0]
 
 
@@ -249,7 +294,7 @@ def test_finding_without_evidence_byte_identical(tmp_path: Path) -> None:
     expected = [
         (
             "- **[C3] High** — SSHD brute force attempts — 174 alerts "
-            "on host-1, host-2 (2026-09-24 08:15 → 2026-09-24 10:30)"
+            "on host-1, host-2 (2026-09-24 08:15 → 2026-09-24 10:30 UTC)"
         ),
         "  - Repeated password guessing from external addresses.",
     ]

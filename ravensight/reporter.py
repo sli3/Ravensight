@@ -22,6 +22,11 @@ def _trim_timestamp(raw: str) -> str:
     return raw[:16].replace("T", " ")
 
 
+def _is_utc(raw: str) -> bool:
+    """Return True only when the raw timestamp text ends with a UTC offset."""
+    return bool(raw) and raw.endswith(("Z", "+0000", "+00:00"))
+
+
 def _format_finding(finding: str | dict) -> list[str]:
     """Render one finding (legacy string or cluster dict) as markdown lines."""
     if isinstance(finding, str):
@@ -34,13 +39,18 @@ def _format_finding(finding: str | dict) -> list[str]:
             f"- *LLM note, not linked to alert data:* {finding.get('description', '')}"
         ]
 
-    first_seen = _trim_timestamp(finding.get("first_seen", ""))
-    last_seen = _trim_timestamp(finding.get("last_seen", ""))
+    raw_first = finding.get("first_seen", "")
+    raw_last = finding.get("last_seen", "")
+    first_seen = _trim_timestamp(raw_first)
+    last_seen = _trim_timestamp(raw_last)
+    raw_values = [raw for raw in (raw_first, raw_last) if raw]
+    utc = bool(raw_values) and all(_is_utc(raw) for raw in raw_values)
+    suffix = " UTC" if utc else ""
     time_clause = ""
     if first_seen and last_seen and first_seen == last_seen:
-        time_clause = f" ({first_seen})"
+        time_clause = f" ({first_seen}{suffix})"
     elif first_seen or last_seen:
-        time_clause = f" ({first_seen} → {last_seen})"
+        time_clause = f" ({first_seen} → {last_seen}{suffix})"
 
     hosts = ", ".join(finding.get("hosts", []))
     count = finding.get("count", 0)
