@@ -927,9 +927,10 @@ def _build_data_summary(
     medium = sum(1 for c in clusters if c["severity"] == "Medium")
     low = sum(1 for c in clusters if c["severity"] == "Low")
     window = f" (last {lookback_hours} h)" if lookback_hours is not None else ""
+    host_word = "host" if len(hosts) == 1 else "hosts"
     return (
         f"{len(alerts)} alerts in {len(clusters)} clusters across "
-        f"{len(hosts)} hosts — severity: {high} High, {medium} Medium, "
+        f"{len(hosts)} {host_word} — severity: {high} High, {medium} Medium, "
         f"{low} Low clusters{window}"
     )
 
