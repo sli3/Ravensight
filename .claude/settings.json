@@ -21,7 +21,8 @@
       "Bash(git add *)",
       "Bash(mkdir -p .session-memos)",
       "Bash(date *)",
-      "mcp__graft"
+      "mcp__graft",
+      "Edit(/docs/RAVENSIGHT_ROADMAP.md)"
     ],
     "ask": [
       "Bash(git commit *)",
