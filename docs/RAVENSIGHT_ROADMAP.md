@@ -31,6 +31,7 @@ The base project is complete. All modules are working end-to-end:
 | Progress Bar + LLM Streaming | ✅ Complete | tqdm design (`da2b066`, `b29f77b`) replaced by the rich terminal UI: `ravensight/ui.py` shows a bordered live stderr panel (service status, refreshing progress bars per stage, LLM tokens and tok/s from llama.cpp `timings`) and a finish screen with a cluster table; `--no-progress`, pipes, cron and docker logs keep the plain log format. |
 | ASD Framework Mapping | ✅ Complete | `scripts/asd_sync.py` syncs Essential Eight + ISM (commit `42c816b`); ASD context injected in `ravensight/analyser.py` (commit `c23ce1e`); `_render_asd_section()` in `ravensight/reporter.py` (commit `861becf`); ASD path wired in `main.py`, `[asd]` section in `config.example.toml` (commit `eda966f`) |
 | Essential Eight Compliance Scoring + ISM Alert Mapping | ✅ Complete | `ravensight/e8_scorer.py` (`score_findings()` / `match_ism_controls()`, commit `b1deb3e`); wired into `main.py` and reporter rendering (commit `2e2b4d9`); per-strategy keyword overrides in `data/e8_keyword_overrides.json` (commit `03c0cb3`); `[e8]` section in `config.example.toml` |
+| Essential Eight Evidence-Only Report (section 9) | 🔶 In progress | Phase 1 done (uncommitted at time of update): `ravensight/reporter.py` row prints the scorer's status, labels the `Unmapped` row, and notes a missing or old-format ASD file when `asd_data == {}`; `main.py` passes `None` when `[asd] path` is unset; dead `rule_group` reads removed from `ravensight/e8_scorer.py`; 376 tests pass. Not-applicable state, attestation file and extra evidence sources are not started. |
 | Networked ChromaDB (server mode) | ✅ Complete | Optional `HttpClient` mode in `ravensight/embedder.py` via `chroma_host` / `chroma_port` in `[embeddings]` (`_connect_chroma()` helper, embedded branch byte-for-byte preserved); bundled Chroma service added as optional `chroma` profile in `docker-compose.yml` (image `chromadb/chroma:1.5.9` pinned to match `chromadb==1.5.9` in `requirements.txt`, `IS_PERSISTENT=TRUE` kept as a legacy 0.x no-op — persistence is on by default in the 1.x Rust server, bind mount `./chroma-data:/data` — image's persist_directory default changed from `/chroma/chroma` (0.6.x) to `/data` (1.x), port `8000:8000`); `.env.example` Chroma section + two new `EMBEDDINGS_CHROMA_*` placeholders in `config.template.toml` + two new optional-defaults `export` lines in `docker-entrypoint.sh` (re-verified at the 1.5.9 bump: `chromadb/chroma:1.5.9` exists on Docker Hub, 1.5.9 client `PersistentClient`/`HttpClient`/`chromadb.errors.ChromaError` call signatures unchanged from 0.6.3 — `metadatas=`/`hnsw:space` semantics preserved) |
 | Container non-root + seeding fix | ✅ Complete | `Dockerfile` copies `data/defaults/` to `/app/defaults/` (line 19) and adds a build-time `RUN setpriv --version` guard (line 10); `docker-entrypoint.sh` makes `RAVENSIGHT_PUID` / `RAVENSIGHT_PGID` required (0 valid — rootless Docker/Podman, no switch), validates non-negative integers with a `case` pattern rejecting `''` and any non-digit, refuses containers started with `--user` / Compose `user:` (only the entrypoint's `setpriv` switch is honoured), defines a `run_as` helper backed by `setpriv --reuid --regid --clear-groups` (no `--init-groups` — fails for numeric uid with no passwd entry), chowns `/app/config.toml` to PUID:PGID **before** `chmod 600` so the dropped-privilege app can read it, repairs mismatched entries on every start via `find … chown -h … {} +` and logs only when something was repaired (per-entry predicate handles the realistic case of a user-owned dir containing root-owned files), seeds the two `e8_keyword_overrides.json` / `platform_hints.json` defaults via `run_as` from `/app/defaults/` with warn-and-continue on missing source, runs all four sync invocations (two one-time, two in `sync` subcommand) via `run_as`, and finishes with a conditional `exec setpriv`; `.env.example` gains the PUID/PGID block near the top. Follow-up (uncommitted, base `300ec3e`): added PUID=0/PGID≠0 fail-fast check (rootless Docker/Podman requires both 0) and a post-repair `find -print -quit` re-check that warns to stderr when an entry is still not owned by PUID:PGID after chown (read-only mount or NFS root-squash). Deferred (logged in `.session-memos/2026-09-28_10-48.md`): seed files tracked in git and byte-identical to `data/defaults/` (drift risk); SELinux `:z`/`:Z` bind-mount labels; no entrypoint unit tests. |
 | Cluster Evidence | ✅ Complete | `ravensight/evidence.py` pure stdlib module — `detect_shape()` classifies one alert into exactly one of seven shapes (vulnerability, syscheck, dpkg, netstat, docker, firewall, generic); `accumulate()` and `project_evidence()` mechanically extract bounded real values from raw alerts (syscheck paths/events/changed_attributes + three-state content verdict; dpkg package/version/status; netstat opened/closed ports keyed by protocol+local-address; docker container/action/signal/compose/image; vulnerability status/version/severity/score_base; firewall action/direction/interface/ipversion/protocol/sources/destinations/dstports parsed from raw OPNsense filterlog lines in `full_log` + `previous_output` because Wazuh's `pf` decoder mis-parses IPv6 lines — never reads `data.srcip`/`data.dstip`/`data.protocol`/`data.srcport`/`data.dstport` for this shape; `sources_total` tracked separately from the capped `sources` display list; generic srcip/dstuser, with `srcip` validated via `ipaddress.ip_address()` to drop decoder artefacts); `render_evidence()` emits `field v1, v2; field v3` with whitespace collapsed and `|` escaped; constants `MAX_EVIDENCE_VALUES=5`, `MAX_EVIDENCE_NETSTAT_VALUES=3`, `MAX_EVIDENCE_VALUE_CHARS=100`, `MAX_EVIDENCE_LINE_CHARS=400`; `ravensight/analyser.py` accumulates in `_new_cluster['evidence_acc']` during the per-alert loop and projects into the output cluster (`'evidence'` key absent when nothing extracted); `_build_prompt` appends ` — evidence: …` (hard-truncated to 400 chars + `…`) and adds one new instruction sentence to the header; `ravensight/reporter.py::_format_finding` renders a `  - Evidence: …` sub-bullet between narrative and CVEs (byte-identical when absent); `cluster_key()`, `baseline._cluster_vector_text()` and `baseline._cluster_summary()` output identical with vs. without evidence (regression-tested); `tests/test_cluster_evidence.py` (37 tests) + 4 additions each to `tests/test_prompt_context.py` and `tests/test_reporter_findings.py` — 201 tests pass (155 pre-existing + 46 new); ruff clean on both new files (pre-existing 51 errors in the repo are unrelated). Build 1c-fix (this row's Notes update) added the firewall shape + generic-srcip IP-validation safety net. |
@@ -667,6 +668,54 @@ Matching approach (no second LLM call — keyword only):
 - Embedder upgrade is optional and only if keyword accuracy is poor
 - `e8_scorer.py` has no dependencies on any other Ravensight module
   except the `asd_data` dict it receives as a parameter
+
+---
+
+### 9. Essential Eight Evidence-Only Report
+
+**What it does:**
+Brings the Essential Eight (E8) section in line with Build 2b. Ravensight
+reads alerts, not system configuration, so it cannot measure maturity. Every
+strategy is reported as "Not assessed", with related findings and ISM controls
+shown as pointers for review. The pass/fail (✓ / -) wording in section 8 is
+superseded by this section.
+
+**Design rule:** evidence-only. No invented verdicts. Any new state must come
+from named evidence (an attestation entry, platform data or an extra evidence
+source), never from keyword matching alone.
+
+**Sessions: 1 so far (Phase 1). Later phases are added here before they start.**
+
+---
+
+#### Phase 1 — Remove quiet defects (no new features)
+
+In scope:
+- `ravensight/reporter.py`: the E8 table row prints the status returned by
+  `score_findings()` instead of a hard-coded string (falls back to
+  "Not assessed" when there is no score)
+- `ravensight/reporter.py`: the "Unmapped" pseudo-strategy stays visible but is
+  clearly labelled as not one of the Essential Eight, with status
+  "Not assessed"
+- `ravensight/reporter.py`: when the ASD data file is missing or from an older
+  format, `Reporter._build_report` shows a short note saying so and pointing at
+  `scripts/asd_sync.py`
+- `main.py`: one line, pass `None` (not `{}`) as `asd_data` when `[asd] path`
+  is not set, so the note appears only for a missing or old-format file
+- `ravensight/e8_scorer.py`: stop reading the unused `rule_group` field in
+  keyword matching and update the docstrings
+- `tests/test_e8_scorer.py` and `tests/test_reporter_findings.py`: tests for
+  each change above
+
+Out of scope:
+- A "Not applicable" state
+- An attestation file declaring what the operator has implemented
+- Optional extra evidence sources (for example Wazuh SCA results)
+- Any change to how findings are matched to controls
+- `analyser._build_asd_context` (the LLM prompt also sees "Unmapped"; logged as
+  deferred)
+- `scripts/asd_sync.py` and `data/asd_framework.json`
+- `config.toml` and `config.example.toml`
 
 ---
 

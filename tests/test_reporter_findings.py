@@ -487,3 +487,65 @@ def test_e8_table_related_findings_rendered() -> None:
     """Related findings appear comma-separated in the table."""
     section = reporter._render_asd_section(_make_asd_data(), e8_scores=_make_e8_scores())
     assert "| Patch applications | Not assessed | C1, C2 |" in section
+
+
+def test_e8_row_uses_scorer_status_with_fallback() -> None:
+    """The status cell comes from the scorer and falls back to Not assessed."""
+    scores = {
+        "Patch applications": {
+            "status": "Custom",
+            "related_findings": [],
+            "related_controls": [],
+        }
+    }
+    section = reporter._render_asd_section(_make_asd_data(), e8_scores=scores)
+    assert "| Patch applications | Custom |" in section
+    assert "| Patch operating systems | Not assessed |" in section
+
+
+def test_e8_unmapped_row_labelled() -> None:
+    """The Unmapped strategy renders with an explanatory label and Not assessed."""
+    asd_data = _make_asd_data()
+    asd_data["essential_eight"].append(
+        {
+            "strategy": "Unmapped",
+            "controls": [{"id": "ISM-9999", "levels": [1], "description": "x"}],
+        }
+    )
+    section = reporter._render_asd_section(asd_data, e8_scores={})
+    assert (
+        "| Unmapped (not an Essential Eight strategy) | Not assessed |" in section
+    )
+
+
+def test_e8_unmapped_sentence_only_with_unmapped_entry() -> None:
+    """The Unmapped sentence appears only when an Unmapped entry exists."""
+    sentence = "The \"Unmapped\" row lists controls outside the Essential Eight strategies."
+    without = reporter._render_asd_section(_make_asd_data(), e8_scores={})
+    assert sentence not in without
+    assert "pointers for review, not gaps." in without
+
+    asd_data = _make_asd_data()
+    asd_data["essential_eight"].append(
+        {
+            "strategy": "Unmapped",
+            "controls": [{"id": "ISM-9999", "levels": [1], "description": "x"}],
+        }
+    )
+    with_unmapped = reporter._render_asd_section(asd_data, e8_scores={})
+    assert sentence in with_unmapped
+
+
+def test_build_report_empty_asd_data_notes_missing_file(tmp_path: Path) -> None:
+    """An empty asd_data dict renders a note pointing at asd_sync.py."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report({"summary": "s", "findings": []}, asd_data={})
+    assert "## ASD Framework" in report
+    assert "asd_sync.py" in report
+
+
+def test_build_report_none_asd_data_renders_nothing(tmp_path: Path) -> None:
+    """A None asd_data renders no ASD section."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report({"summary": "s", "findings": []}, asd_data=None)
+    assert "## ASD Framework" not in report

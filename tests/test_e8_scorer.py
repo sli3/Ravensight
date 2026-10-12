@@ -405,3 +405,27 @@ def test_match_ism_controls_still_matches_generic_words() -> None:
     finding = _finding(narrative="system access denied")
     matched = match_ism_controls([finding], asd_data)
     assert any(control["id"] == "ISM-LOG" for control in matched)
+
+
+def test_stray_rule_group_key_has_no_effect() -> None:
+    """A rule_group key on a finding is ignored by both scoring and ISM matching."""
+    plain = _finding(narrative="Unauthorised")
+    stray = _finding(narrative="Unauthorised", rule_group="applications execute")
+    assert score_findings([stray], _asd_data()) == score_findings([plain], _asd_data())
+    assert score_findings([stray], _asd_data())["Application control"]["related_controls"] == []
+
+    ism_data: dict[str, Any] = {
+        "ism": [
+            {
+                "id": "ISM-ZOO",
+                "category": "Wildlife",
+                "description": "Zebra quokka enclosures",
+            },
+        ],
+    }
+    # The default finding shares no keywords with ISM-ZOO, so only a read of
+    # rule_group could produce a match.
+    unrelated = _finding()
+    stray_ism = _finding(rule_group="zebra quokka enclosures wildlife")
+    assert match_ism_controls([unrelated], ism_data) == []
+    assert match_ism_controls([stray_ism], ism_data) == []

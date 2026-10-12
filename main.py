@@ -184,7 +184,7 @@ def main() -> None:
             trends_output = trend_mgr.generate(baseline_mgr.load())
             run_reporter.stage("Trends", "done")
 
-        asd_data = analyser._load_asd_data(asd_path) if asd_path else {}
+        asd_data = analyser._load_asd_data(asd_path) if asd_path else None
         overrides_path = config.get("e8", {}).get("overrides_path") if "e8" in config else None
         run_reporter.stage("E8/ISM scoring", "active")
         e8_scores = e8_scorer.score_findings(analysis.get("findings", []), asd_data, overrides_path=overrides_path) if asd_data else {}

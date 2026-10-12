@@ -12,6 +12,7 @@ from ravensight.evidence import render_evidence, sanitise_cell, truncate_words
 logger = logging.getLogger(__name__)
 
 REPORT_MAX_CVES = 10
+UNMAPPED_STRATEGY = "Unmapped"
 
 
 def _trim_timestamp(raw: str) -> str:
@@ -103,10 +104,15 @@ def _render_asd_section(
     # Essential Eight
     essential_eight = asd_data.get("essential_eight", [])
     if essential_eight:
+        note = (
+            "> Not assessed. Ravensight reads alerts, not system configuration, so it cannot measure maturity. Related controls are pointers for review, not gaps."
+        )
+        if any(entry.get("strategy") == UNMAPPED_STRATEGY for entry in essential_eight):
+            note += " The \"Unmapped\" row lists controls outside the Essential Eight strategies."
         lines.extend([
             "### Essential Eight",
             "",
-            "> Not assessed. Ravensight reads alerts, not system configuration, so it cannot measure maturity. Related controls are pointers for review, not gaps.",
+            note,
             "",
             "| Strategy | Status | Related findings | Related controls |",
             "|----------|--------|------------------|------------------|",
@@ -147,8 +153,14 @@ def _render_asd_section(
             else:
                 controls_cell = "—"
 
+            status = score.get("status", "Not assessed") if score else "Not assessed"
+            if strategy == UNMAPPED_STRATEGY:
+                display_name = "Unmapped (not an Essential Eight strategy)"
+            else:
+                display_name = strategy
+
             lines.append(
-                f"| {sanitise_cell(strategy)} | Not assessed | {findings_cell} | {controls_cell} |"
+                f"| {sanitise_cell(display_name)} | {sanitise_cell(status)} | {findings_cell} | {controls_cell} |"
             )
 
         lines.append("")
@@ -247,7 +259,10 @@ class Reporter:
         e8_scores: dict | None = None,
         matched_controls: list | None = None,
     ) -> str:
-        """Build the full markdown report body from analysis data, optional trends, and optional ASD framework context."""
+        """Build the full markdown report body from analysis data, optional trends, and optional ASD framework context.
+
+        asd_data of None renders no ASD section; an empty dict renders a note that the data file is missing or outdated.
+        """
         lines = [
             "# Security Report",
             "",
@@ -305,7 +320,15 @@ class Reporter:
             lines.append("")
 
         # ASD Framework section
-        if asd_data:
+        if asd_data == {}:
+            lines.extend([
+                "",
+                "## ASD Framework",
+                "",
+                "> ASD framework data is missing or in an older format. Run `scripts/asd_sync.py` to regenerate it.",
+                "",
+            ])
+        elif asd_data:
             lines.extend([
                 "",
                 _render_asd_section(asd_data, e8_scores=e8_scores, matched_controls=matched_controls),

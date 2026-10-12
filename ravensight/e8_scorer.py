@@ -101,7 +101,7 @@ def _convert_findings(findings: list[dict | str]) -> list[dict]:
         findings: List of strings or dicts.
 
     Returns:
-        List of dictionaries where strings are wrapped with description, rule_group, and recommendation fields.
+        List of dictionaries where strings are wrapped with description and recommendation fields.
     """
     if not findings:
         return []
@@ -114,7 +114,6 @@ def _convert_findings(findings: list[dict | str]) -> list[dict]:
             # Wrap string as a finding with description set to the string itself
             converted.append({
                 "description": f,
-                "rule_group": "",
                 "recommendation": ""
             })
     return converted
@@ -146,10 +145,9 @@ def _normalise_findings(findings: list[dict]) -> list[str]:
     combined_texts = []
     for finding in findings:
         description = finding.get("description", "")
-        rule_group = finding.get("rule_group", "")
         recommendation = finding.get("recommendation", "")
         narrative = finding.get("narrative", "")
-        combined = f"{description} {rule_group} {recommendation} {narrative}".strip()
+        combined = f"{description} {recommendation} {narrative}".strip()
         if combined:
             combined_texts.append(combined)
     return combined_texts
@@ -159,7 +157,7 @@ def _extract_finding_keywords(finding: dict) -> set[str]:
     """Extract keywords from a single finding's text fields."""
     text = " ".join(
         str(finding.get(key, ""))
-        for key in ("description", "rule_group", "recommendation", "narrative")
+        for key in ("description", "recommendation", "narrative")
     )
     return _extract_keywords(text)
 
@@ -172,7 +170,7 @@ def score_findings(
     """Score findings against Essential Eight strategies.
 
     Args:
-        findings: List of finding dictionaries with description, rule_group, recommendation,
+        findings: List of finding dictionaries with description, recommendation,
                  or strings that will be converted to dicts.
         asd_data: ASD framework data containing essential_eight entries.
         overrides_path: Path to e8_keyword_overrides.json for per-strategy keyword blocking.
@@ -262,7 +260,7 @@ def match_ism_controls(
     """Match ISM controls to relevant findings using keyword matching.
 
     Args:
-        findings: List of finding dictionaries with description, rule_group, recommendation,
+        findings: List of finding dictionaries with description, recommendation,
                  or strings that will be converted to dicts.
         asd_data: ASD framework data containing ism entries.
         max_controls: Maximum number of controls to return (default 15).
