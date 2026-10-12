@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -101,7 +101,7 @@ class Manager:
 
         if findings:
             self._baseline["findings"] = findings
-            self._baseline["updated_at"] = datetime.now().isoformat()
+            self._baseline["updated_at"] = datetime.now(timezone.utc).astimezone().replace(tzinfo=None).isoformat()
 
         if recommendations:
             self._baseline["recommendations"] = recommendations
@@ -120,13 +120,13 @@ class Manager:
                     break
                 text = self._cluster_vector_text(cluster)
                 metadata = {
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).astimezone().replace(tzinfo=None).isoformat(),
                     "rule_group": analyser.cluster_key(cluster),
                     "severity": cluster["severity"],
                     "summary": self._cluster_summary(cluster),
                 }
                 doc_id = "alert-" + sha256(
-                    f"{analyser.cluster_key(cluster)}|{datetime.now().strftime('%Y-%m-%d')}".encode()
+                    f"{analyser.cluster_key(cluster)}|{datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d')}".encode()
                 ).hexdigest()[:32]
                 try:
                     self._embedder.add_embedding(text, metadata, doc_id=doc_id)
@@ -139,7 +139,7 @@ class Manager:
 
         if clusters is not None:
             snapshot = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).astimezone().replace(tzinfo=None).isoformat(),
                 "hours": (run_params or {}).get("hours"),
                 "agent": (run_params or {}).get("agent"),
                 "level": (run_params or {}).get("level"),
@@ -175,7 +175,7 @@ class Manager:
 
     def _prune_scan_history(self) -> None:
         """Drop scan history entries older than SCAN_HISTORY_MAX_DAYS, keeping unparseable ones."""
-        cutoff = datetime.now() - timedelta(days=SCAN_HISTORY_MAX_DAYS)
+        cutoff = datetime.now(timezone.utc).astimezone().replace(tzinfo=None) - timedelta(days=SCAN_HISTORY_MAX_DAYS)
         kept: list[dict[str, Any]] = []
         for entry in self._baseline.get("scan_history", []):
             ts = entry.get("timestamp", "")

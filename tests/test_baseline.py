@@ -156,8 +156,8 @@ def test_update_doc_id_changes_across_days(
     manager = baseline.Manager({"path": str(path)}, embedder=stub)
     clusters = [_cluster()]
 
-    day_one = datetime(2026, 9, 28, 6, 0, 0)
-    day_two = datetime(2026, 9, 29, 6, 0, 0)
+    day_one = datetime(2026, 9, 28, 6, 0, 0)  # noqa: DTZ001 - naive local clock, mirrors datetime.now()
+    day_two = datetime(2026, 9, 29, 6, 0, 0)  # noqa: DTZ001 - naive local clock, mirrors datetime.now()
 
     class _FrozenDateTime(datetime):
         """datetime subclass whose now() returns a fixed value."""

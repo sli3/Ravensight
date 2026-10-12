@@ -800,7 +800,7 @@ def analyse(
     if mitre_path and Path(mitre_path).exists():
         try:
             tactics = _load_mitre_tactics(mitre_path)
-        except Exception as e:
+        except (OSError, ValueError, AttributeError) as e:
             logger.warning(f"Failed to load MITRE tactics: {e}")
 
     platform_context = _build_platform_context(
@@ -963,7 +963,7 @@ def filter_similar_by_window(
     if not items:
         return items
 
-    naive_now = now if now is not None else datetime.now()
+    naive_now = now if now is not None else datetime.now(timezone.utc).astimezone().replace(tzinfo=None)
     aware_now = now if (now is not None and now.tzinfo is not None) else datetime.now(timezone.utc)
     naive_cutoff = naive_now - timedelta(hours=lookback_hours)
     aware_cutoff = aware_now - timedelta(hours=lookback_hours)
@@ -1163,7 +1163,7 @@ def _build_prompt(
     baseline: dict[str, Any],
     clusters: list[dict[str, Any]] | None = None,
     similar_incidents: str = "",
-    tactics: list = [],
+    tactics: list | None = None,
     platform_context: str = "",
     asd_context: str = "",
     platform_agents: dict | None = None,
@@ -1254,7 +1254,7 @@ each prefixed with its cluster id, plus at most one recommendation line per clus
 
 def _parse_analysis(
     text: str,
-    tactics: list[dict[str, Any]] = [],
+    tactics: list[dict[str, Any]] | None = None,
     clusters: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Parse LLM response into structured dict.

@@ -4,11 +4,11 @@ wazuh_client.py — Wazuh Indexer and Manager REST API client.
 from __future__ import annotations
 
 import logging
-import urllib3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 import requests
+import urllib3
 from requests.auth import HTTPBasicAuth
 
 if TYPE_CHECKING:
@@ -54,13 +54,13 @@ class Client:
         response.raise_for_status()
         data = response.json()
         self._token = data["data"]["token"]
-        self._token_expiry = datetime.now() + timedelta(seconds=900)
+        self._token_expiry = datetime.now(timezone.utc) + timedelta(seconds=900)
         logger.debug("Wazuh manager authentication successful")
 
     def _ensure_authenticated(self) -> None:
         """Refresh token if expired or not set."""
         if self._token is None or (
-            self._token_expiry is not None and datetime.now() >= self._token_expiry
+            self._token_expiry is not None and datetime.now(timezone.utc) >= self._token_expiry
         ):
             self._authenticate()
 
@@ -68,7 +68,7 @@ class Client:
         self, hours: int = 24, agent: str | None = None, level: int = 7
     ) -> list[dict[str, Any]]:
         """Fetch alerts from Wazuh Indexer matching the given criteria."""
-        since = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        since = (datetime.now(timezone.utc).astimezone() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         query: dict[str, Any] = {
             "query": {

@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import chromadb
-from chromadb.errors import ChromaError
 import httpx
-from openai import OpenAI, APIConnectionError, APITimeoutError
+from chromadb.errors import ChromaError
+from openai import APIConnectionError, APITimeoutError, OpenAI
 
 if TYPE_CHECKING:
     from ravensight.ui import RunReporter

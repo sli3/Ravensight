@@ -14,7 +14,7 @@ def _item(ts: str = "", severity: str = "High", summary: str = "x") -> dict[str,
 
 def test_item_inside_window_dropped() -> None:
     """Item with timestamp exactly at the cutoff (or newer) is dropped."""
-    now = datetime(2026, 9, 28, 12, 0, 0)
+    now = datetime(2026, 9, 28, 12, 0, 0)  # noqa: DTZ001 - naive now is the contract under test
     inside = now - timedelta(hours=1)
     outside = now - timedelta(hours=25)
     items = [_item(inside.isoformat()), _item(outside.isoformat())]
@@ -25,7 +25,7 @@ def test_item_inside_window_dropped() -> None:
 
 def test_item_older_than_window_kept() -> None:
     """Item well outside the window is kept."""
-    now = datetime(2026, 9, 28, 12, 0, 0)
+    now = datetime(2026, 9, 28, 12, 0, 0)  # noqa: DTZ001 - naive now is the contract under test
     items = [_item((now - timedelta(hours=48)).isoformat())]
     out = filter_similar_by_window(items, 24, now=now)
     assert out == items
@@ -35,7 +35,7 @@ def test_missing_timestamp_kept_and_logged(caplog: Any) -> None:
     """Empty timestamp is kept and DEBUG-logged."""
     caplog.set_level(logging.DEBUG, logger="ravensight.analyser")
     items = [_item("")]
-    out = filter_similar_by_window(items, 24, now=datetime(2026, 9, 28, 12, 0, 0))
+    out = filter_similar_by_window(items, 24, now=datetime(2026, 9, 28, 12, 0, 0))  # noqa: DTZ001 - naive now is the contract under test
     assert out == items
     assert any("missing timestamp" in r.message for r in caplog.records)
 
@@ -44,7 +44,7 @@ def test_unparseable_timestamp_kept_and_logged(caplog: Any) -> None:
     """Garbage timestamp is kept and DEBUG-logged."""
     caplog.set_level(logging.DEBUG, logger="ravensight.analyser")
     items = [_item("not-a-date")]
-    out = filter_similar_by_window(items, 24, now=datetime(2026, 9, 28, 12, 0, 0))
+    out = filter_similar_by_window(items, 24, now=datetime(2026, 9, 28, 12, 0, 0))  # noqa: DTZ001 - naive now is the contract under test
     assert out == items
     assert any("unparseable timestamp" in r.message for r in caplog.records)
 

@@ -3,9 +3,9 @@ reporter.py — Markdown security report generation.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ravensight.evidence import render_evidence, sanitise_cell, truncate_words
 
@@ -81,8 +81,8 @@ def _format_finding(finding: str | dict) -> list[str]:
 
 def _render_asd_section(
     asd_data: dict,
-    e8_scores: Optional[dict] = None,
-    matched_controls: Optional[list] = None,
+    e8_scores: dict | None = None,
+    matched_controls: list | None = None,
 ) -> str:
     """
     Render ASD Framework section as markdown.
@@ -208,10 +208,10 @@ class Reporter:
     def generate(
         self,
         data: dict[str, Any],
-        trends: Optional[str] = None,
-        asd_data: Optional[dict[str, Any]] = None,
-        e8_scores: Optional[dict] = None,
-        matched_controls: Optional[list] = None,
+        trends: str | None = None,
+        asd_data: dict[str, Any] | None = None,
+        e8_scores: dict | None = None,
+        matched_controls: list | None = None,
     ) -> Path:
         """
         Generate markdown report from analysis data.
@@ -233,7 +233,7 @@ class Reporter:
             e8_scores=e8_scores,
             matched_controls=matched_controls,
         )
-        filename = self._output_dir / f"{datetime.now().strftime('%Y-%m-%d')}_security_report.md"
+        filename = self._output_dir / f"{datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d')}_security_report.md"
         with filename.open("w") as f:
             f.write(report)
         logger.info(f"Report written to {filename}")
@@ -242,16 +242,16 @@ class Reporter:
     def _build_report(
         self,
         data: dict[str, Any],
-        trends: Optional[str] = None,
-        asd_data: Optional[dict[str, Any]] = None,
-        e8_scores: Optional[dict] = None,
-        matched_controls: Optional[list] = None,
+        trends: str | None = None,
+        asd_data: dict[str, Any] | None = None,
+        e8_scores: dict | None = None,
+        matched_controls: list | None = None,
     ) -> str:
         """Build the full markdown report body from analysis data, optional trends, and optional ASD framework context."""
         lines = [
             "# Security Report",
             "",
-            f"**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            f"**Generated**: {datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M')}",
             "",
             "## Summary",
             "",

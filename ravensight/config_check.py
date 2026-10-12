@@ -10,6 +10,8 @@ import logging
 import sys
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 # Required keys per section, checked only when the section exists.
 _REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
     "wazuh": ("host", "user", "password", "indexer_password"),
@@ -107,14 +109,17 @@ def _type_problems(config: dict[str, Any], report_only: bool) -> list[str]:
                     f"Config error: [{section}].{key} has the wrong type — "
                     f"expected int, got {type(value).__name__}"
                 )
-    if not report_only and isinstance(config.get("llm"), dict):
-        if "temperature" in config["llm"]:
-            value = config["llm"]["temperature"]
-            if type(value) is not int and type(value) is not float:
-                problems.append(
-                    "Config error: [llm].temperature has the wrong type — "
-                    f"expected int or float, got {type(value).__name__}"
-                )
+    if (
+        not report_only
+        and isinstance(config.get("llm"), dict)
+        and "temperature" in config["llm"]
+    ):
+        value = config["llm"]["temperature"]
+        if type(value) is not int and type(value) is not float:
+            problems.append(
+                "Config error: [llm].temperature has the wrong type — "
+                f"expected int or float, got {type(value).__name__}"
+            )
     return problems
 
 
@@ -140,9 +145,9 @@ def validate(config: dict[str, Any], report_only: bool) -> None:
     """Log every problem at CRITICAL and exit 1; return silently when clean."""
     problems = find_problems(config, report_only)
     for problem in problems:
-        logging.critical(problem)
+        logger.critical(problem)
     if problems:
-        logging.critical(
+        logger.critical(
             f"Config check failed: {len(problems)} problem(s) — fix them and run again."
         )
         sys.exit(1)

@@ -132,7 +132,7 @@ def test_add_embedding_deterministic_id(
     embedder.add_embedding("repeat me", _metadata("repeat me"))
     embedder.add_embedding("repeat me", _metadata("repeat me"))
 
-    expected_id = "alert-" + sha256("repeat me".encode("utf-8")).hexdigest()[:32]
+    expected_id = "alert-" + sha256(b"repeat me").hexdigest()[:32]
     assert embedder._collection.count() == 1
     assert embedder._collection.get(ids=[expected_id])["ids"] == [expected_id]
 

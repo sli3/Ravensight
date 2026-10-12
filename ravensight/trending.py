@@ -3,7 +3,7 @@ trending.py — Historical alert trend analysis.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from statistics import mean, pstdev
 from typing import Any
 
@@ -64,7 +64,7 @@ class Trending:
         had a qualifying default run, sorted by day. A key absent on a day with
         a run counts as 0; days with no run are not represented at all.
         """
-        cutoff = datetime.now() - timedelta(days=self._window_days)
+        cutoff = datetime.now(timezone.utc).astimezone().replace(tzinfo=None) - timedelta(days=self._window_days)
         qualifying: list[tuple[datetime, dict[str, Any]]] = []
         for entry in history:
             counts = entry.get("cluster_counts")

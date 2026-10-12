@@ -4,12 +4,22 @@ main.py — Ravensight Security Log Analyser entry point.
 import argparse
 import logging
 import sys
-import tomllib
 from pathlib import Path
 
 import openai
 import requests
-from ravensight import wazuh_client, analyser, reporter, baseline, trending, e8_scorer, config_check, embedder as embedder_module
+import tomllib
+
+from ravensight import (
+    analyser,
+    baseline,
+    config_check,
+    e8_scorer,
+    reporter,
+    trending,
+    wazuh_client,
+)
+from ravensight import embedder as embedder_module
 from ravensight.ui import CountingHandler, create_reporter, quiet_third_party_loggers
 
 logger = logging.getLogger(__name__)
@@ -51,10 +61,10 @@ def main() -> None:
         with Path(args.config).open("rb") as f:
             config = tomllib.load(f)
     except FileNotFoundError:
-        logging.critical(f"Config file not found: {args.config}")
+        logger.critical(f"Config file not found: {args.config}")
         sys.exit(1)
     except tomllib.TOMLDecodeError as e:
-        logging.critical(f"Invalid config file: {e}")
+        logger.critical(f"Invalid config file: {e}")
         sys.exit(1)
 
     # Validate config before any client or Embedder is created (logs + exits 1 on problems).
@@ -67,14 +77,14 @@ def main() -> None:
 
     if embedder is None:
         run_reporter.service("embeddings", "off")
-        logging.info("Embeddings disabled: no [embeddings] section — similarity and vector-store features skipped")
+        logger.info("Embeddings disabled: no [embeddings] section — similarity and vector-store features skipped")
     else:
         run_reporter.service(
             "embeddings",
             "warn" if embedder.degraded else "ok",
             detail=str(getattr(embedder, "_chroma_failure", "") or "") if embedder.degraded else "",
         )
-        logging.info(f"Embeddings enabled: endpoint {embedder._endpoint}")
+        logger.info(f"Embeddings enabled: endpoint {embedder._endpoint}")
     run_reporter.stage("Embeddings", "done")
 
     # Pass embedder to baseline.Manager constructor
@@ -98,7 +108,7 @@ def main() -> None:
             alerts = wazuh.fetch_alerts(hours=args.hours, agent=args.agent, level=args.level)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             run_reporter.stage("Fetch alerts", "fail")
-            logging.critical(
+            logger.critical(
                 f"Wazuh Indexer unreachable ({type(e).__name__}: {e}) — "
                 "check [wazuh] indexer_host and indexer_port in config.toml (or .env with Docker)",
                 exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
@@ -116,11 +126,11 @@ def main() -> None:
                 msg = (
                     f"Wazuh Indexer returned HTTP {status} — check the [wazuh] indexer settings"
                 )
-            logging.critical(msg, exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
+            logger.critical(msg, exc_info=logging.getLogger().isEnabledFor(logging.DEBUG))
             sys.exit(1)
         except requests.exceptions.RequestException as e:
             run_reporter.stage("Fetch alerts", "fail")
-            logging.critical(
+            logger.critical(
                 f"Wazuh Indexer request failed ({type(e).__name__}: {e}) — check the [wazuh] indexer settings",
                 exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
             )
@@ -134,7 +144,7 @@ def main() -> None:
             analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, platform_agents_path=platform_agents_path, progress=run_reporter, lookback_hours=args.hours)
         except openai.APIConnectionError as e:
             run_reporter.stage("LLM analysis", "fail")
-            logging.critical(
+            logger.critical(
                 f"LLM server unreachable ({type(e).__name__}: {e}) — check [llm] base_url in config.toml (or .env with Docker)",
                 exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
             )
@@ -142,14 +152,14 @@ def main() -> None:
         except openai.APIStatusError as e:
             run_reporter.stage("LLM analysis", "fail")
             status = e.status_code if hasattr(e, "status_code") else None
-            logging.critical(
+            logger.critical(
                 f"LLM server returned HTTP {status} — check [llm] base_url, api_key and model",
                 exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
             )
             sys.exit(1)
         except openai.APIError as e:
             run_reporter.stage("LLM analysis", "fail")
-            logging.critical(
+            logger.critical(
                 f"LLM request failed ({type(e).__name__}: {e}) — check the [llm] settings",
                 exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
             )
@@ -193,5 +203,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logging.info("Interrupted by user")
+        logger.info("Interrupted by user")
         sys.exit(0)
