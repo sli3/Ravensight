@@ -391,8 +391,8 @@ def test_regression_benign_findings_do_not_relate() -> None:
         assert row["related_findings"] == []
 
 
-def test_match_ism_controls_still_matches_generic_words() -> None:
-    """The ISM matcher does not subtract E8_GENERIC_WORDS; generic words still match."""
+def test_match_ism_controls_ignores_generic_words() -> None:
+    """The ISM matcher subtracts E8_GENERIC_WORDS; generic words alone do not match."""
     asd_data: dict[str, Any] = {
         "ism": [
             {
@@ -402,9 +402,33 @@ def test_match_ism_controls_still_matches_generic_words() -> None:
             },
         ],
     }
-    finding = _finding(narrative="systems access logged")
-    matched = match_ism_controls([finding], asd_data)
-    assert any(control["id"] == "ISM-LOG" for control in matched)
+    generic_only = _finding(description="systems access service", recommendation="")
+    one_specific = _finding(description="systems access logged", recommendation="")
+    two_specific = _finding(description="access logged logging", recommendation="")
+    assert match_ism_controls([generic_only], asd_data) == []
+    assert match_ism_controls([one_specific], asd_data) == []
+    assert [c["id"] for c in match_ism_controls([two_specific], asd_data)] == ["ISM-LOG"]
+
+
+def test_match_ism_controls_ignores_narrative() -> None:
+    """Only description and recommendation are matched; the LLM narrative is not."""
+    asd_data: dict[str, Any] = {
+        "ism": [
+            {
+                "id": "ISM-FW",
+                "category": "Networking",
+                "description": "Firewall blocks hostile traffic",
+            },
+        ],
+    }
+    narrative_only = _finding(
+        description="Unrelated thing", recommendation="", narrative="firewall blocks hostile traffic"
+    )
+    described = _finding(
+        description="Firewall blocks hostile sources", recommendation="", narrative=""
+    )
+    assert match_ism_controls([narrative_only], asd_data) == []
+    assert [c["id"] for c in match_ism_controls([described], asd_data)] == ["ISM-FW"]
 
 
 def test_match_ism_controls_requires_overlap_within_one_finding() -> None:
@@ -418,8 +442,8 @@ def test_match_ism_controls_requires_overlap_within_one_finding() -> None:
             },
         ],
     }
-    split = [_finding(narrative="firewall rules"), _finding(narrative="hostile sources")]
-    together = [_finding(narrative="firewall blocks hostile sources")]
+    split = [_finding(description="firewall rules"), _finding(description="hostile sources")]
+    together = [_finding(description="firewall blocks hostile sources")]
     assert match_ism_controls(split, asd_data) == []
     assert [c["id"] for c in match_ism_controls(together, asd_data)] == ["ISM-FW"]
 

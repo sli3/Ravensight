@@ -37,8 +37,8 @@ MIN_E8_MATCH_SCORE = 3
 MAX_E8_RELATED_CONTROLS = 3
 
 # Generic words that carry no matching signal for Essential Eight scoring.
-# These are removed from control keyword sets in score_findings only; the ISM
-# matcher (match_ism_controls) intentionally does not subtract them.
+# These are removed from keyword sets in both score_findings and the ISM
+# matcher (match_ism_controls).
 E8_GENERIC_WORDS = {
     "only", "required", "event", "events", "access", "content",
     "local", "service", "services", "changed", "system", "systems",
@@ -141,13 +141,15 @@ def _extract_keywords(text: str) -> set[str]:
 
 
 def _normalise_findings(findings: list[dict]) -> list[str]:
-    """Extract all text content from findings for keyword matching."""
+    """Extract description and recommendation text per finding for ISM matching.
+
+    The LLM narrative is left out: it is long, loose and different every run.
+    """
     combined_texts = []
     for finding in findings:
         description = finding.get("description", "")
         recommendation = finding.get("recommendation", "")
-        narrative = finding.get("narrative", "")
-        combined = f"{description} {recommendation} {narrative}".strip()
+        combined = f"{description} {recommendation}".strip()
         if combined:
             combined_texts.append(combined)
     return combined_texts
@@ -272,7 +274,8 @@ def match_ism_controls(
     converted_findings = _convert_findings(findings)
     # One keyword set per finding, so a control must match within a single finding
     finding_keyword_sets = [
-        _extract_keywords(text) for text in _normalise_findings(converted_findings)
+        _extract_keywords(text) - E8_GENERIC_WORDS
+        for text in _normalise_findings(converted_findings)
     ]
 
     # Load keyword overrides for ISM matching
@@ -286,7 +289,7 @@ def match_ism_controls(
         keywords = _extract_keywords(control["description"] + " " + control["category"])
 
         # Remove globally blocked keywords from ISM matching
-        control_keywords = keywords - global_blocked
+        control_keywords = keywords - global_blocked - E8_GENERIC_WORDS
         match_score = max(
             (len(control_keywords & found) for found in finding_keyword_sets),
             default=0,
