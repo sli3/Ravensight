@@ -28,7 +28,7 @@ STOP_WORDS = {
 MIN_KEYWORD_LENGTH = 4
 
 # Minimum match score for ISM control to be included in results
-MIN_ISM_MATCH_SCORE = 1
+MIN_ISM_MATCH_SCORE = 2
 
 # Minimum keyword overlap for a finding to relate to an Essential Eight control
 MIN_E8_MATCH_SCORE = 3
@@ -270,11 +270,10 @@ def match_ism_controls(
         List of up to max_controls ISM control dictionaries sorted by match score descending.
     """
     converted_findings = _convert_findings(findings)
-    # Build findings keyword set
-    normalised_text = _normalise_findings(converted_findings)
-    all_keywords = set()
-    for text in normalised_text:
-        all_keywords.update(_extract_keywords(text))
+    # One keyword set per finding, so a control must match within a single finding
+    finding_keyword_sets = [
+        _extract_keywords(text) for text in _normalise_findings(converted_findings)
+    ]
 
     # Load keyword overrides for ISM matching
     overrides = _load_overrides(overrides_path)
@@ -288,7 +287,10 @@ def match_ism_controls(
 
         # Remove globally blocked keywords from ISM matching
         control_keywords = keywords - global_blocked
-        match_score = len(control_keywords & all_keywords)
+        match_score = max(
+            (len(control_keywords & found) for found in finding_keyword_sets),
+            default=0,
+        )
 
         if match_score >= MIN_ISM_MATCH_SCORE:
             scored_controls.append((control, match_score))

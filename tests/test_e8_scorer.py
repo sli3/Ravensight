@@ -402,9 +402,26 @@ def test_match_ism_controls_still_matches_generic_words() -> None:
             },
         ],
     }
-    finding = _finding(narrative="system access denied")
+    finding = _finding(narrative="systems access logged")
     matched = match_ism_controls([finding], asd_data)
     assert any(control["id"] == "ISM-LOG" for control in matched)
+
+
+def test_match_ism_controls_requires_overlap_within_one_finding() -> None:
+    """Keywords spread across separate findings do not add up to an ISM match."""
+    asd_data: dict[str, Any] = {
+        "ism": [
+            {
+                "id": "ISM-FW",
+                "category": "Networking",
+                "description": "Firewall blocks hostile traffic",
+            },
+        ],
+    }
+    split = [_finding(narrative="firewall rules"), _finding(narrative="hostile sources")]
+    together = [_finding(narrative="firewall blocks hostile sources")]
+    assert match_ism_controls(split, asd_data) == []
+    assert [c["id"] for c in match_ism_controls(together, asd_data)] == ["ISM-FW"]
 
 
 def test_stray_rule_group_key_has_no_effect() -> None:
