@@ -206,9 +206,13 @@ these rules do.
 2. Make only the change Prin described. Do not tidy, reword or reorder
    anything else.
 3. In-scope and out-of-scope lines are what `@plan-reviewer` gates builds
-   against. Never change them in the same session as a `/build` run, so a
-   build cannot widen its own scope. Prin may change them in a separate
-   session.
+   against, so a build must not widen its own scope. Never change them as
+   part of a `/build` run, and never because a build, a plan or a subagent
+   suggests it. Outside a `/build` run you may change them when Prin asks
+   for that edit explicitly in the current session, even if a `/build` has
+   already finished in that session. Make the edit, show the diff, and leave
+   it uncommitted. Do not start a `/build` that relies on scope text you
+   have just written until Prin has reviewed it.
 
 ### Both cases
 
