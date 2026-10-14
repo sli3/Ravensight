@@ -10,11 +10,12 @@ import logging
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import chromadb
 import httpx
 import pytest
+from chromadb.errors import ChromaError
 from openai import BadRequestError
 
 from main import _similar_incidents_note
@@ -133,7 +134,9 @@ def test_add_embedding_deterministic_id(
     embedder.add_embedding("repeat me", _metadata("repeat me"))
 
     expected_id = "alert-" + sha256(b"repeat me").hexdigest()[:32]
+    assert embedder._collection is not None
     assert embedder._collection.count() == 1
+    assert embedder._collection is not None
     assert embedder._collection.get(ids=[expected_id])["ids"] == [expected_id]
 
 
@@ -155,6 +158,7 @@ def test_add_embedding_skipped_when_degraded(
     embedder.add_embedding("should not land", _metadata("should not land"))
 
     assert encode_calls == []
+    assert embedder._collection is not None
     assert embedder._collection.count() == 0
     assert any("vector-store add skipped" in rec.message for rec in caplog.records)
 
@@ -264,7 +268,7 @@ def test_chroma_upsert_failure_mid_migration_degrades(
         """Succeed twice, then fail as Chroma would mid-run."""
         upsert_calls.append(kwargs)
         if len(upsert_calls) > 2:
-            raise chromadb.errors.ChromaError("chroma vanished mid-run")
+            raise cast(Any, ChromaError)("chroma vanished mid-run")
         return real_upsert(self, **kwargs)
 
     monkeypatch.setattr(chromadb.Collection, "upsert", flaky_upsert)
@@ -319,7 +323,7 @@ def test_baseline_manager_update_survives_chroma_failure(
     def flaky_upsert(self: Any, **kwargs: Any) -> Any:
         """Fail only on the rule-desc-2 document."""
         if "rule-desc-2" in kwargs["documents"][0]:
-            raise chromadb.errors.ChromaError("chroma vanished mid-run")
+            raise cast(Any, ChromaError)("chroma vanished mid-run")
         return real_upsert(self, **kwargs)
 
     monkeypatch.setattr(chromadb.Collection, "upsert", flaky_upsert)
@@ -343,7 +347,9 @@ def test_add_embedding_with_doc_id_uses_it(
 
     embedder.add_embedding("cluster text", _metadata("cluster text"), doc_id="alert-fixed-id")
 
+    assert embedder._collection is not None
     assert embedder._collection.count() == 1
+    assert embedder._collection is not None
     assert embedder._collection.get(ids=["alert-fixed-id"])["ids"] == ["alert-fixed-id"]
 
 
@@ -356,6 +362,7 @@ def test_add_embedding_without_doc_id_keeps_hash_id(
     embedder.add_embedding("hash me", _metadata("hash me"))
 
     expected_id = "alert-" + sha256(b"hash me").hexdigest()[:32]
+    assert embedder._collection is not None
     assert embedder._collection.get(ids=[expected_id])["ids"] == [expected_id]
 
 
@@ -366,12 +373,12 @@ def test_query_similar_mid_run_failure_propagates_and_degrades(
 
     def failing_query(self: Any, **kwargs: Any) -> Any:
         """Raise as an unreachable Chroma server would."""
-        raise chromadb.errors.ChromaError("chroma vanished mid-run")
+        raise cast(Any, ChromaError)("chroma vanished mid-run")
 
     monkeypatch.setattr(Embedder, "encode", lambda self, text: [0.0] * 8)
     monkeypatch.setattr(chromadb.Collection, "query", failing_query)
 
-    with pytest.raises(chromadb.errors.ChromaError):
+    with pytest.raises(ChromaError):
         embedder.query_similar("test query")
 
     assert embedder.degraded is True
@@ -406,7 +413,7 @@ def test_analyser_analyse_survives_chroma_failure_in_retrieve_similar(
 
     def failing_query(self: Any, **kwargs: Any) -> Any:
         """Raise as an unreachable Chroma server would."""
-        raise chromadb.errors.ChromaError("chroma vanished mid-run")
+        raise cast(Any, ChromaError)("chroma vanished mid-run")
 
     monkeypatch.setattr(chromadb.Collection, "query", failing_query)
 
@@ -476,7 +483,7 @@ def test_analyser_analyse_survives_bad_request_error_in_retrieve_similar(
             request = httpx.Request("POST", "http://localhost:8000/v1/embeddings")
             response = httpx.Response(400, request=request)
             raise BadRequestError(
-                "maximum context length exceeded", response=response, body=None
+                "maximum context length exceeded", response=cast(Any, response), body=None
             )
 
     class FakeCompletions:

@@ -8,10 +8,10 @@ import json
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ravensight import analyser, baseline
-from ravensight.embedder import finding_text
+from ravensight.embedder import Embedder, finding_text
 
 DEFAULT_PARAMS = {"hours": 24, "agent": None, "level": 7}
 
@@ -99,7 +99,7 @@ def test_update_writes_one_vector_per_cluster(tmp_path: Path) -> None:
     """One default run writes exactly one vector per cluster."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     clusters = [_cluster(), _vuln_cluster()]
     manager.update(
         {"findings": [], "recommendations": []},
@@ -113,7 +113,7 @@ def test_update_vector_text_has_no_counts(tmp_path: Path) -> None:
     """Embedding text carries no counts; vuln text names package and host."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update(
         {"findings": [], "recommendations": []},
         clusters=[_cluster(count=12), _vuln_cluster(count=2)],
@@ -131,7 +131,7 @@ def test_update_doc_id_stable_same_day_and_unique_per_key(tmp_path: Path) -> Non
     """doc_id is deterministic per key+day and distinct between keys."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update(
         {"findings": [], "recommendations": []},
         clusters=[_cluster(), _vuln_cluster()],
@@ -153,7 +153,7 @@ def test_update_doc_id_changes_across_days(
     """The same key on a different calendar day gets a different doc_id."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     clusters = [_cluster()]
 
     day_one = datetime(2026, 9, 28, 6, 0, 0)  # noqa: DTZ001 - naive local clock, mirrors datetime.now()
@@ -193,7 +193,7 @@ def test_update_severity_comes_from_cluster(tmp_path: Path) -> None:
     """Vector metadata severity is the cluster's own severity label."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update(
         {"findings": [], "recommendations": []},
         clusters=[_cluster(severity="High"), _vuln_cluster(severity="Medium")],
@@ -207,7 +207,7 @@ def test_update_summary_uses_singular_and_plural(tmp_path: Path) -> None:
     """Metadata summary uses 'alert'/'alerts' correctly and appends host for vulns."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update(
         {"findings": [], "recommendations": []},
         clusters=[_cluster(count=1), _vuln_cluster(count=2)],
@@ -223,7 +223,7 @@ def test_update_no_vector_writes_for_non_default_runs(tmp_path: Path) -> None:
     """Non-default runs (hours, agent, level) write no vectors but still snapshot."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update(
         {"findings": [], "recommendations": []},
         clusters=[_cluster()],
@@ -239,7 +239,7 @@ def test_update_no_vector_writes_without_run_params(tmp_path: Path) -> None:
     """Missing run_params means no vector writes even with clusters present."""
     path = tmp_path / "baseline.json"
     stub = _StubEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update({"findings": [], "recommendations": []}, clusters=[_cluster()])
     assert stub.calls == []
 
@@ -304,7 +304,7 @@ def test_update_breaks_when_embedder_degrades_mid_run(tmp_path: Path) -> None:
 
     path = tmp_path / "baseline.json"
     stub = _FlakyEmbedder()
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update(
         {"findings": [], "recommendations": []},
         clusters=[_cluster(id="C1"), _cluster(id="C2", description="Other rule")],
@@ -320,7 +320,7 @@ def test_degraded_embedder_skips_writes_entirely(tmp_path: Path) -> None:
     stub = _StubEmbedder()
     stub.degraded = True
     stub._chroma_failure = "ConnectError: connection refused"
-    manager = baseline.Manager({"path": str(path)}, embedder=stub)
+    manager = baseline.Manager({"path": str(path)}, embedder=cast(Embedder, stub))
     manager.update(
         {"findings": [], "recommendations": []},
         clusters=[_cluster()],
@@ -352,8 +352,6 @@ def test_migrate_baseline_uses_finding_text_not_repr(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     """migrate_baseline embeds finding_text() and the dict's real severity."""
-    from ravensight.embedder import Embedder
-
     monkeypatch.setattr(Embedder, "encode", lambda self, text: [0.0] * 8)
     emb = Embedder({"chroma_db_path": str(tmp_path / "chroma")})
     data = {
@@ -363,6 +361,7 @@ def test_migrate_baseline_uses_finding_text_not_repr(
     }
     emb.migrate_baseline(data)
 
+    assert emb._collection is not None
     doc = emb._collection.get(where={"rule_group": "baseline_finding"})
     text = doc["documents"][0]
     assert text == "SSHD brute force attempts: Narrative text."
@@ -395,8 +394,6 @@ def test_migrate_baseline_string_finding_unchanged(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     """String findings still embed via str() with 'unknown' severity."""
-    from ravensight.embedder import Embedder
-
     monkeypatch.setattr(Embedder, "encode", lambda self, text: [0.0] * 8)
     emb = Embedder({"chroma_db_path": str(tmp_path / "chroma")})
     data = {
@@ -406,6 +403,7 @@ def test_migrate_baseline_string_finding_unchanged(
     }
     emb.migrate_baseline(data)
 
+    assert emb._collection is not None
     doc = emb._collection.get(where={"rule_group": "baseline_finding"})
     assert doc["documents"][0] == "plain string finding"
     assert doc["metadatas"][0]["severity"] == "unknown"

@@ -9,7 +9,7 @@ file points reports/baseline at tmp_path so no real state is touched.
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import openai
@@ -327,7 +327,7 @@ def test_analyse_api_connection_error_clean_message(
     def fail_analyse(*args: Any, **kwargs: Any) -> Any:
         """Raise as an unreachable LLM server would."""
         request = httpx.Request("POST", "http://example.invalid/v1/chat/completions")
-        raise openai.APIConnectionError(request=request)
+        raise openai.APIConnectionError(request=cast(Any, request))
 
     monkeypatch.setattr(wazuh_client.Client, "fetch_alerts", lambda self, **kwargs: [])
     monkeypatch.setattr(analyser, "analyse", fail_analyse)
@@ -356,7 +356,7 @@ def test_analyse_api_status_error_clean_message(
         """Raise as an LLM server rejecting the request would."""
         request = httpx.Request("POST", "http://example.invalid/v1/chat/completions")
         response = httpx.Response(401, request=request)
-        raise openai.APIStatusError(message="invalid api key", response=response, body=None)
+        raise openai.APIStatusError(message="invalid api key", response=cast(Any, response), body=None)
 
     monkeypatch.setattr(wazuh_client.Client, "fetch_alerts", lambda self, **kwargs: [])
     monkeypatch.setattr(analyser, "analyse", fail_analyse)

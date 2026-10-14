@@ -158,7 +158,7 @@ def test_narrative_only_keywords_count() -> None:
 
 def test_non_string_finding_id_skipped_safely() -> None:
     """Findings with a non-string id do not break relatedness collection."""
-    findings = [
+    findings: list[dict | str] = [
         _finding(id=123, narrative="Unauthorised applications execute"),
         _finding(id="C2", narrative="Unauthorised applications execute"),
     ]
@@ -448,8 +448,8 @@ def test_match_ism_controls_requires_overlap_within_one_finding() -> None:
             },
         ],
     }
-    split = [_finding(description="firewall rules"), _finding(description="hostile sources")]
-    together = [_finding(description="firewall blocks hostile sources")]
+    split: list[dict | str] = [_finding(description="firewall rules"), _finding(description="hostile sources")]
+    together: list[dict | str] = [_finding(description="firewall blocks hostile sources")]
     assert match_ism_controls(split, asd_data) == []
     assert [c["id"] for c in match_ism_controls(together, asd_data)] == ["ISM-FW"]
 
