@@ -729,8 +729,6 @@ machine running Ravensight but labels it UTC (`Z`), so the lookback window is
 shifted by the machine's UTC offset. This section makes the window true UTC on
 any machine timezone.
 
-**Sessions: 1**
-
 ---
 
 #### Session 1 — UTC lookback window
@@ -758,8 +756,6 @@ Wazuh `@timestamp`, which is UTC, while the "Generated" line uses the local
 clock of the machine running Ravensight. The report shows both with no zone
 label, which is confusing. This section labels the finding times as UTC.
 
-**Sessions: 1**
-
 ---
 
 #### Session 1 — UTC label on finding times
@@ -782,6 +778,75 @@ Out of scope:
 - `config.toml` and `config.example.toml`
 
 ---
+
+### 12. Report Clarity — ASD Alignment and Plain Wording
+
+**What it does:**
+Makes the report easier to read and to explain to other people. The ASD
+Framework section becomes finding-centred: one table showing which finding
+relates to which Essential Eight strategy and ISM control, and why. Terms and
+abbreviations are explained in the report itself.
+
+**Design rule:** evidence-only, as in section 9. Pointers come from word
+matching on a finding's description and recommendation, never from the LLM.
+No pass or fail wording.
+
+**Sessions: 2. Later phases are added here before they start.**
+
+#### Phase 1 — Per-finding pointers and ASD layout
+In scope:
+- `ravensight/e8_scorer.py`: a per-finding result for ISM and E8 matches,
+  including the shared words. `match_ism_controls` keeps returning its flat
+  list for the existing callers
+- `main.py`: pass the per-finding result to `Reporter.generate`
+- `ravensight/reporter.py`: `_render_asd_section` shows a "Findings and related
+  controls" table (Finding, Essential Eight, ISM controls, Matched on), ordered
+  by finding ID, at most 15 rows, highest severity first, with a line for the
+  number not shown and a line naming findings with no match
+- The E8 strategy table collapses to one line when no strategy matched
+- One short "How to read this" note replaces the repeated notes
+- Tests for each change
+Out of scope: E8 Phase 2 (attestation, "Not applicable"), the LLM prompt,
+`evidence.py`, `data/asd_framework.json`, `config.toml`
+
+#### Phase 1b — Matching accuracy
+In scope:
+- `ravensight/e8_scorer.py`: light stemming in `_extract_keywords` (drop common
+  endings such as ed, ing, es, s) so patched/patches and updated/updates match
+- `ravensight/e8_scorer.py`: add boilerplate words to `E8_GENERIC_WORDS`
+  (action, confirm, multiple, expected)
+- `ravensight/reporter.py`: the "no ISM controls matched" branch uses
+  `is not None` so an empty match list shows the no-match line instead of
+  every ISM control
+- Tests for each change
+Out of scope: Phase 2 wording, E8 Phase 2, the LLM prompt, stored baseline data
+
+And the /build line:
+/build "Report clarity Phase 1b (roadmap section 12): matching accuracy. Add light
+stemming to e8_scorer._extract_keywords, add action, confirm, multiple and expected
+to E8_GENERIC_WORDS, and fix the reporter's no-ISM-match branch to use
+'is not None' so an empty list shows the no-match line. Add tests.
+Out of scope: Phase 2 wording, E8 Phase 2, LLM prompt, stored data."
+
+#### Phase 2 — Plain wording and report tidy-up
+In scope:
+- `ravensight/reporter.py`: one line under the report title explaining that
+  C1, C2… are clusters (alerts with the same rule), numbered per run
+- Spelled-out names at first use: ASD, ISM, Essential Eight, ML, UTC
+- A short glossary at the end listing only terms used in that report
+- `ravensight/evidence.py`: firewall evidence labels spelled out (source,
+  destination, destination port, interface, direction, protocol)
+- Past-incident dates shown as plain dates
+- `ravensight/reporter.py`: remove the flat "Relevant ISM Controls" list now
+  that the per-finding table covers it (the "no ISM controls matched" line
+  moves into the per-finding section)
+- `ravensight/reporter.py`: the per-finding table shows each ISM category once
+  after the control IDs
+- The how-to-read note says pointers can vary a little between runs because
+  they use the finding's recommendation text
+- Tests for each change
+Out of scope: matching logic, E8 Phase 2, the LLM prompt, baseline data
+(the stale "pfSense" label lives in `baseline_state.json` and Chroma)
 
 ## Suggested Build Order
 
