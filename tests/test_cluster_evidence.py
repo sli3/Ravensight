@@ -902,3 +902,42 @@ def test_netstat_missing_full_log_gives_no_evidence() -> None:
     del alert["_source"]["full_log"]
     [cluster] = extract_alert_clusters([alert])
     assert "evidence" not in cluster
+
+
+_FIREWALL_DATA: dict[str, Any] = {
+    "actions": ["block"],
+    "directions": ["in"],
+    "interfaces": ["vtnet0"],
+    "ipversions": ["ipv4"],
+    "protocols": ["tcp"],
+    "sources": ["1.2.3.4"],
+    "destinations": ["5.6.7.8"],
+    "dstports": ["443"],
+}
+
+
+def test_firewall_labels_stay_short_by_default_for_the_prompt() -> None:
+    """The default rendering keeps the short labels, so the LLM prompt is unchanged."""
+    rendered = "; ".join(_render_firewall(_FIREWALL_DATA))
+    assert rendered == (
+        "action block; dir in; iface vtnet0; ip versions ipv4; proto tcp; "
+        "src 1.2.3.4; dst 5.6.7.8; dport 443"
+    )
+
+
+def test_firewall_labels_spelled_out_with_plain_labels() -> None:
+    """plain_labels spells out every abbreviated firewall field name."""
+    rendered = "; ".join(_render_firewall(_FIREWALL_DATA, plain_labels=True))
+    assert rendered == (
+        "action block; direction in; interface vtnet0; IP versions ipv4; "
+        "protocol tcp; source 1.2.3.4; destination 5.6.7.8; destination port 443"
+    )
+
+
+def test_plain_labels_reach_per_host_firewall_evidence() -> None:
+    """Spelled-out labels also apply inside per-host segments."""
+    small = {"directions": ["in"], "dstports": ["443"]}
+    evidence = {"per_host": {"fw-1": {"firewall": small}}}
+    assert "destination port 443" in render_evidence(evidence, plain_labels=True)
+    assert "dport 443" in render_evidence(evidence)
+    assert "destination port" not in render_evidence(evidence)

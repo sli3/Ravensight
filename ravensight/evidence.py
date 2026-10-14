@@ -699,18 +699,40 @@ def _render_vulnerability(data: dict[str, Any]) -> list[str]:
     return parts
 
 
-def _render_firewall(data: dict[str, Any]) -> list[str]:
-    """Render firewall evidence fields in documented order."""
+_PLAIN_FIREWALL_LABELS = {
+    "dir": "direction",
+    "iface": "interface",
+    "ip versions": "IP versions",
+    "proto": "protocol",
+    "src": "source",
+    "dst": "destination",
+    "dport": "destination port",
+}
+
+
+def _render_firewall(data: dict[str, Any], plain_labels: bool = False) -> list[str]:
+    """Render firewall evidence fields in documented order.
+
+    With plain_labels the abbreviated field names are spelled out; the default
+    keeps the short labels used in the LLM prompt.
+    """
+
+    def label(short: str) -> str:
+        """Return the field label, spelled out when plain_labels is set."""
+        return _PLAIN_FIREWALL_LABELS.get(short, short) if plain_labels else short
+
     parts = []
     if data.get("actions"):
         parts.append(
             "action " + ", ".join(_sanitise(v) for v in data["actions"])
         )
     if data.get("directions"):
-        parts.append("dir " + ", ".join(_sanitise(v) for v in data["directions"]))
+        parts.append(
+            f"{label('dir')} " + ", ".join(_sanitise(v) for v in data["directions"])
+        )
     if data.get("interfaces"):
         parts.append(
-            "iface " + ", ".join(_sanitise(v) for v in data["interfaces"])
+            f"{label('iface')} " + ", ".join(_sanitise(v) for v in data["interfaces"])
         )
     src_scopes = data.get("src_scopes") or []
     dst_scopes = data.get("dst_scopes") or []
@@ -727,12 +749,14 @@ def _render_firewall(data: dict[str, Any]) -> list[str]:
         dst_side = ", ".join(dst_scopes)
         parts.append(f"scope {src_side} → {dst_side}")
     if data.get("ipversions"):
-        parts.append("ip versions " + ", ".join(sorted(data["ipversions"])))
+        parts.append(f"{label('ip versions')} " + ", ".join(sorted(data["ipversions"])))
     if data.get("protocols"):
-        parts.append("proto " + ", ".join(_sanitise(v) for v in data["protocols"]))
+        parts.append(
+            f"{label('proto')} " + ", ".join(_sanitise(v) for v in data["protocols"])
+        )
     sources = data.get("sources")
     if sources:
-        src_part = "src " + ", ".join(_sanitise(v) for v in sources)
+        src_part = f"{label('src')} " + ", ".join(_sanitise(v) for v in sources)
         total = data.get("sources_total")
         versions = data.get("sources_by_version") or {}
         if isinstance(total, int) and total > 1:
@@ -744,10 +768,12 @@ def _render_firewall(data: dict[str, Any]) -> list[str]:
             src_part += f" ({total} distinct: " + suffix + ")"
         parts.append(src_part)
     if data.get("destinations"):
-        parts.append("dst " + ", ".join(_sanitise(v) for v in data["destinations"]))
+        parts.append(
+            f"{label('dst')} " + ", ".join(_sanitise(v) for v in data["destinations"])
+        )
     if data.get("dstports"):
         parts.append(
-            "dport " + ", ".join(_sanitise(v) for v in data["dstports"])
+            f"{label('dport')} " + ", ".join(_sanitise(v) for v in data["dstports"])
         )
     return parts
 
@@ -764,7 +790,7 @@ def _render_generic(data: dict[str, Any]) -> list[str]:
     return parts
 
 
-def _render_per_host(data: dict[str, Any]) -> list[str]:
+def _render_per_host(data: dict[str, Any], plain_labels: bool = False) -> list[str]:
     """Render per-host evidence as one bracketed segment per host.
 
     Each host's inner text is that host's projected evidence rendered with
@@ -780,7 +806,10 @@ def _render_per_host(data: dict[str, Any]) -> list[str]:
                 continue
             inner = data[host].get(shape)
             if isinstance(inner, dict) and inner:
-                inner_parts.extend(renderer(inner))
+                if shape == "firewall":
+                    inner_parts.extend(_render_firewall(inner, plain_labels))
+                else:
+                    inner_parts.extend(renderer(inner))
         inner = "; ".join(inner_parts)
         if len(inner) > MAX_EVIDENCE_HOST_CHARS:
             inner = inner[: MAX_EVIDENCE_HOST_CHARS - 1] + _ELLIPSIS
@@ -802,12 +831,15 @@ _SHAPE_RENDERERS = {
 }
 
 
-def render_evidence(evidence: dict[str, Any] | None) -> str:
+def render_evidence(
+    evidence: dict[str, Any] | None, plain_labels: bool = False
+) -> str:
     """Render a cluster's evidence dict as one bounded single-line string.
 
     Fields join with '; ', values within a field with ', '. Whitespace in each
     value collapses to single spaces and '|' escapes as '\\|'. Returns '' when
-    evidence is absent or empty.
+    evidence is absent or empty. plain_labels spells out firewall field names
+    (for the report); the default keeps the short labels used in the prompt.
     """
     if not isinstance(evidence, dict) or not evidence:
         return ""
@@ -815,5 +847,8 @@ def render_evidence(evidence: dict[str, Any] | None) -> str:
     for shape, renderer in _SHAPE_RENDERERS.items():
         data = evidence.get(shape)
         if isinstance(data, dict) and data:
-            parts.extend(renderer(data))
+            if shape in ("firewall", "per_host"):
+                parts.extend(renderer(data, plain_labels))
+            else:
+                parts.extend(renderer(data))
     return "; ".join(part for part in parts if part)

@@ -3,6 +3,7 @@ reporter.py — Markdown security report generation.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -67,7 +68,7 @@ def _format_finding(finding: str | dict) -> list[str]:
     if narrative:
         lines.append(f"  - {narrative}")
 
-    evidence_text = render_evidence(finding.get("evidence"))
+    evidence_text = render_evidence(finding.get("evidence"), plain_labels=True)
     if evidence_text:
         lines.append(f"  - Evidence: {evidence_text}")
 
@@ -95,11 +96,70 @@ MAX_MATCHED_WORDS = 8
 _SEVERITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
 
 HOW_TO_READ_NOTE = (
-    "> **How to read this:** Ravensight reads alerts, not system settings, so it cannot "
-    "say whether a control is met. Entries below are pointers: controls worth checking "
-    "because a finding shares key words with them. They are not pass or fail results. "
-    "\"Matched on\" shows the shared words. Essential Eight strategies are always Not assessed."
+    "> **How to read this:** The Australian Signals Directorate (ASD) publishes the "
+    "Essential Eight and the Information Security Manual (ISM). Ravensight reads alerts, "
+    "not system settings, so it cannot say whether a control is met. Entries below are "
+    "pointers: controls worth checking because a finding shares key words with them. "
+    "They are not pass or fail results. \"Matched on\" shows the shared words. Pointers "
+    "use each finding's recommendation text, so they can vary a little between runs. "
+    "Essential Eight strategies are always Not assessed."
 )
+
+CLUSTER_NOTE = (
+    "> Findings are grouped into clusters (C1, C2…): alerts that share the same rule. "
+    "The numbers apply to this report only. Finding times are in UTC (Coordinated "
+    "Universal Time); the Generated time above is local."
+)
+
+# (term, meaning, regex that must match the report body for the term to be listed)
+_GLOSSARY: list[tuple[str, str, str]] = [
+    ("Cluster (C1, C2…)", "Alerts that share the same rule, grouped into one finding. Numbers apply to this report only.", r"\*\*\[C\d+\]"),
+    ("UTC", "Coordinated Universal Time, the time zone Wazuh uses for alert times.", r"\d UTC\b"),
+    ("ASD", "Australian Signals Directorate, the Australian Government cyber security agency.", r"## ASD Framework"),
+    ("ISM", "Information Security Manual, the ASD's catalogue of security controls (IDs like ISM-0298).", r"\bISM\b"),
+    ("Essential Eight", "The ASD's eight core mitigation strategies, such as patching and multi-factor authentication.", r"Essential Eight"),
+    ("ML", "Maturity level (ML1 to ML4) of an Essential Eight control.", r"\bML\d"),
+    ("CVE", "Common Vulnerabilities and Exposures, a public ID for a known software flaw.", r"CVE-\d"),
+    ("dpkg", "The Debian and Ubuntu package manager.", r"(?i)\bdpkg\b"),
+    ("MITRE ATT&CK", "A public catalogue of attacker tactics and techniques.", r"## MITRE ATT&CK Tags"),
+    ("IPv4 and IPv6", "Internet Protocol versions 4 and 6, the two IP address formats.", r"(?i)\bipv[46]\b"),
+]
+
+
+def _render_glossary(report_text: str) -> list[str]:
+    """Render a glossary of only the terms that appear in the given report text."""
+    entries = [
+        f"- **{term}**: {meaning}"
+        for term, meaning, pattern in _GLOSSARY
+        if re.search(pattern, report_text)
+    ]
+    if not entries:
+        return []
+    return ["", "## Glossary", "", *entries]
+
+
+def _plain_incident_dates(text: str) -> str:
+    """Show past-incident timestamps as plain dates (2026-09-29T22:11:23.2 becomes 2026-09-29)."""
+    return re.sub(
+        r"^(- \d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?",
+        r"\1",
+        text,
+        flags=re.MULTILINE,
+    )
+
+
+def _group_ism_controls(controls: list[dict]) -> str:
+    """Join ISM controls as 'ID, ID (Category)' groups so a shared category is shown once."""
+    groups: dict[str, list[str]] = {}
+    for control in controls:
+        groups.setdefault(str(control.get("category", "")).strip(), []).append(
+            str(control.get("id", ""))
+        )
+    parts = [
+        f"{', '.join(ids)} ({category})" if category else ", ".join(ids)
+        for category, ids in groups.items()
+    ]
+    return "; ".join(parts)
 
 
 def _finding_order_key(finding_id: str) -> tuple[str, int, str]:
@@ -150,10 +210,7 @@ def _render_finding_pointers(findings: list, finding_pointers: list[dict]) -> li
         description = " ".join(str(by_id.get(row["id"], {}).get("description", "")).split())
         finding_cell = sanitise_cell(f"{row['id']} {truncate_words(description, 60)}".strip())
         e8_cell = sanitise_cell(", ".join(e["strategy"] for e in row["e8"])) if row["e8"] else "—"
-        ism_cell = (
-            sanitise_cell(", ".join(f"{c['id']} {c['category']}".strip() for c in row["ism"]))
-            if row["ism"] else "—"
-        )
+        ism_cell = sanitise_cell(_group_ism_controls(row["ism"])) if row["ism"] else "—"
         words = sorted({w for p in (*row["e8"], *row["ism"]) for w in p.get("shared", [])})
         matched_cell = sanitise_cell(", ".join(words[:MAX_MATCHED_WORDS])) or "—"
         lines.append(f"| {finding_cell} | {e8_cell} | {ism_cell} | {matched_cell} |")
@@ -218,6 +275,8 @@ def _render_asd_section(
             note_parts.append(
                 "Not assessed. Ravensight reads alerts, not system configuration, so it cannot measure maturity. Related controls are pointers for review, not gaps."
             )
+        else:
+            note_parts.append("ML means maturity level, from ML1 to ML4.")
         if any(entry.get("strategy") == UNMAPPED_STRATEGY for entry in essential_eight):
             note_parts.append("The \"Unmapped\" row lists controls outside the Essential Eight strategies.")
         lines.extend(["### Essential Eight", ""])
@@ -274,6 +333,10 @@ def _render_asd_section(
             )
 
         lines.append("")
+
+    # The per-finding table already lists the ISM controls, so the flat list is only for the old layout.
+    if finding_pointers is not None:
+        return "\n".join(lines)
 
     # Relevant ISM Controls
     lines.extend(["### Relevant ISM Controls", "",])
@@ -377,20 +440,24 @@ class Reporter:
 
         asd_data of None renders no ASD section; an empty dict renders a note that the data file is missing or outdated.
         """
+        findings = data.get("findings", [])
         lines = [
             "# Security Report",
             "",
             f"**Generated**: {datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M')}",
             "",
+        ]
+        if findings:
+            lines.extend([CLUSTER_NOTE, ""])
+        lines.extend([
             "## Summary",
             "",
             data.get("summary", "No summary available"),
             "",
             "## Findings",
             "",
-        ]
+        ])
 
-        findings = data.get("findings", [])
         if findings:
             for finding in findings:
                 lines.extend(_format_finding(finding))
@@ -413,7 +480,7 @@ class Reporter:
                 "",
                 "## Similar Past Incidents",
                 "",
-                similar,
+                _plain_incident_dates(similar),
                 "",
             ])
 
@@ -486,5 +553,6 @@ class Reporter:
         else:
             lines.append("*No recommendations*")
 
+        lines.extend(_render_glossary("\n".join(lines)))
         lines.append("")
         return "\n".join(lines)

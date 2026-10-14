@@ -621,7 +621,7 @@ def test_pointer_table_shows_finding_controls_and_matched_words() -> None:
     assert "| Finding | Essential Eight | ISM controls | Matched on |" in section
     assert (
         "| C1 Firewall blocks | Patch operating systems | "
-        "ISM-0634 Gateway event logging | dpkg, firewall, logged, patch |"
+        "ISM-0634 (Gateway event logging) | dpkg, firewall, logged, patch |"
     ) in section
 
 
@@ -716,6 +716,149 @@ def test_empty_ism_match_list_shows_no_match_line_not_every_control() -> None:
     assert "ISM-1175" not in section
 
 
+# --- Plain wording and tidy-up (report clarity Phase 2) ---
+
+
+def test_ism_category_shown_once_for_controls_that_share_it() -> None:
+    """Controls with the same category list their IDs together, then the category once."""
+    patch_1 = {"id": "ISM-0298", "category": "Patch management", "shared": ["patch"]}
+    patch_2 = {"id": "ISM-1143", "category": "Patch management", "shared": ["patch"]}
+    section = _pointer_section(
+        [_cluster(id="C1")], [_pointer("C1", ism=[_GATEWAY, patch_1, patch_2])]
+    )
+    assert (
+        "ISM-0634 (Gateway event logging); ISM-0298, ISM-1143 (Patch management)"
+    ) in section
+    assert section.count("Patch management") == 1
+
+
+def test_flat_ism_list_removed_in_new_layout_but_kept_in_old() -> None:
+    """The per-finding table replaces the flat ISM list; old callers still get it."""
+    control = {"id": "ISM-1175", "category": "Patching", "description": "A patching control."}
+    new = reporter._render_asd_section(
+        _make_asd_data(), e8_scores={}, matched_controls=[control],
+        finding_pointers=[], findings=[],
+    )
+    old = reporter._render_asd_section(_make_asd_data(), e8_scores={}, matched_controls=[control])
+    assert "### Relevant ISM Controls" not in new
+    assert "### Relevant ISM Controls" in old
+
+
+def test_how_to_read_note_spells_out_terms_and_run_to_run_variation() -> None:
+    """The note expands ASD and ISM and warns that pointers can vary between runs."""
+    section = _pointer_section([_cluster(id="C1")], [_pointer("C1", ism=[_GATEWAY])])
+    assert "Australian Signals Directorate (ASD)" in section
+    assert "Information Security Manual (ISM)" in section
+    assert "can vary a little between runs" in section
+
+
+def test_e8_section_explains_ml_in_new_layout() -> None:
+    """The Essential Eight section says what ML means when the table is shown."""
+    section = reporter._render_asd_section(
+        _make_asd_data(), e8_scores=_make_e8_scores(), finding_pointers=[], findings=[]
+    )
+    assert "ML means maturity level, from ML1 to ML4." in section
+
+
+def test_cluster_note_explains_c_numbers_and_utc(tmp_path: Path) -> None:
+    """With findings, a note under the title explains clusters, UTC and the local Generated time."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report({"summary": "s", "findings": [_cluster()]})
+    lines = report.splitlines()
+    assert lines[0] == "# Security Report"
+    assert "clusters (C1, C2…)" in report
+    assert "Coordinated Universal Time" in report
+    assert report.index("clusters (C1, C2…)") < report.index("## Summary")
+
+
+def test_cluster_note_absent_without_findings(tmp_path: Path) -> None:
+    """A report with no findings has no cluster note."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report({"summary": "s", "findings": []})
+    assert "clusters (C1, C2…)" not in report
+
+
+def test_glossary_lists_only_terms_used_in_the_report(tmp_path: Path) -> None:
+    """The glossary is at the end and holds only terms that appear in this report."""
+    rep = _make_reporter(tmp_path)
+    finding = _cluster(
+        id="C1",
+        type="vulnerability",
+        cves=["CVE-2020-0001"],
+        first_seen="2026-09-24T08:15:00.000Z",
+        last_seen="2026-09-24T10:30:00.000Z",
+    )
+    report = rep._build_report({"summary": "s", "findings": [finding]})
+    glossary = report.split("## Glossary")[1]
+    assert report.index("## Glossary") > report.index("## Recommendations")
+    assert "**Cluster (C1, C2…)**" in glossary
+    assert "**UTC**" in glossary
+    assert "**CVE**" in glossary
+    assert "**ASD**" not in glossary
+    assert "**ML**" not in glossary
+    assert "**dpkg**" not in glossary
+
+
+def test_glossary_includes_asd_terms_when_asd_section_present(tmp_path: Path) -> None:
+    """ASD, ISM, Essential Eight and ML appear once the ASD section shows them."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report(
+        {"summary": "s", "findings": [_cluster(id="C1", description="Firewall blocks")]},
+        asd_data=_make_asd_data(),
+        e8_scores=_make_e8_scores(),
+        finding_pointers=[_pointer("C1", ism=[_GATEWAY], e8=[_PATCH])],
+    )
+    glossary = report.split("## Glossary")[1]
+    for term in ("**ASD**", "**ISM**", "**Essential Eight**", "**ML**"):
+        assert term in glossary
+
+
+def test_no_glossary_when_nothing_to_explain(tmp_path: Path) -> None:
+    """With no findings and no ASD section there is no glossary."""
+    rep = _make_reporter(tmp_path)
+    assert "## Glossary" not in rep._build_report({"summary": "s", "findings": []})
+
+
+def test_past_incident_dates_shown_as_plain_dates(tmp_path: Path) -> None:
+    """Similar past incident timestamps lose the time and microseconds."""
+    rep = _make_reporter(tmp_path)
+    similar = (
+        "- 2026-09-29T22:11:23.259933 (Medium): New dpkg installed.: 5 alerts\n"
+        "- 2026-09-30T19:07:48.465717: Other thing: 2 alerts"
+    )
+    report = rep._build_report({"summary": "s", "findings": [], "similar_incidents": similar})
+    assert "- 2026-09-29 (Medium): New dpkg installed.: 5 alerts" in report
+    assert "- 2026-09-30: Other thing: 2 alerts" in report
+    assert "22:11:23" not in report
+
+
+def test_report_evidence_uses_spelled_out_firewall_labels(tmp_path: Path) -> None:
+    """The report spells out src, dst, dport and the other firewall field names."""
+    rep = _make_reporter(tmp_path)
+    finding = _cluster(
+        id="C1",
+        evidence={
+            "firewall": {
+                "actions": ["block"],
+                "directions": ["in"],
+                "interfaces": ["vtnet0"],
+                "protocols": ["tcp"],
+                "ipversions": ["ipv4"],
+                "sources": ["1.2.3.4"],
+                "destinations": ["5.6.7.8"],
+                "dstports": ["443"],
+            }
+        },
+    )
+    report = rep._build_report({"summary": "s", "findings": [finding]})
+    evidence_line = next(line for line in report.splitlines() if "Evidence:" in line)
+    for label in ("direction in", "interface vtnet0", "protocol tcp", "IP versions ipv4",
+                  "source 1.2.3.4", "destination 5.6.7.8", "destination port 443"):
+        assert label in evidence_line
+    for short in ("dir ", "iface ", "proto ", "src ", "dst ", "dport "):
+        assert short not in evidence_line
+
+
 def test_asd_section_without_pointers_keeps_old_layout() -> None:
     """Callers that pass no finding_pointers see the previous layout."""
     section = reporter._render_asd_section(_make_asd_data(), e8_scores={})
@@ -734,7 +877,7 @@ def test_build_report_passes_pointers_to_asd_section(tmp_path: Path) -> None:
         e8_scores={},
         finding_pointers=[_pointer("C1", ism=[_GATEWAY])],
     )
-    assert "| C1 Firewall blocks | — | ISM-0634 Gateway event logging |" in report
+    assert "| C1 Firewall blocks | — | ISM-0634 (Gateway event logging) |" in report
 
 
 def test_build_report_none_asd_data_renders_nothing(tmp_path: Path) -> None:
