@@ -136,7 +136,6 @@ def test_add_embedding_deterministic_id(
     expected_id = "alert-" + sha256(b"repeat me").hexdigest()[:32]
     assert embedder._collection is not None
     assert embedder._collection.count() == 1
-    assert embedder._collection is not None
     assert embedder._collection.get(ids=[expected_id])["ids"] == [expected_id]
 
 
@@ -349,7 +348,6 @@ def test_add_embedding_with_doc_id_uses_it(
 
     assert embedder._collection is not None
     assert embedder._collection.count() == 1
-    assert embedder._collection is not None
     assert embedder._collection.get(ids=["alert-fixed-id"])["ids"] == ["alert-fixed-id"]
 
 
