@@ -880,6 +880,139 @@ Out of scope:
   stale graft summaries (none are code changes)
 - `config.toml` and `config.example.toml`
 
+---
+
+### 14. Pyright Triage
+
+**What it does:**
+Pyright 1.1.414 (pinned in section 13) reports 37 errors on a clean `main` (436
+tests pass, ruff clean). This section brings the count down in two steps: test
+files first, where there is no behaviour risk, then production code, where some
+errors may be real bugs.
+
+**Sessions: 2**
+
+---
+
+#### Session 1 — Test files only (about 27 errors)
+
+In scope:
+- Test stub embedders passed where `Embedder | None` is expected (about 10):
+  fix with a `Protocol` or a cast
+- Possibly-None attribute access (about 10): fix with type narrowing
+- `chromadb.errors` not recognised as a module attribute (5)
+- `httpx` versus `httpx2` mismatches (3)
+- Edits to test files only
+
+Out of scope:
+- Any change to `ravensight/`, `main.py` or `scripts/`
+- Pyright configuration, or making pyright a gate (see the section-wide note below)
+- `config.toml` and `config.example.toml`
+
+#### Session 2 — Production code (about 10 errors)
+
+In scope:
+- `ravensight/embedder.py`, `ravensight/baseline.py`, `ravensight/e8_scorer.py`
+  and `scripts/mitre_sync.py`
+- Some errors may be real bugs, for example a `str` assigned to a list value at
+  `baseline.py:104` and a missing return in `scripts/mitre_sync.py:27`. Each fix
+  needs its own check and its own test
+- The plan for the session decides whether to fix the code or the types, per error
+
+Out of scope:
+- Pyright configuration, or making pyright a gate (see the section-wide note below)
+- `config.toml` and `config.example.toml`
+
+Out of scope for the whole section:
+- Adding a pyright config or making pyright a gate. That waits until the error
+  count is near zero
+
+---
+
+### 15. Essential Eight Phase 2 — Manual Attestation
+
+**What it does:**
+Ravensight reads alerts, not system configuration, so it cannot measure Essential
+Eight (E8) maturity (section 9). This phase lets the operator declare, in a data
+file, what they have implemented. Each strategy can be marked "Not applicable"
+or "Attested" at a stated maturity level, with a reason. The report shows the
+declaration instead of "Not assessed".
+
+**Design rule:** evidence-only, as in section 9. The only new evidence is the
+operator's own attestation, and the report says so.
+
+**Sessions: 2**
+
+Decisions:
+- Where it lives: `data/e8_attestation.json`, editable without code changes, in
+  the style of `data/platform_hints.json`
+- Shape: per strategy only, not per maturity level. Each entry is either
+  "Not applicable" or "Attested" at a stated maturity level, with a free-text
+  reason. No date field
+- Report behaviour: "Not applicable" strategies are shown with their reason, not
+  hidden. They stay distinct from "Not assessed"
+- Evidence: attestation only. No extra evidence sources in this phase
+- Docker: the real `data/e8_attestation.json` is not seeded into the data
+  directory by the entrypoint in this phase. A tracked example,
+  `data/defaults/e8_attestation.example.json`, is shipped and copied by hand. The
+  drift risk for seeded defaults is already logged as deferred (see the
+  "Container non-root + seeding fix" row)
+
+#### Session 1 — Load and validate the attestation file
+
+In scope:
+- `ravensight/e8_scorer.py`: load `data/e8_attestation.json` and return a
+  per-strategy status of "Not applicable", "Attested" (with maturity level) or
+  "Not assessed" (no entry), each with the reason
+- Graceful skip if the file is absent, as for `platform_hints.json`: log a
+  warning and carry on, never block a run
+- `data/defaults/e8_attestation.example.json`: a tracked example in the agreed
+  shape. The real `data/e8_attestation.json` is gitignored and created by hand,
+  so the example must not contain real claims
+- `config.example.toml`: an `[e8] attestation_path = "data/e8_attestation.json"`
+  key, next to `overrides_path`
+- Validation: valid maturity levels are ML1 to ML3; entries are keyed by the
+  exact strategy names in `data/asd_framework.json`; an invalid level, an unknown
+  strategy name or a malformed file is skipped with a warning and never stops a
+  run
+- Tests for each change
+
+Out of scope:
+- `ravensight/reporter.py` and `main.py`
+- A date field on entries
+- Per-maturity-level entries
+- Any change to how findings are matched to controls
+- Any change to `.gitignore`. Its existing rules already ignore
+  `data/e8_attestation.json` and allow `data/defaults/*.json`
+- `config.toml`
+
+#### Session 2 — Show attestation in the report
+
+In scope:
+- `main.py`: pass the attestation result to `Reporter.generate`
+- `main.py` reads `[e8] attestation_path` and calls the loader from Session 1
+- A strategy's related findings stay listed under its Attested or Not applicable
+  status
+- `ravensight/reporter.py`: the E8 table shows "Not applicable" strategies with
+  their reason, "Attested" strategies with their maturity level and reason, and
+  keeps "Not assessed" for strategies with no entry
+- The how-to-read note says the status comes from the operator's attestation,
+  not from Wazuh
+- Tests for each change
+
+Out of scope:
+- Any change to `ravensight/e8_scorer.py` loading logic (Session 1)
+- The LLM prompt (`analyser._build_asd_context`)
+- `scripts/asd_sync.py` and `data/asd_framework.json`
+- `config.toml`
+
+Out of scope for the whole section:
+- Extra evidence sources, including Wazuh SCA results
+- Seeding the real `data/e8_attestation.json` automatically (any change to
+  `docker-entrypoint.sh` or the `Dockerfile`)
+- A date field on attestation entries
+- Per-maturity-level attestation
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
