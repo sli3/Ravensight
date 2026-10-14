@@ -56,10 +56,13 @@ any other agent, it is out of date — do not attempt it. Report it to Prin.
 - Never edit `config.toml`, and never open, print or quote its contents — it holds live
   credentials. Only `config.example.toml` changes; Prin copies new sections across by hand
 - `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, and everything under `.claude/` are edited by
-  Prin only. `docs/RAVENSIGHT_ROADMAP.md` is also Prin's, with one exception: `pm`
-  may edit it, with targeted Edit calls only, to update the Feature Status table
-  after a `/build` run or to make a change Prin asks for in the session (rules in
-  `pm`'s own file). No other agent edits it
+  Prin only. `docs/RAVENSIGHT_ROADMAP.md` is also Prin's, with two exceptions.
+  `pm` may edit it, with targeted Edit calls only, to update the Feature Status
+  table after a `/build` run or to make a change Prin asks for in the session (rules
+  in `pm`'s own file). The main Claude Code session may also edit it, with targeted
+  Edit calls only, but only for a change Prin asks for in that session. Never edit
+  it unprompted, never rewrite the whole file, and leave the edit uncommitted for
+  Prin's review. `plan-reviewer`, `code-writer` and `deep-bug-hunter` never edit it
 - Never `git push` without explicit approval
 - Never use `--force` in Git
 - Always show `git diff` and wait for "OK" before committing. Only `pm` commits, and
@@ -192,7 +195,7 @@ directly for anything else.
 
 Future planned features are documented in `docs/RAVENSIGHT_ROADMAP.md`.
 Read this at the start of any Plan session for a new feature. Agents treat it as read-only,
-except for `pm`'s Feature Status updates.
+except that `pm` and the main Claude Code session may edit it as the Safety Gates describe.
 
 <!-- graft:start -->
 ## Graft — repo context graph
