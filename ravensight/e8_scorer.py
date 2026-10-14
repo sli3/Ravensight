@@ -370,7 +370,8 @@ def map_findings_to_controls(
     ]
     overrides = _load_overrides(overrides_path)
     global_blocked = set().union(*overrides.values()) if overrides else set()
-    e8_scores = score_findings(converted_findings, asd_data, overrides_path=overrides_path)
+    scoring_input: list[dict | str] = [*converted_findings]
+    e8_scores = score_findings(scoring_input, asd_data, overrides_path=overrides_path)
     e8_controls = {
         entry.get("strategy", ""): {c.get("id"): c for c in entry.get("controls", [])}
         for entry in asd_data.get("essential_eight", [])

@@ -20,7 +20,7 @@ from openai import BadRequestError
 
 from main import _similar_incidents_note
 from ravensight import analyser, baseline
-from ravensight.embedder import Embedder
+from ravensight.embedder import Embedder, load_baseline_embeddings
 
 MIGRATED_MSG = "Migrated {count} entries from baseline to vector store"
 
@@ -536,3 +536,44 @@ def test_analyser_analyse_survives_bad_request_error_in_retrieve_similar(
     assert result.get("findings")
     assert embedder.degraded is False
     assert any("Similarity retrieval failed" in rec.message for rec in caplog.records)
+
+
+def test_add_embedding_degraded_without_collection_returns(embedder: Embedder) -> None:
+    """A degraded embedder with no collection skips the add without raising."""
+    embedder._degraded = True
+    embedder._collection = None
+
+    assert embedder.add_embedding("text", {"rule_group": "x"}) is None
+
+
+def test_query_similar_without_collection_raises(
+    embedder: Embedder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """query_similar with no collection raises AssertionError via the outer re-raise."""
+    monkeypatch.setattr(Embedder, "encode", lambda self, text: [0.0] * 8)
+    embedder._degraded = False
+    embedder._collection = None
+
+    with pytest.raises(AssertionError):
+        embedder.query_similar("text")
+
+
+def test_load_baseline_embeddings_missing_file(tmp_path: Path) -> None:
+    """A missing baseline file returns None."""
+    assert load_baseline_embeddings(str(tmp_path / "missing.json")) is None
+
+
+def test_load_baseline_embeddings_valid_json(tmp_path: Path) -> None:
+    """A valid baseline file returns its parsed dict."""
+    path = tmp_path / "baseline.json"
+    path.write_text('{"findings": ["a"], "recommendations": []}', encoding="utf-8")
+
+    assert load_baseline_embeddings(str(path)) == {"findings": ["a"], "recommendations": []}
+
+
+def test_load_baseline_embeddings_malformed_json(tmp_path: Path) -> None:
+    """Malformed JSON returns None."""
+    path = tmp_path / "baseline.json"
+    path.write_text("{not json", encoding="utf-8")
+
+    assert load_baseline_embeddings(str(path)) is None

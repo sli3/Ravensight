@@ -407,3 +407,15 @@ def test_migrate_baseline_string_finding_unchanged(
     doc = emb._collection.get(where={"rule_group": "baseline_finding"})
     assert doc["documents"][0] == "plain string finding"
     assert doc["metadatas"][0]["severity"] == "unknown"
+
+
+def test_update_saves_iso_updated_at(tmp_path: Path) -> None:
+    """Manager.update() persists updated_at as a parseable ISO string."""
+    path = tmp_path / "baseline.json"
+    manager = baseline.Manager({"path": str(path)})
+    manager.update({"findings": ["f1"], "recommendations": [], "summary": "s"})
+
+    saved = json.loads(path.read_text())
+    updated_at = saved["updated_at"]
+    assert isinstance(updated_at, str)
+    assert datetime.fromisoformat(updated_at).tzinfo is None

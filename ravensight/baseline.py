@@ -62,7 +62,7 @@ class Manager:
         if self._path.exists():
             try:
                 with self._path.open("r") as f:
-                    self._baseline = json.load(f)
+                    self._baseline: dict[str, Any] = json.load(f)
                 logger.info(f"Loaded baseline from {self._path}")
             except json.JSONDecodeError as e:
                 logger.warning(f"Failed to decode baseline, starting fresh: {e}")

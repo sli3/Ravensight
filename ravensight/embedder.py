@@ -174,6 +174,7 @@ class Embedder:
         # Deterministic id: identical text overwrites itself instead of duplicating
         if doc_id is None:
             doc_id = "alert-" + sha256(text.encode("utf-8")).hexdigest()[:32]
+        assert self._collection is not None
         try:
             self._collection.upsert(
                 ids=[doc_id],
@@ -216,6 +217,7 @@ class Embedder:
             else:
                 query_embedding_list = query_embedding.tolist()
 
+            assert self._collection is not None
             try:
                 results = self._collection.query(
                     query_embeddings=[query_embedding_list],
@@ -332,13 +334,13 @@ def load_baseline_embeddings(baseline_path: str) -> dict[str, Any] | None:
     Returns:
         Baseline data dict or None if file doesn't exist.
     """
-    baseline_path = Path(baseline_path)
-    if not baseline_path.exists():
-        logger.debug(f"Baseline file not found: {baseline_path}")
+    path = Path(baseline_path)
+    if not path.exists():
+        logger.debug(f"Baseline file not found: {path}")
         return None
 
     try:
-        with baseline_path.open("r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to decode baseline JSON: {e}")

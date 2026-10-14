@@ -49,6 +49,7 @@ def fetch_stix_bundle(source_url: str) -> dict[str, Any]:
                 raise
             logger.info(f"Retrying in {30 * (attempt + 1)} seconds...")
             time.sleep(30 * (attempt + 1))
+    raise RuntimeError("fetch_stix_bundle: no attempts made")
 
 
 def parse_attack_data(bundle: dict[str, Any]) -> dict[str, Any]:
