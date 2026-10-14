@@ -729,6 +729,8 @@ machine running Ravensight but labels it UTC (`Z`), so the lookback window is
 shifted by the machine's UTC offset. This section makes the window true UTC on
 any machine timezone.
 
+**Sessions: 1**
+
 ---
 
 #### Session 1 — UTC lookback window
@@ -755,6 +757,8 @@ Finding times in the report (`first_seen` / `last_seen`) come straight from the
 Wazuh `@timestamp`, which is UTC, while the "Generated" line uses the local
 clock of the machine running Ravensight. The report shows both with no zone
 label, which is confusing. This section labels the finding times as UTC.
+
+**Sessions: 1**
 
 ---
 
@@ -820,13 +824,6 @@ In scope:
   every ISM control
 - Tests for each change
 Out of scope: Phase 2 wording, E8 Phase 2, the LLM prompt, stored baseline data
-
-And the /build line:
-/build "Report clarity Phase 1b (roadmap section 12): matching accuracy. Add light
-stemming to e8_scorer._extract_keywords, add action, confirm, multiple and expected
-to E8_GENERIC_WORDS, and fix the reporter's no-ISM-match branch to use
-'is not None' so an empty list shows the no-match line. Add tests.
-Out of scope: Phase 2 wording, E8 Phase 2, LLM prompt, stored data."
 
 #### Phase 2 — Plain wording and report tidy-up
 In scope:
