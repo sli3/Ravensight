@@ -37,6 +37,8 @@ The base project is complete. All modules are working end-to-end:
 | Networked ChromaDB (server mode) | ✅ Complete | Optional `HttpClient` mode in `ravensight/embedder.py` via `chroma_host` / `chroma_port` in `[embeddings]` (`_connect_chroma()` helper, embedded branch byte-for-byte preserved); bundled Chroma service added as optional `chroma` profile in `docker-compose.yml` (image `chromadb/chroma:1.5.9` pinned to match `chromadb==1.5.9` in `requirements.txt`, `IS_PERSISTENT=TRUE` kept as a legacy 0.x no-op — persistence is on by default in the 1.x Rust server, bind mount `./chroma-data:/data` — image's persist_directory default changed from `/chroma/chroma` (0.6.x) to `/data` (1.x), port `8000:8000`); `.env.example` Chroma section + two new `EMBEDDINGS_CHROMA_*` placeholders in `config.template.toml` + two new optional-defaults `export` lines in `docker-entrypoint.sh` (re-verified at the 1.5.9 bump: `chromadb/chroma:1.5.9` exists on Docker Hub, 1.5.9 client `PersistentClient`/`HttpClient`/`chromadb.errors.ChromaError` call signatures unchanged from 0.6.3 — `metadatas=`/`hnsw:space` semantics preserved) |
 | Container non-root + seeding fix | ✅ Complete | `Dockerfile` copies `data/defaults/` to `/app/defaults/` (line 19) and adds a build-time `RUN setpriv --version` guard (line 10); `docker-entrypoint.sh` makes `RAVENSIGHT_PUID` / `RAVENSIGHT_PGID` required (0 valid — rootless Docker/Podman, no switch), validates non-negative integers with a `case` pattern rejecting `''` and any non-digit, refuses containers started with `--user` / Compose `user:` (only the entrypoint's `setpriv` switch is honoured), defines a `run_as` helper backed by `setpriv --reuid --regid --clear-groups` (no `--init-groups` — fails for numeric uid with no passwd entry), chowns `/app/config.toml` to PUID:PGID **before** `chmod 600` so the dropped-privilege app can read it, repairs mismatched entries on every start via `find … chown -h … {} +` and logs only when something was repaired (per-entry predicate handles the realistic case of a user-owned dir containing root-owned files), seeds the two `e8_keyword_overrides.json` / `platform_hints.json` defaults via `run_as` from `/app/defaults/` with warn-and-continue on missing source, runs all four sync invocations (two one-time, two in `sync` subcommand) via `run_as`, and finishes with a conditional `exec setpriv`; `.env.example` gains the PUID/PGID block near the top. Follow-up (uncommitted, base `300ec3e`): added PUID=0/PGID≠0 fail-fast check (rootless Docker/Podman requires both 0) and a post-repair `find -print -quit` re-check that warns to stderr when an entry is still not owned by PUID:PGID after chown (read-only mount or NFS root-squash). Deferred (logged in `.session-memos/2026-09-28_10-48.md`): seed files tracked in git and byte-identical to `data/defaults/` (drift risk); SELinux `:z`/`:Z` bind-mount labels; no entrypoint unit tests. |
 | Cluster Evidence | ✅ Complete | `ravensight/evidence.py` pure stdlib module — `detect_shape()` classifies one alert into exactly one of seven shapes (vulnerability, syscheck, dpkg, netstat, docker, firewall, generic); `accumulate()` and `project_evidence()` mechanically extract bounded real values from raw alerts (syscheck paths/events/changed_attributes + three-state content verdict; dpkg package/version/status; netstat opened/closed ports keyed by protocol+local-address; docker container/action/signal/compose/image; vulnerability status/version/severity/score_base; firewall action/direction/interface/ipversion/protocol/sources/destinations/dstports parsed from raw OPNsense filterlog lines in `full_log` + `previous_output` because Wazuh's `pf` decoder mis-parses IPv6 lines — never reads `data.srcip`/`data.dstip`/`data.protocol`/`data.srcport`/`data.dstport` for this shape; `sources_total` tracked separately from the capped `sources` display list; generic srcip/dstuser, with `srcip` validated via `ipaddress.ip_address()` to drop decoder artefacts); `render_evidence()` emits `field v1, v2; field v3` with whitespace collapsed and `|` escaped; constants `MAX_EVIDENCE_VALUES=5`, `MAX_EVIDENCE_NETSTAT_VALUES=3`, `MAX_EVIDENCE_VALUE_CHARS=100`, `MAX_EVIDENCE_LINE_CHARS=400`; `ravensight/analyser.py` accumulates in `_new_cluster['evidence_acc']` during the per-alert loop and projects into the output cluster (`'evidence'` key absent when nothing extracted); `_build_prompt` appends ` — evidence: …` (hard-truncated to 400 chars + `…`) and adds one new instruction sentence to the header; `ravensight/reporter.py::_format_finding` renders a `  - Evidence: …` sub-bullet between narrative and CVEs (byte-identical when absent); `cluster_key()`, `baseline._cluster_vector_text()` and `baseline._cluster_summary()` output identical with vs. without evidence (regression-tested); `tests/test_cluster_evidence.py` (37 tests) + 4 additions each to `tests/test_prompt_context.py` and `tests/test_reporter_findings.py` — 201 tests pass (155 pre-existing + 46 new); ruff clean on both new files (pre-existing 51 errors in the repo are unrelated). Build 1c-fix (this row's Notes update) added the firewall shape + generic-srcip IP-validation safety net. |
+| Report Clarity (section 12) | ✅ Complete | Phases 1, 1b and 2 shipped: per-finding ISM and E8 pointers in `ravensight/e8_scorer.py` and the "Findings and related controls" table in `ravensight/reporter.py` (commits `cf320c0`, `d4da01b`, `5d4e9d7`), plain wording, glossary and spelled-out firewall labels (`b6238e9`), `than` stop word (`bf43093`); 436 tests pass. |
+| Pin Dev Tools (section 13) | ✅ Complete | `requirements-dev.txt` pins `pytest==9.1.1`, `ruff==0.16.9` and `pyright==1.1.414` (uncommitted at time of update); ruff clean and 436 tests pass. Pyright reports 37 errors, not fixed (out of scope) and left for a triage session. |
 
 ---
 
@@ -844,6 +846,39 @@ In scope:
 - Tests for each change
 Out of scope: matching logic, E8 Phase 2, the LLM prompt, baseline data
 (the stale "pfSense" label lives in `baseline_state.json` and Chroma)
+
+---
+
+### 13. Pin Dev Tools
+
+**What it does:**
+`requirements-dev.txt` only sets lower bounds (`pytest>=9.0`, `ruff>=0.6`) and does
+not list pyright, so lint and type results can change between machines and over
+time. This section pins the dev tools to the versions installed in the project
+environment, so a clean run today stays clean.
+
+**Sessions: 1**
+
+---
+
+#### Session 1 — Pin pytest, ruff and pyright
+
+In scope:
+- `requirements-dev.txt`: pin `pytest`, `ruff` and `pyright` to exact versions
+  (`==`), using the versions the project environment resolves to now; add
+  `pyright` if it is missing
+- Run `uv run ruff check .` and `uv run pytest` with the pinned versions and
+  report the results (expected: ruff clean, 436 tests pass)
+- Fix only ruff errors that the pinned version reports on files the build
+  already touched; list any others under Not Finished
+
+Out of scope:
+- Any change to `ravensight/`, `main.py`, `scripts/` or test logic
+- `requirements.txt` and the Dockerfile
+- Pyright configuration, or fixing pyright findings (report the count only)
+- The stale "pfSense" label, the Chroma client/server version warning, and the
+  stale graft summaries (none are code changes)
+- `config.toml` and `config.example.toml`
 
 ## Suggested Build Order
 

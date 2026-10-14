@@ -1,5 +1,6 @@
 # Development and test tools. Install into the project environment with:
 #   uv pip install -r requirements-dev.txt
 -r requirements.txt
-pytest>=9.0
-ruff>=0.6
+pytest==9.1.1
+ruff==0.16.9
+pyright==1.1.414
