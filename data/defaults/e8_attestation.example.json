@@ -1,0 +1,11 @@
+{
+  "Application control": {
+    "status": "Attested",
+    "level": "ML1",
+    "reason": "EXAMPLE: replace with the evidence supporting this attestation."
+  },
+  "Restrict Microsoft Office macros": {
+    "status": "Not applicable",
+    "reason": "EXAMPLE: replace with why this strategy does not apply."
+  }
+}

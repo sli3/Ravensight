@@ -10,7 +10,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-__all__ = ["map_findings_to_controls", "match_ism_controls", "score_findings"]
+__all__ = [
+    "load_attestation",
+    "map_findings_to_controls",
+    "match_ism_controls",
+    "score_findings",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +127,78 @@ def _load_overrides(overrides_path: str | None) -> dict[str, set[str]]:
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to load e8_keyword_overrides.json: %s", e)
         return {}
+
+
+_ATTESTATION_LEVELS = {"ML1": 1, "ML2": 2, "ML3": 3}
+
+
+def load_attestation(
+    attestation_path: str | None, asd_data: dict | None = None
+) -> dict[str, dict[str, Any]]:
+    """Load manual Essential Eight attestations, one entry per strategy.
+
+    File shape: a JSON object keyed by exact (case-sensitive) strategy name, each
+    value an object with "status" ("Attested" or "Not applicable"), "reason" (a
+    string, may be empty) and, for "Attested" only, "level" ("ML1", "ML2" or "ML3",
+    case-insensitive). For "Not applicable" any "level" is ignored and stored as None.
+
+    Returns:
+        Dict of strategy name to {"status", "level", "reason"}. Strategies without a
+        valid entry are {"status": "Not assessed", "level": None, "reason": ""}.
+        Returns {} if asd_data holds no strategies.
+    """
+    strategies = [
+        item["strategy"]
+        for item in (asd_data or {}).get("essential_eight", [])
+        if isinstance(item, dict) and isinstance(item.get("strategy"), str)
+    ]
+    result: dict[str, dict[str, Any]] = {
+        name: {"status": "Not assessed", "level": None, "reason": ""} for name in strategies
+    }
+    if not result or attestation_path is None:
+        return result
+
+    path = Path(attestation_path)
+    try:
+        if not path.is_file():
+            logger.warning("e8 attestation file not found at %s", attestation_path)
+            return result
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+        logger.warning("Failed to load e8 attestation file: %s", e)
+        return result
+
+    if not isinstance(data, dict):
+        logger.warning("e8 attestation file root is not a JSON object")
+        return result
+
+    for name, entry in data.items():
+        if name not in result:
+            logger.warning("e8 attestation skipping unknown strategy: %r", name)
+            continue
+        if not isinstance(entry, dict):
+            logger.warning("e8 attestation entry for %r is not a JSON object", name)
+            continue
+        status = entry.get("status")
+        if status not in ("Attested", "Not applicable"):
+            logger.warning("e8 attestation entry for %r has invalid status: %r", name, status)
+            continue
+        reason = entry.get("reason")
+        if not isinstance(reason, str):
+            logger.warning("e8 attestation entry for %r has a non-string reason", name)
+            continue
+        level: int | None = None
+        if status == "Attested":
+            raw_level = entry.get("level")
+            level = (
+                _ATTESTATION_LEVELS.get(raw_level.upper()) if isinstance(raw_level, str) else None
+            )
+            if level is None:
+                logger.warning("e8 attestation entry for %r has invalid level: %r", name, raw_level)
+                continue
+        result[name] = {"status": status, "level": level, "reason": reason}
+    return result
 
 
 def _convert_findings(findings: list[dict | str]) -> list[dict]:

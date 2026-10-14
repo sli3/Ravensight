@@ -54,6 +54,8 @@ path = "data/asd_framework.json"
 
 [e8]
 overrides_path = "data/e8_keyword_overrides.json"
+# Manual Essential Eight attestations (copy data/defaults/e8_attestation.example.json)
+attestation_path = "data/e8_attestation.json"
 
 [platform]
 # Path to platform false positive hint table
