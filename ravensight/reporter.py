@@ -95,15 +95,20 @@ MAX_POINTER_ROWS = 15
 MAX_MATCHED_WORDS = 8
 _SEVERITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
 
-HOW_TO_READ_NOTE = (
+_HOW_TO_READ_PREFIX = (
     "> **How to read this:** The Australian Signals Directorate (ASD) publishes the "
     "Essential Eight and the Information Security Manual (ISM). Ravensight reads alerts, "
     "not system settings, so it cannot say whether a control is met. Entries below are "
     "pointers: controls worth checking because a finding shares key words with them. "
     "They are not pass or fail results. \"Matched on\" shows the shared words. Pointers "
     "use each finding's recommendation text, so they can vary a little between runs. "
-    "Essential Eight strategies are always Not assessed."
 )
+_NOTE_CLOSING_DEFAULT = "Essential Eight strategies are always Not assessed."
+_NOTE_CLOSING_ATTESTED = (
+    "Attested and Not applicable statuses come from your own attestation file, not from "
+    "Wazuh or Ravensight, and are not checked. Strategies with no entry are Not assessed."
+)
+HOW_TO_READ_NOTE = _HOW_TO_READ_PREFIX + _NOTE_CLOSING_DEFAULT
 
 CLUSTER_NOTE = (
     "> Findings are grouped into clusters (C1, C2…): alerts that share the same rule. "
@@ -231,6 +236,7 @@ def _render_asd_section(
     matched_controls: list | None = None,
     finding_pointers: list | None = None,
     findings: list | None = None,
+    attestation: dict | None = None,
 ) -> str:
     """
     Render ASD Framework section as markdown.
@@ -242,6 +248,7 @@ def _render_asd_section(
         finding_pointers: Optional per-finding pointers from map_findings_to_controls;
             when given, a per-finding table and a single how-to-read note are shown.
         findings: Findings used for the per-finding table descriptions and severities.
+        attestation: Optional operator attestation mapping strategy to status, level and reason.
 
     Returns:
         Markdown string for the ASD section, or empty string if no data.
@@ -251,8 +258,17 @@ def _render_asd_section(
 
     lines = ["## ASD Framework", ""]
 
+    attestation = attestation or {}
+    declared = any(
+        strategy != UNMAPPED_STRATEGY
+        and isinstance(entry, dict)
+        and entry.get("status") != "Not assessed"
+        for strategy, entry in attestation.items()
+    )
+
     if finding_pointers is not None:
-        lines.extend([HOW_TO_READ_NOTE, ""])
+        closing = _NOTE_CLOSING_ATTESTED if declared else _NOTE_CLOSING_DEFAULT
+        lines.extend([_HOW_TO_READ_PREFIX + closing, ""])
         lines.extend(_render_finding_pointers(findings or [], finding_pointers))
 
     # Essential Eight
@@ -261,7 +277,7 @@ def _render_asd_section(
         score.get("related_findings") or score.get("related_controls")
         for score in (e8_scores or {}).values()
     )
-    if essential_eight and e8_scores and not e8_has_pointers:
+    if essential_eight and e8_scores and not e8_has_pointers and not declared:
         lines.extend([
             "### Essential Eight",
             "",
@@ -327,6 +343,22 @@ def _render_asd_section(
                 display_name = "Unmapped (not an Essential Eight strategy)"
             else:
                 display_name = strategy
+                declared_entry = attestation.get(strategy)
+                if isinstance(declared_entry, dict):
+                    declared_status = declared_entry.get("status")
+                    declared_level = declared_entry.get("level")
+                    declared_reason = declared_entry.get("reason")
+                    if declared_status == "Attested":
+                        if isinstance(declared_level, int) and not isinstance(declared_level, bool):
+                            status = f"Attested at ML{declared_level}"
+                        else:
+                            status = "Attested"
+                        if declared_reason:
+                            status = f"{status} — {declared_reason}"
+                    elif declared_status == "Not applicable":
+                        status = "Not applicable"
+                        if declared_reason:
+                            status = f"{status} — {declared_reason}"
 
             lines.append(
                 f"| {sanitise_cell(display_name)} | {sanitise_cell(status)} | {findings_cell} | {controls_cell} |"
@@ -398,6 +430,7 @@ class Reporter:
         e8_scores: dict | None = None,
         matched_controls: list | None = None,
         finding_pointers: list | None = None,
+        attestation: dict | None = None,
     ) -> Path:
         """
         Generate markdown report from analysis data.
@@ -409,6 +442,7 @@ class Reporter:
             e8_scores: Optional E8 scoring results.
             matched_controls: Optional list of matched ISM controls.
             finding_pointers: Optional per-finding ISM and Essential Eight pointers.
+            attestation: Optional operator E8 attestation shown in the Essential Eight table.
 
         Returns:
             Path of the written report file.
@@ -420,6 +454,7 @@ class Reporter:
             e8_scores=e8_scores,
             matched_controls=matched_controls,
             finding_pointers=finding_pointers,
+            attestation=attestation,
         )
         filename = self._output_dir / f"{datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d')}_security_report.md"
         with filename.open("w") as f:
@@ -435,8 +470,11 @@ class Reporter:
         e8_scores: dict | None = None,
         matched_controls: list | None = None,
         finding_pointers: list | None = None,
+        attestation: dict | None = None,
     ) -> str:
         """Build the full markdown report body from analysis data, optional trends, and optional ASD framework context.
+
+        attestation is the optional operator E8 attestation, passed on to the ASD section.
 
         asd_data of None renders no ASD section; an empty dict renders a note that the data file is missing or outdated.
         """
@@ -518,6 +556,7 @@ class Reporter:
                     matched_controls=matched_controls,
                     finding_pointers=finding_pointers,
                     findings=findings,
+                    attestation=attestation,
                 ),
             ])
 

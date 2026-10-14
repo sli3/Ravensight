@@ -885,3 +885,165 @@ def test_build_report_none_asd_data_renders_nothing(tmp_path: Path) -> None:
     rep = _make_reporter(tmp_path)
     report = rep._build_report({"summary": "s", "findings": []}, asd_data=None)
     assert "## ASD Framework" not in report
+
+
+# --- Operator E8 attestation (roadmap section 15, session 2) ---
+
+
+def _att(status: str, level: int | None = None, reason: str = "") -> dict[str, Any]:
+    """Build one attestation entry."""
+    return {"status": status, "level": level, "reason": reason}
+
+
+def _attested_section(attestation: dict[str, Any] | None, e8_scores: dict[str, Any] | None = None) -> str:
+    """Render the pointer-layout ASD section with the given attestation."""
+    return reporter._render_asd_section(
+        _make_asd_data(),
+        e8_scores=_make_e8_scores() if e8_scores is None else e8_scores,
+        finding_pointers=[],
+        findings=[],
+        attestation=attestation,
+    )
+
+
+def _e8_row(section: str, strategy: str) -> str:
+    """Return the E8 table row for a strategy."""
+    rows = [line for line in section.splitlines() if line.startswith(f"| {strategy} |")]
+    assert len(rows) == 1
+    return rows[0]
+
+
+def test_attested_row_shows_level_and_reason() -> None:
+    """An Attested strategy shows its level and reason."""
+    section = _attested_section({"Patch applications": _att("Attested", 2, "Patched monthly")})
+    assert "| Patch applications | Attested at ML2 — Patched monthly |" in section
+
+
+def test_attested_without_level_falls_back_to_plain() -> None:
+    """Attested with no level shows plain Attested plus reason."""
+    section = _attested_section({"Patch applications": _att("Attested", None, "Done")})
+    assert "| Patch applications | Attested — Done |" in section
+    assert "Attested at" not in section
+
+
+def test_not_applicable_row_shows_reason() -> None:
+    """A Not applicable strategy shows its reason."""
+    section = _attested_section({"Patch applications": _att("Not applicable", None, "No apps")})
+    assert "| Patch applications | Not applicable — No apps |" in section
+
+
+def test_not_applicable_without_reason_has_no_dash() -> None:
+    """An empty reason adds no separator."""
+    section = _attested_section({"Patch applications": _att("Not applicable")})
+    assert "| Patch applications | Not applicable |" in section
+
+
+def test_strategy_without_entry_stays_not_assessed() -> None:
+    """A strategy absent from the attestation keeps Not assessed."""
+    section = _attested_section({"Patch applications": _att("Attested", 1)})
+    assert "| Patch operating systems | Not assessed |" in section
+
+
+def test_unmapped_row_ignores_attestation() -> None:
+    """The Unmapped row keeps its label and Not assessed status."""
+    asd = _make_asd_data()
+    asd["essential_eight"].append({"strategy": reporter.UNMAPPED_STRATEGY, "controls": []})
+    section = reporter._render_asd_section(
+        asd,
+        e8_scores=_make_e8_scores(),
+        finding_pointers=[],
+        findings=[],
+        attestation={reporter.UNMAPPED_STRATEGY: _att("Attested", 3, "x")},
+    )
+    assert "| Unmapped (not an Essential Eight strategy) | Not assessed |" in section
+    assert "Attested" not in section
+
+
+def test_attestation_reason_is_sanitised() -> None:
+    """A pipe and newline in the reason do not break the table row."""
+    plain = _attested_section({"Patch applications": _att("Attested", 1, "ok")})
+    nasty = _attested_section({"Patch applications": _att("Attested", 1, "a | b\nc")})
+    row = _e8_row(nasty, "Patch applications")
+    assert "\n" not in row
+    assert "a \\| b c" in row
+    cells = re.split(r"(?<!\\)\|", row.strip())
+    assert len(cells) == len(re.split(r"(?<!\\)\|", _e8_row(plain, "Patch applications").strip()))
+
+
+def test_attested_strategy_keeps_findings_and_controls() -> None:
+    """Related findings and controls stay listed under an Attested strategy."""
+    section = _attested_section({"Patch applications": _att("Attested", 2, "ok")})
+    row = _e8_row(section, "Patch applications")
+    assert "C1, C2" in row
+    assert "ISM-1690 (ML1–ML3)" in row
+
+
+def test_collapsed_line_skipped_when_declared() -> None:
+    """A declared strategy keeps the table instead of the collapsed line."""
+    empty_scores = {"Patch applications": {"status": "Not assessed", "related_findings": [], "related_controls": []}}
+    declared = _attested_section({"Patch applications": _att("Attested", 1)}, e8_scores=empty_scores)
+    assert "No Essential Eight strategy matched" not in declared
+    assert "| Patch applications | Attested at ML1 |" in declared
+
+
+def test_collapsed_line_used_when_only_not_assessed() -> None:
+    """An attestation of only Not assessed entries still collapses."""
+    empty_scores = {"Patch applications": {"status": "Not assessed", "related_findings": [], "related_controls": []}}
+    section = _attested_section({"Patch applications": _att("Not assessed")}, e8_scores=empty_scores)
+    assert "No Essential Eight strategy matched" in section
+
+
+def test_how_to_read_note_default_equals_constant() -> None:
+    """Without a declared attestation the note equals HOW_TO_READ_NOTE."""
+    section = _attested_section(None)
+    assert reporter.HOW_TO_READ_NOTE in section
+    assert reporter.HOW_TO_READ_NOTE.endswith("Essential Eight strategies are always Not assessed.")
+
+
+def test_how_to_read_note_changes_when_declared() -> None:
+    """With a declared attestation the closing sentence changes."""
+    section = _attested_section({"Patch applications": _att("Not applicable", None, "n/a")})
+    assert (
+        "Attested and Not applicable statuses come from your own attestation file, not from "
+        "Wazuh or Ravensight, and are not checked. Strategies with no entry are Not assessed."
+    ) in section
+    assert "always Not assessed" not in section
+    assert reporter.HOW_TO_READ_NOTE[:-len("Essential Eight strategies are always Not assessed.")] in section
+
+
+@pytest.mark.parametrize(
+    "empty",
+    [None, {}, {"Patch applications": {"status": "Not assessed", "level": None, "reason": ""}}],
+)
+def test_empty_attestation_output_unchanged(empty: dict[str, Any] | None) -> None:
+    """None, empty and all Not assessed attestations match the call without it."""
+    base = reporter._render_asd_section(
+        _make_asd_data(), e8_scores=_make_e8_scores(), finding_pointers=[], findings=[]
+    )
+    assert _attested_section(empty) == base
+    legacy = reporter._render_asd_section(_make_asd_data(), e8_scores=_make_e8_scores())
+    assert reporter._render_asd_section(_make_asd_data(), e8_scores=_make_e8_scores(), attestation=empty) == legacy
+
+
+def test_build_report_forwards_attestation(tmp_path: Path) -> None:
+    """The attestation reaches the ASD section through _build_report."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report(
+        {"summary": "s", "findings": []},
+        asd_data=_make_asd_data(),
+        e8_scores=_make_e8_scores(),
+        attestation={"Patch applications": _att("Attested", 3, "Audited")},
+    )
+    assert "| Patch applications | Attested at ML3 — Audited |" in report
+
+
+def test_generate_forwards_attestation(tmp_path: Path) -> None:
+    """The attestation reaches the written report through generate."""
+    rep = _make_reporter(tmp_path)
+    path = rep.generate(
+        {"summary": "s", "findings": []},
+        asd_data=_make_asd_data(),
+        e8_scores=_make_e8_scores(),
+        attestation={"Patch applications": _att("Attested", 3, "Audited")},
+    )
+    assert "Attested at ML3 — Audited" in path.read_text()

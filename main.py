@@ -186,15 +186,17 @@ def main() -> None:
 
         asd_data = analyser._load_asd_data(asd_path) if asd_path else None
         overrides_path = config.get("e8", {}).get("overrides_path") if "e8" in config else None
+        attestation_path = config.get("e8", {}).get("attestation_path") if "e8" in config else None
         run_reporter.stage("E8/ISM scoring", "active")
         e8_scores = e8_scorer.score_findings(analysis.get("findings", []), asd_data, overrides_path=overrides_path) if asd_data else {}
         matched_controls = e8_scorer.match_ism_controls(analysis.get("findings", []), asd_data, overrides_path=overrides_path) if asd_data else []
         finding_pointers = e8_scorer.map_findings_to_controls(analysis.get("findings", []), asd_data, overrides_path=overrides_path) if asd_data else None
+        attestation = e8_scorer.load_attestation(attestation_path, asd_data) if asd_data else {}
         run_reporter.stage("E8/ISM scoring", "done")
         analysis["similar_incidents_unavailable_note"] = _similar_incidents_note(embedder)
         rep = reporter.Reporter(config["reports"])
         run_reporter.stage("Report", "active")
-        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers)
+        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers, attestation=attestation)
         run_reporter.stage("Report", "done")
 
     run_reporter.finish(analysis, report_path, counter.warnings, counter.errors)
