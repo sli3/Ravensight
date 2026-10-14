@@ -22,6 +22,7 @@ STOP_WORDS = {
     "should", "may", "might", "that", "this", "these", "those", "it",
     "its", "as", "if", "not", "no", "all", "any", "each", "which", "when",
     "their", "they", "them", "used", "using", "use", "within", "across",
+    "than",
 }
 
 # Minimum keyword length to include

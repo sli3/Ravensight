@@ -578,6 +578,15 @@ def test_boilerplate_words_never_count_toward_a_match() -> None:
     assert map_findings_to_controls([finding], asd_data)[0]["ism"] == []
 
 
+def test_than_is_a_stop_word_and_never_matches() -> None:
+    """'than' is filler: it cannot make up the shared words behind a pointer."""
+    asd_data = _ism_asd(
+        {"id": "ISM-X", "category": "Zebra", "description": "Quokka rather than wombat"}
+    )
+    finding = _finding(description="Wombat sighting", recommendation="Better than nothing")
+    assert map_findings_to_controls([finding], asd_data)[0]["ism"] == []
+
+
 def test_inflected_words_now_match_across_finding_and_control() -> None:
     """A patched/updated finding reaches a control that says patches/updates."""
     asd_data = _ism_asd(
