@@ -90,10 +90,90 @@ def _format_finding(finding: str | dict) -> list[str]:
     return lines
 
 
+MAX_POINTER_ROWS = 15
+MAX_MATCHED_WORDS = 8
+_SEVERITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
+
+HOW_TO_READ_NOTE = (
+    "> **How to read this:** Ravensight reads alerts, not system settings, so it cannot "
+    "say whether a control is met. Entries below are pointers: controls worth checking "
+    "because a finding shares key words with them. They are not pass or fail results. "
+    "\"Matched on\" shows the shared words. Essential Eight strategies are always Not assessed."
+)
+
+
+def _finding_order_key(finding_id: str) -> tuple[str, int, str]:
+    """Sort key putting C2 before C10: letters, then the number, then the full id."""
+    prefix = finding_id.rstrip("0123456789")
+    digits = finding_id[len(prefix):]
+    return (prefix, int(digits) if digits else 0, finding_id)
+
+
+def _render_finding_pointers(findings: list, finding_pointers: list[dict]) -> list[str]:
+    """Render the per-finding pointer table and its summary lines as markdown lines."""
+    if not finding_pointers:
+        return []
+
+    by_id = {f["id"]: f for f in findings if isinstance(f, dict) and isinstance(f.get("id"), str)}
+    rows: list[dict] = []
+    unmatched: list[str] = []
+    for pointer in finding_pointers:
+        e8 = [e for e in pointer.get("e8", []) if e.get("strategy") != UNMAPPED_STRATEGY]
+        ism = pointer.get("ism", [])
+        if e8 or ism:
+            rows.append({"id": pointer["id"], "e8": e8, "ism": ism})
+        else:
+            unmatched.append(pointer["id"])
+
+    lines = ["### Findings and related controls", ""]
+    if not rows:
+        lines.extend([
+            f"> No Essential Eight or ISM pointers matched the {len(finding_pointers)} findings in this run.",
+            "",
+        ])
+        return lines
+
+    # Keep the highest-severity rows when over the cap, then show them in finding-ID order.
+    def severity_key(row: dict) -> tuple[int, tuple[str, int, str]]:
+        severity = str(by_id.get(row["id"], {}).get("severity", ""))
+        return (_SEVERITY_RANK.get(severity, len(_SEVERITY_RANK)), _finding_order_key(row["id"]))
+
+    kept = sorted(rows, key=severity_key)[:MAX_POINTER_ROWS]
+    hidden = len(rows) - len(kept)
+    kept.sort(key=lambda row: _finding_order_key(row["id"]))
+
+    lines.extend([
+        "| Finding | Essential Eight | ISM controls | Matched on |",
+        "|---------|-----------------|--------------|------------|",
+    ])
+    for row in kept:
+        description = " ".join(str(by_id.get(row["id"], {}).get("description", "")).split())
+        finding_cell = sanitise_cell(f"{row['id']} {truncate_words(description, 60)}".strip())
+        e8_cell = sanitise_cell(", ".join(e["strategy"] for e in row["e8"])) if row["e8"] else "—"
+        ism_cell = (
+            sanitise_cell(", ".join(f"{c['id']} {c['category']}".strip() for c in row["ism"]))
+            if row["ism"] else "—"
+        )
+        words = sorted({w for p in (*row["e8"], *row["ism"]) for w in p.get("shared", [])})
+        matched_cell = sanitise_cell(", ".join(words[:MAX_MATCHED_WORDS])) or "—"
+        lines.append(f"| {finding_cell} | {e8_cell} | {ism_cell} | {matched_cell} |")
+    lines.append("")
+
+    if hidden:
+        noun = "finding" if hidden == 1 else "findings"
+        lines.extend([f"{hidden} more {noun} with pointers not shown (highest severity first).", ""])
+    if unmatched:
+        unmatched.sort(key=_finding_order_key)
+        lines.extend([f"No pointers for: {', '.join(unmatched)}.", ""])
+    return lines
+
+
 def _render_asd_section(
     asd_data: dict,
     e8_scores: dict | None = None,
     matched_controls: list | None = None,
+    finding_pointers: list | None = None,
+    findings: list | None = None,
 ) -> str:
     """
     Render ASD Framework section as markdown.
@@ -102,6 +182,9 @@ def _render_asd_section(
         asd_data: Parsed ASD framework data dict from asd_framework.json.
         e8_scores: Optional E8 scoring results mapping strategy to level scores.
         matched_controls: Optional list of matched ISM controls.
+        finding_pointers: Optional per-finding pointers from map_findings_to_controls;
+            when given, a per-finding table and a single how-to-read note are shown.
+        findings: Findings used for the per-finding table descriptions and severities.
 
     Returns:
         Markdown string for the ASD section, or empty string if no data.
@@ -111,19 +194,36 @@ def _render_asd_section(
 
     lines = ["## ASD Framework", ""]
 
+    if finding_pointers is not None:
+        lines.extend([HOW_TO_READ_NOTE, ""])
+        lines.extend(_render_finding_pointers(findings or [], finding_pointers))
+
     # Essential Eight
     essential_eight = asd_data.get("essential_eight", [])
-    if essential_eight:
-        note = (
-            "> Not assessed. Ravensight reads alerts, not system configuration, so it cannot measure maturity. Related controls are pointers for review, not gaps."
-        )
-        if any(entry.get("strategy") == UNMAPPED_STRATEGY for entry in essential_eight):
-            note += " The \"Unmapped\" row lists controls outside the Essential Eight strategies."
+    e8_has_pointers = any(
+        score.get("related_findings") or score.get("related_controls")
+        for score in (e8_scores or {}).values()
+    )
+    if essential_eight and e8_scores and not e8_has_pointers:
         lines.extend([
             "### Essential Eight",
             "",
-            note,
+            "> No Essential Eight strategy matched a finding. All strategies: Not assessed.",
             "",
+        ])
+    elif essential_eight:
+        # The how-to-read note already covers the general caveat when the new layout is used.
+        note_parts = []
+        if finding_pointers is None:
+            note_parts.append(
+                "Not assessed. Ravensight reads alerts, not system configuration, so it cannot measure maturity. Related controls are pointers for review, not gaps."
+            )
+        if any(entry.get("strategy") == UNMAPPED_STRATEGY for entry in essential_eight):
+            note_parts.append("The \"Unmapped\" row lists controls outside the Essential Eight strategies.")
+        lines.extend(["### Essential Eight", ""])
+        if note_parts:
+            lines.extend([f"> {' '.join(note_parts)}", ""])
+        lines.extend([
             "| Strategy | Status | Related findings | Related controls |",
             "|----------|--------|------------------|------------------|",
         ])
@@ -192,7 +292,7 @@ def _render_asd_section(
             lines.append(f"| {control_id} | {category} | {sanitise_cell(truncated_desc)} |")
 
         lines.append("")
-    elif matched_controls and len(matched_controls) == 0:
+    elif matched_controls is not None and len(matched_controls) == 0:
         lines.append("> No ISM controls matched findings from this scan.")
         lines.append("")
     else:
@@ -234,6 +334,7 @@ class Reporter:
         asd_data: dict[str, Any] | None = None,
         e8_scores: dict | None = None,
         matched_controls: list | None = None,
+        finding_pointers: list | None = None,
     ) -> Path:
         """
         Generate markdown report from analysis data.
@@ -244,6 +345,7 @@ class Reporter:
             asd_data: Optional ASD framework data for Essential Eight and ISM controls.
             e8_scores: Optional E8 scoring results.
             matched_controls: Optional list of matched ISM controls.
+            finding_pointers: Optional per-finding ISM and Essential Eight pointers.
 
         Returns:
             Path of the written report file.
@@ -254,6 +356,7 @@ class Reporter:
             asd_data=asd_data,
             e8_scores=e8_scores,
             matched_controls=matched_controls,
+            finding_pointers=finding_pointers,
         )
         filename = self._output_dir / f"{datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d')}_security_report.md"
         with filename.open("w") as f:
@@ -268,6 +371,7 @@ class Reporter:
         asd_data: dict[str, Any] | None = None,
         e8_scores: dict | None = None,
         matched_controls: list | None = None,
+        finding_pointers: list | None = None,
     ) -> str:
         """Build the full markdown report body from analysis data, optional trends, and optional ASD framework context.
 
@@ -341,7 +445,13 @@ class Reporter:
         elif asd_data:
             lines.extend([
                 "",
-                _render_asd_section(asd_data, e8_scores=e8_scores, matched_controls=matched_controls),
+                _render_asd_section(
+                    asd_data,
+                    e8_scores=e8_scores,
+                    matched_controls=matched_controls,
+                    finding_pointers=finding_pointers,
+                    findings=findings,
+                ),
             ])
 
         # Historical trends — supporting data

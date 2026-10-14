@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-__all__ = ["match_ism_controls", "score_findings"]
+__all__ = ["map_findings_to_controls", "match_ism_controls", "score_findings"]
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +36,42 @@ MIN_E8_MATCH_SCORE = 3
 # Maximum related controls returned per strategy
 MAX_E8_RELATED_CONTROLS = 3
 
+# Maximum ISM controls and Essential Eight strategies listed per finding
+MAX_FINDING_POINTERS = 3
+
 # Generic words that carry no matching signal for Essential Eight scoring.
 # These are removed from keyword sets in both score_findings and the ISM
 # matcher (match_ism_controls).
 E8_GENERIC_WORDS = {
     "only", "required", "event", "events", "access", "content",
     "local", "service", "services", "changed", "system", "systems",
+    # Boilerplate from recommendations such as "No action required; confirm ..."
+    "action", "confirm", "multiple", "expected",
 }
+
+# Endings removed by _stem, longest first. A stem keeps at least this many letters.
+_STEM_SUFFIXES = ("ing", "ed", "es", "s", "e")
+_MIN_STEM_LENGTH = 4
+
+
+def _stem(word: str) -> str:
+    """Lightly stem a lowercase word so patched/patches/patch and update/updated/updates agree."""
+    for suffix in _STEM_SUFFIXES:
+        if not word.endswith(suffix) or len(word) - len(suffix) < _MIN_STEM_LENGTH:
+            continue
+        if suffix == "s" and word.endswith("ss"):
+            continue  # process, access and address keep their final letters
+        return word[: -len(suffix)]
+    return word
+
+
+# Generic words and blocklists are compared with stemmed keywords, so stem them too.
+_GENERIC_STEMS = {_stem(word) for word in E8_GENERIC_WORDS}
+
+
+def _stem_all(words: set[str]) -> set[str]:
+    """Return the stems of a set of words (blocklist entries are compared with stemmed keywords)."""
+    return {_stem(word.lower()) for word in words}
 
 
 def _load_overrides(overrides_path: str | None) -> dict[str, set[str]]:
@@ -119,13 +148,13 @@ def _convert_findings(findings: list[dict | str]) -> list[dict]:
     return converted
 
 
-def _extract_keywords(text: str) -> set[str]:
-    """Extract meaningful keywords from a text string."""
+def _extract_keyword_map(text: str) -> dict[str, str]:
+    """Map each stemmed keyword in a text to the first original word that produced it."""
     # Lowercase and split on whitespace/punctuation
     tokens = re.split(r'[\s\W]+', text.lower())
 
     # Filter stop words, short tokens, and pure numeric tokens
-    keywords = set()
+    keywords: dict[str, str] = {}
     for token in tokens:
         if not token:
             continue
@@ -135,9 +164,14 @@ def _extract_keywords(text: str) -> set[str]:
             continue
         if token in STOP_WORDS:
             continue
-        keywords.add(token)
+        keywords.setdefault(_stem(token), token)
 
     return keywords
+
+
+def _extract_keywords(text: str) -> set[str]:
+    """Extract meaningful stemmed keywords from a text string."""
+    return set(_extract_keyword_map(text))
 
 
 def _normalise_findings(findings: list[dict]) -> list[str]:
@@ -155,13 +189,30 @@ def _normalise_findings(findings: list[dict]) -> list[str]:
     return combined_texts
 
 
-def _extract_finding_keywords(finding: dict) -> set[str]:
-    """Extract keywords from a single finding's text fields."""
+def _finding_keyword_map(finding: dict) -> dict[str, str]:
+    """Map stemmed keywords to original words across a finding's text fields."""
     text = " ".join(
         str(finding.get(key, ""))
         for key in ("description", "recommendation", "narrative")
     )
-    return _extract_keywords(text)
+    return _extract_keyword_map(text)
+
+
+def _extract_finding_keywords(finding: dict) -> set[str]:
+    """Extract keywords from a single finding's text fields."""
+    return set(_finding_keyword_map(finding))
+
+
+def _e8_control_keywords(strategy: str, control: dict, blocked: set[str]) -> set[str]:
+    """Keywords for one Essential Eight control: strategy name and description, minus blocked and generic words."""
+    description = control.get("description", "")
+    return _extract_keywords(f"{strategy} {description}") - _stem_all(blocked) - _GENERIC_STEMS
+
+
+def _ism_control_keywords(control: dict, global_blocked: set[str]) -> set[str]:
+    """Keywords for one ISM control: description and category, minus blocked and generic words."""
+    keywords = _extract_keywords(control["description"] + " " + control["category"])
+    return keywords - _stem_all(global_blocked) - _GENERIC_STEMS
 
 
 def score_findings(
@@ -201,11 +252,7 @@ def score_findings(
         # minus that strategy's blocked keywords.
         control_keyword_sets: list[set[str]] = []
         for control in strategy_controls:
-            description = control.get("description", "")
-            control_keywords = _extract_keywords(f"{strategy} {description}")
-            control_keywords -= blocked
-            control_keywords -= E8_GENERIC_WORDS
-            control_keyword_sets.append(control_keywords)
+            control_keyword_sets.append(_e8_control_keywords(strategy, control, blocked))
 
         scored: list[tuple[dict[str, Any], int, set[str]]] = []
         for control, control_keywords in zip(strategy_controls, control_keyword_sets):
@@ -274,7 +321,7 @@ def match_ism_controls(
     converted_findings = _convert_findings(findings)
     # One keyword set per finding, so a control must match within a single finding
     finding_keyword_sets = [
-        _extract_keywords(text) - E8_GENERIC_WORDS
+        _extract_keywords(text) - _GENERIC_STEMS
         for text in _normalise_findings(converted_findings)
     ]
 
@@ -286,10 +333,7 @@ def match_ism_controls(
     # Score each ISM control
     scored_controls = []
     for control in asd_data.get("ism", []):
-        keywords = _extract_keywords(control["description"] + " " + control["category"])
-
-        # Remove globally blocked keywords from ISM matching
-        control_keywords = keywords - global_blocked - E8_GENERIC_WORDS
+        control_keywords = _ism_control_keywords(control, global_blocked)
         match_score = max(
             (len(control_keywords & found) for found in finding_keyword_sets),
             default=0,
@@ -301,3 +345,80 @@ def match_ism_controls(
     # Sort by match score descending and take top results
     scored_controls.sort(key=lambda x: x[1], reverse=True)
     return [c[0] for c in scored_controls[:max_controls]]
+
+
+def map_findings_to_controls(
+    findings: list[dict | str],
+    asd_data: dict,
+    overrides_path: str | None = None,
+) -> list[dict[str, Any]]:
+    """Map each finding to the ISM controls and Essential Eight strategies it points at.
+
+    Args:
+        findings: List of finding dictionaries; findings without a string id are skipped.
+        asd_data: ASD framework data containing essential_eight and ism entries.
+        overrides_path: Path to e8_keyword_overrides.json for keyword blocking.
+
+    Returns:
+        One dict per finding: {"id", "ism", "e8"}. Each ism entry has id, category and
+        shared (the words that matched); each e8 entry has strategy and shared. At most
+        MAX_FINDING_POINTERS entries per framework, best match first.
+    """
+    converted_findings = [
+        f for f in _convert_findings(findings) if isinstance(f.get("id"), str)
+    ]
+    overrides = _load_overrides(overrides_path)
+    global_blocked = set().union(*overrides.values()) if overrides else set()
+    e8_scores = score_findings(converted_findings, asd_data, overrides_path=overrides_path)
+    e8_controls = {
+        entry.get("strategy", ""): {c.get("id"): c for c in entry.get("controls", [])}
+        for entry in asd_data.get("essential_eight", [])
+    }
+
+    pointers: list[dict[str, Any]] = []
+    for finding in converted_findings:
+        finding_id = finding["id"]
+
+        # Matching uses stems; "shared" shows the finding's own words so the report reads naturally.
+        texts = _normalise_findings([finding])
+        ism_words = _extract_keyword_map(texts[0]) if texts else {}
+        ism_finding_keywords = set(ism_words) - _GENERIC_STEMS
+        ism_hits: list[tuple[int, str, dict, list[str]]] = []
+        for control in asd_data.get("ism", []):
+            shared = sorted(_ism_control_keywords(control, global_blocked) & ism_finding_keywords)
+            if len(shared) >= MIN_ISM_MATCH_SCORE:
+                words = sorted(ism_words[stem] for stem in shared)
+                ism_hits.append((len(shared), control.get("id", ""), control, words))
+        ism_hits.sort(key=lambda hit: (-hit[0], hit[1]))
+
+        # Same word source as score_findings, so this agrees with the E8 table.
+        e8_words = _finding_keyword_map(finding)
+        e8_finding_keywords = set(e8_words)
+        e8_hits: list[dict[str, Any]] = []
+        for strategy, row in e8_scores.items():
+            if finding_id not in row["related_findings"]:
+                continue
+            blocked = overrides.get(strategy.casefold(), set())
+            shared_words: set[str] = set()
+            for related in row["related_controls"]:
+                control = e8_controls.get(strategy, {}).get(related["id"])
+                if control is None:
+                    continue
+                shared = _e8_control_keywords(strategy, control, blocked) & e8_finding_keywords
+                if len(shared) >= MIN_E8_MATCH_SCORE:
+                    shared_words |= shared
+            e8_hits.append(
+                {"strategy": strategy, "shared": sorted(e8_words[stem] for stem in shared_words)}
+            )
+        e8_hits.sort(key=lambda hit: (-len(hit["shared"]), hit["strategy"]))
+
+        pointers.append({
+            "id": finding_id,
+            "ism": [
+                {"id": control.get("id", ""), "category": control.get("category", ""), "shared": shared}
+                for _, _, control, shared in ism_hits[:MAX_FINDING_POINTERS]
+            ],
+            "e8": e8_hits[:MAX_FINDING_POINTERS],
+        })
+
+    return pointers

@@ -10,7 +10,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ravensight.e8_scorer import match_ism_controls, score_findings
+from ravensight.e8_scorer import (
+    MAX_FINDING_POINTERS,
+    _stem,
+    map_findings_to_controls,
+    match_ism_controls,
+    score_findings,
+)
 
 
 def _finding(**overrides: Any) -> dict[str, Any]:
@@ -398,13 +404,13 @@ def test_match_ism_controls_ignores_generic_words() -> None:
             {
                 "id": "ISM-LOG",
                 "category": "Logging",
-                "description": "Access to systems is logged",
+                "description": "Access to systems is logged centrally",
             },
         ],
     }
     generic_only = _finding(description="systems access service", recommendation="")
     one_specific = _finding(description="systems access logged", recommendation="")
-    two_specific = _finding(description="access logged logging", recommendation="")
+    two_specific = _finding(description="access logged centrally", recommendation="")
     assert match_ism_controls([generic_only], asd_data) == []
     assert match_ism_controls([one_specific], asd_data) == []
     assert [c["id"] for c in match_ism_controls([two_specific], asd_data)] == ["ISM-LOG"]
@@ -470,3 +476,159 @@ def test_stray_rule_group_key_has_no_effect() -> None:
     stray_ism = _finding(rule_group="zebra quokka enclosures wildlife")
     assert match_ism_controls([unrelated], ism_data) == []
     assert match_ism_controls([stray_ism], ism_data) == []
+
+
+# --- Per-finding pointers (report clarity Phase 1) ---
+
+
+def _ism_asd(*controls: dict[str, str]) -> dict[str, Any]:
+    """Build ASD data holding only ISM controls."""
+    return {"essential_eight": [], "ism": list(controls)}
+
+
+def test_map_findings_ism_pointer_lists_shared_words() -> None:
+    """An ISM pointer records the finding and the words that matched."""
+    asd_data = _ism_asd(
+        {
+            "id": "ISM-FW",
+            "category": "Gateway logging",
+            "description": "Firewall blocks hostile traffic at gateways",
+        }
+    )
+    finding = _finding(description="Firewall blocks hostile sources", recommendation="")
+    result = map_findings_to_controls([finding], asd_data)
+    assert [row["id"] for row in result] == ["C1"]
+    assert result[0]["ism"] == [
+        {"id": "ISM-FW", "category": "Gateway logging", "shared": ["blocks", "firewall", "hostile"]}
+    ]
+    assert result[0]["e8"] == []
+
+
+def test_map_findings_ism_ignores_narrative() -> None:
+    """The narrative alone never creates an ISM pointer."""
+    asd_data = _ism_asd(
+        {"id": "ISM-FW", "category": "Gateway logging", "description": "Firewall blocks hostile traffic"}
+    )
+    finding = _finding(
+        description="Unrelated thing", recommendation="", narrative="firewall blocks hostile traffic"
+    )
+    assert map_findings_to_controls([finding], asd_data)[0]["ism"] == []
+
+
+def test_map_findings_caps_ism_pointers_best_first() -> None:
+    """At most MAX_FINDING_POINTERS ISM controls are kept, best match first."""
+    base = "alpha bravo charlie delta"
+    controls = [
+        {"id": f"ISM-{n}", "category": "Zulu", "description": base[: 5 * (n + 2)]}
+        for n in range(5)
+    ]
+    finding = _finding(description=base, recommendation="")
+    ism = map_findings_to_controls([finding], _ism_asd(*controls))[0]["ism"]
+    assert len(ism) == MAX_FINDING_POINTERS
+    counts = [len(item["shared"]) for item in ism]
+    assert counts == sorted(counts, reverse=True)
+
+
+def test_map_findings_skips_findings_without_an_id() -> None:
+    """Legacy string findings have no id and produce no pointer rows."""
+    asd_data = _ism_asd(
+        {"id": "ISM-FW", "category": "Gateway logging", "description": "Firewall blocks hostile traffic"}
+    )
+    assert map_findings_to_controls(["Firewall blocks hostile traffic"], asd_data) == []
+
+
+def test_map_findings_e8_agrees_with_score_findings() -> None:
+    """E8 pointers list exactly the strategies whose related_findings include the finding."""
+    finding = _finding(
+        description="Unauthorised applications execute", recommendation="", narrative=""
+    )
+    scores = score_findings([finding], _asd_data())
+    assert scores["Application control"]["related_findings"] == ["C1"]
+    result = map_findings_to_controls([finding], _asd_data())
+    assert result[0]["e8"] == [
+        {"strategy": "Application control", "shared": ["applications", "execute", "unauthorised"]}
+    ]
+
+
+# --- Matching accuracy (report clarity Phase 1b) ---
+
+
+def test_stemming_joins_common_word_forms() -> None:
+    """patch, patches and patched share a stem; so do update, updated and updates."""
+    assert _stem("patch") == _stem("patches") == _stem("patched")
+    assert _stem("update") == _stem("updated") == _stem("updates")
+    assert _stem("process") == _stem("processes")
+
+
+def test_stemming_leaves_short_and_double_s_words_alone() -> None:
+    """Short words and words ending in ss keep their final letters."""
+    assert _stem("logs") == "logs"
+    assert _stem("access") == "access"
+    assert _stem("address") == "address"
+
+
+def test_boilerplate_words_never_count_toward_a_match() -> None:
+    """action, confirm, multiple and expected are generic and cannot create a pointer."""
+    asd_data = _ism_asd(
+        {"id": "ISM-BOILER", "category": "Action", "description": "Confirm multiple expected actions"}
+    )
+    finding = _finding(
+        description="Multiple things", recommendation="No action required; confirm expected result"
+    )
+    assert map_findings_to_controls([finding], asd_data)[0]["ism"] == []
+
+
+def test_inflected_words_now_match_across_finding_and_control() -> None:
+    """A patched/updated finding reaches a control that says patches/updates."""
+    asd_data = _ism_asd(
+        {"id": "ISM-PATCH", "category": "Patch management", "description": "Patches and updates are applied"}
+    )
+    finding = _finding(
+        description="Package vulnerable", recommendation="Updated to a patched version"
+    )
+    ism = map_findings_to_controls([finding], asd_data)[0]["ism"]
+    assert [item["id"] for item in ism] == ["ISM-PATCH"]
+
+
+def test_matched_on_shows_the_findings_own_words_not_stems() -> None:
+    """Shared words are reported as written in the finding, never as clipped stems."""
+    asd_data = _ism_asd(
+        {"id": "ISM-PATCH", "category": "Patch management", "description": "Patches and updates are applied"}
+    )
+    finding = _finding(
+        description="Package vulnerable", recommendation="Updated to a patched version"
+    )
+    shared = map_findings_to_controls([finding], asd_data)[0]["ism"][0]["shared"]
+    assert shared == ["patched", "updated"]
+
+
+def test_blocklist_applies_to_inflected_forms(tmp_path: Path) -> None:
+    """A blocked word also blocks its inflected forms: 'block' stops 'blocks' and 'blocked'."""
+    asd_data: dict[str, Any] = {
+        "essential_eight": [
+            {
+                "strategy": "Application control",
+                "controls": [
+                    {"id": "ISM-1", "levels": [1], "description": "Blocks hostile unauthorised"},
+                ],
+            }
+        ],
+        "ism": [],
+    }
+    finding = _finding(
+        description="Blocked hostile unauthorised", recommendation="", narrative=""
+    )
+    overrides_file = tmp_path / "overrides.json"
+    overrides_file.write_text(
+        json.dumps({"strategy_blocklist": {"Application control": ["block"]}})
+    )
+    without = score_findings([finding], asd_data)
+    with_block = score_findings([finding], asd_data, overrides_path=str(overrides_file))
+    assert [c["id"] for c in without["Application control"]["related_controls"]] == ["ISM-1"]
+    assert with_block["Application control"]["related_controls"] == []
+
+
+def test_map_findings_no_match_gives_empty_pointers() -> None:
+    """A finding that matches nothing still appears, with empty lists."""
+    result = map_findings_to_controls([_finding()], _asd_data())
+    assert result == [{"id": "C1", "ism": [], "e8": []}]
