@@ -757,7 +757,7 @@ def test_e8_section_explains_ml_in_new_layout() -> None:
     section = reporter._render_asd_section(
         _make_asd_data(), e8_scores=_make_e8_scores(), finding_pointers=[], findings=[]
     )
-    assert "ML means maturity level, from ML1 to ML4." in section
+    assert "ML means maturity level, from ML1 to ML3." in section
 
 
 def test_cluster_note_explains_c_numbers_and_utc(tmp_path: Path) -> None:

@@ -123,7 +123,7 @@ _GLOSSARY: list[tuple[str, str, str]] = [
     ("ASD", "Australian Signals Directorate, the Australian Government cyber security agency.", r"## ASD Framework"),
     ("ISM", "Information Security Manual, the ASD's catalogue of security controls (IDs like ISM-0298).", r"\bISM\b"),
     ("Essential Eight", "The ASD's eight core mitigation strategies, such as patching and multi-factor authentication.", r"Essential Eight"),
-    ("ML", "Maturity level (ML1 to ML4) of an Essential Eight control.", r"\bML\d"),
+    ("ML", "Maturity level (ML1 to ML3) of an Essential Eight control.", r"\bML\d"),
     ("CVE", "Common Vulnerabilities and Exposures, a public ID for a known software flaw.", r"CVE-\d"),
     ("dpkg", "The Debian and Ubuntu package manager.", r"(?i)\bdpkg\b"),
     ("MITRE ATT&CK", "A public catalogue of attacker tactics and techniques.", r"## MITRE ATT&CK Tags"),
@@ -292,7 +292,7 @@ def _render_asd_section(
                 "Not assessed. Ravensight reads alerts, not system configuration, so it cannot measure maturity. Related controls are pointers for review, not gaps."
             )
         else:
-            note_parts.append("ML means maturity level, from ML1 to ML4.")
+            note_parts.append("ML means maturity level, from ML1 to ML3.")
         if any(entry.get("strategy") == UNMAPPED_STRATEGY for entry in essential_eight):
             note_parts.append("The \"Unmapped\" row lists controls outside the Essential Eight strategies.")
         lines.extend(["### Essential Eight", ""])
