@@ -64,7 +64,8 @@ def _load_asd_data(asd_path: str) -> dict:
         asd_path: Path to data/asd_framework.json
 
     Returns:
-        Parsed ASD data dict, or empty dict if file absent, unreadable, or from an older schema.
+        Parsed ASD data dict, or empty dict if the file is absent, cannot be parsed as JSON, or is from an older schema.
+        Other read errors, such as a permission error, are not caught and propagate.
     """
     try:
         with Path(asd_path).open("r", encoding="utf-8") as f:
@@ -154,7 +155,9 @@ def _build_mitre_reference(tactics: list[dict[str, Any]]) -> str:
 def _load_platform_hints(hints_path: str) -> dict:
     """Load platform false positive hints from local JSON file.
 
-    Returns empty dict if the file is absent or malformed — run is never blocked.
+    Returns an empty dict (with a warning) if the file is absent or is not valid JSON.
+    Other read errors, such as a permission error, propagate. Valid JSON is returned
+    as parsed, without checking that it is an object.
     """
     try:
         with Path(hints_path).open("r", encoding="utf-8") as f:
@@ -319,9 +322,11 @@ def _build_platform_context(
     Extracts distinct agent.os.platform values from the alert batch, looks up
     matching hints for the rule IDs present, and returns a formatted context block.
     Returns an empty string if no platform matches are found — caller skips silently.
-    Alerts with null _source/agent/os/platform/rule fields are skipped silently.
-    When agent.os.platform is missing or empty, falls back to the
-    platform_agents agent-name map.
+    Alerts with a null _source or agent are skipped silently. When agent.os or
+    agent.os.platform is null, missing or empty, the platform comes from the
+    platform_agents agent-name map instead; the alert is skipped only if that gives
+    no platform. Alerts with a null _source, rule or rule ID add nothing to the
+    rule IDs used for hint matching.
     A platform block, including its filesystem notes, is emitted only when at least
     one rule hint matches the batch; notes for a platform with no rule hints are never shown.
     """
