@@ -961,6 +961,8 @@ def test_analyse_rewrites_similar_incident_vendor_text(
     )
 
     class _Embedder:
+        """Stub embedder that returns a single stored incident mentioning pfSense."""
+
         degraded = False
 
         def retrieve_similar(self, query_text: str) -> list[dict[str, Any]]:

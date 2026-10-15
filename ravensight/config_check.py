@@ -43,6 +43,7 @@ def _placeholder_problems(config: dict[str, Any], report_only: bool) -> list[str
     problems: list[str] = []
 
     def walk(path: list[str], table: dict[str, Any]) -> None:
+        """Append a problem for each string value containing YOUR_, recursing into tables."""
         for key in sorted(table):
             value = table[key]
             if isinstance(value, str):
