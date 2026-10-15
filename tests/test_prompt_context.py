@@ -111,7 +111,8 @@ def test_similar_incident_header_in_prompt_not_in_result(
 PROMPT_RULES_BLOCK = (
     "Rules:\n"
     "1. Evidence values and notes are facts taken from the raw alerts. "
-    "Prefer the benign explanation that fits them.\n"
+    "Say what they support and no more; if they fit both an ordinary and a "
+    "concerning cause, say which evidence would tell them apart.\n"
     "2. Never contradict the evidence. If unsure, say less.\n"
     "3. Copy ports, paths, counts, package names and versions exactly as "
     "written in the evidence, or leave them out.\n"
@@ -124,7 +125,14 @@ PROMPT_RULES_BLOCK = (
     "files, forensics or isolating hosts unless the evidence shows a content "
     "change or an external source.\n"
     "7. In per host evidence, the values inside a host's brackets belong to "
-    "that host only. Never attribute them to another host."
+    "that host only. Never attribute them to another host.\n"
+    "8. Do not say who owns an IP address, network or domain (such as a "
+    "company or cloud provider) unless that name is in the evidence or Host "
+    "facts. Describe addresses by what the evidence shows: family, port, "
+    "direction and scope.\n"
+    "9. Start each recommendation with a verdict word (No action, Monitor or "
+    "Investigate), then one reason from the evidence. Use Investigate for "
+    "content changes or external sources. Do not open with \"benign\"."
 )
 
 
@@ -164,6 +172,12 @@ def test_evidence_instruction_sentence_in_prompt(
     )
     prompt_text = captured_prompt["messages"][0]["content"]
     assert PROMPT_RULES_BLOCK in prompt_text
+    assert "Prefer the benign explanation" not in prompt_text
+    assert (
+        "- [C1] <No action, Monitor or Investigate: one reason from the evidence>"
+        in prompt_text
+    )
+    assert "<recommendation for cluster C1>" not in prompt_text
 
 
 def test_prompt_does_not_contain_old_instruction_line(

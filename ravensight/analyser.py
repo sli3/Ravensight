@@ -1296,13 +1296,15 @@ def _build_prompt(
 Recent alerts (clusters built from alert data — do not restate counts, hosts,
 severities or CVEs, and do not invent cluster ids):
 Rules:
-1. Evidence values and notes are facts taken from the raw alerts. Prefer the benign explanation that fits them.
+1. Evidence values and notes are facts taken from the raw alerts. Say what they support and no more; if they fit both an ordinary and a concerning cause, say which evidence would tell them apart.
 2. Never contradict the evidence. If unsure, say less.
 3. Copy ports, paths, counts, package names and versions exactly as written in the evidence, or leave them out.
 4. 'content unchanged' means only metadata (such as inode or mtime) changed: treat it as low concern. 'scope internal → external' means hosts on this network were blocked going out, not an outside scan.
 5. Name products and vendors as given in Host facts, not as the rule description says.
 6. Recommend only what the evidence justifies. Do not suggest restoring files, forensics or isolating hosts unless the evidence shows a content change or an external source.
 7. In per host evidence, the values inside a host's brackets belong to that host only. Never attribute them to another host.
+8. Do not say who owns an IP address, network or domain (such as a company or cloud provider) unless that name is in the evidence or Host facts. Describe addresses by what the evidence shows: family, port, direction and scope.
+9. Start each recommendation with a verdict word (No action, Monitor or Investigate), then one reason from the evidence. Use Investigate for content changes or external sources. Do not open with "benign".
 {alert_summary}
 
 {similar_incidents}
@@ -1316,7 +1318,7 @@ each prefixed with its cluster id, plus at most one recommendation line per clus
 - [C2] <narrative for cluster C2>
 </findings>
 <recommendations>
-- [C1] <recommendation for cluster C1>
+- [C1] <No action, Monitor or Investigate: one reason from the evidence>
 </recommendations>"""
 
 
