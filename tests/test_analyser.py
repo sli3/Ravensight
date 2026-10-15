@@ -30,6 +30,7 @@ class _FakeEmbedder:
     """Embedder stub that returns no similar incidents."""
 
     def __init__(self) -> None:
+        """Set the degraded flag to False."""
         self.degraded = False
 
     def retrieve_similar(self, query_text: str) -> list[dict[str, Any]]:

@@ -207,6 +207,7 @@ def test_primary_then_fallback_fetch_order(
     call_log: list[str] = []
 
     def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        """Log the URL; fail for the primary URL and return the catalogue otherwise."""
         call_log.append(url)
         response = MagicMock()
         if url == asd_sync.ISM_CATALOG_PRIMARY_URL:
@@ -231,6 +232,7 @@ def test_both_sources_fail_raises(
     output_path = tmp_path / "asd_framework.json"
 
     def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        """Return a response whose raise_for_status always raises."""
         response = MagicMock()
         response.raise_for_status.side_effect = requests.RequestException("down")
         return response
