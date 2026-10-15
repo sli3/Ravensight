@@ -3,11 +3,12 @@ set -eu
 
 # --- Defaults for optional variables ---
 # Required variables (no sane default — checked below) are NOT set here:
-# WAZUH_HOST, WAZUH_API_USER, WAZUH_API_PASSWORD, WAZUH_INDEXER_HOST,
+# WAZUH_HOST, WAZUH_INDEXER_HOST,
 # WAZUH_INDEXER_PASSWORD, LLM_BASE_URL, LLM_MODEL, EMBEDDINGS_ENDPOINT
-: "${WAZUH_PORT:=55000}"; export WAZUH_PORT
 : "${WAZUH_INDEXER_PORT:=9200}"; export WAZUH_INDEXER_PORT
 : "${WAZUH_INDEXER_USER:=admin}"; export WAZUH_INDEXER_USER
+: "${WAZUH_INDEXER_VERIFY_TLS:=false}"; export WAZUH_INDEXER_VERIFY_TLS
+: "${WAZUH_INDEXER_CA_PATH:=}"; export WAZUH_INDEXER_CA_PATH
 : "${LLM_API_KEY:=local}"; export LLM_API_KEY
 : "${LLM_TEMPERATURE:=0.3}"; export LLM_TEMPERATURE
 : "${LLM_MAX_TOKENS:=1024}"; export LLM_MAX_TOKENS
@@ -23,7 +24,7 @@ set -eu
 
 # --- Required variables: fail fast with a clear message rather than let
 # tomllib.load() or main.py fail later with a confusing placeholder value ---
-required_vars="WAZUH_HOST WAZUH_API_USER WAZUH_API_PASSWORD WAZUH_INDEXER_HOST WAZUH_INDEXER_PASSWORD LLM_BASE_URL LLM_MODEL EMBEDDINGS_ENDPOINT RAVENSIGHT_PUID RAVENSIGHT_PGID"
+required_vars="WAZUH_HOST WAZUH_INDEXER_HOST WAZUH_INDEXER_PASSWORD LLM_BASE_URL LLM_MODEL EMBEDDINGS_ENDPOINT RAVENSIGHT_PUID RAVENSIGHT_PGID"
 missing=""
 for var in $required_vars; do
     eval "value=\${$var:-}"
@@ -59,6 +60,14 @@ case "$RAVENSIGHT_REPORTS_OVERWRITE" in
     true|false) ;;
     *)
         echo 'ERROR: RAVENSIGHT_REPORTS_OVERWRITE must be exactly true or false, lowercase, no quotes.' >&2
+        exit 1
+        ;;
+esac
+
+case "$WAZUH_INDEXER_VERIFY_TLS" in
+    true|false) ;;
+    *)
+        echo 'ERROR: WAZUH_INDEXER_VERIFY_TLS must be exactly true or false, lowercase, no quotes.' >&2
         exit 1
         ;;
 esac

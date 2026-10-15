@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Required keys per section, checked only when the section exists.
 _REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
-    "wazuh": ("host", "user", "password", "indexer_password"),
+    "wazuh": ("host", "indexer_password"),
     "llm": ("base_url", "api_key", "model"),
     "reports": ("output_dir",),
     "baseline": ("path",),
@@ -120,6 +121,24 @@ def _type_problems(config: dict[str, Any], report_only: bool) -> list[str]:
                 "Config error: [llm].temperature has the wrong type — "
                 f"expected int or float, got {type(value).__name__}"
             )
+    if not report_only and isinstance(config.get("wazuh"), dict):
+        wazuh = config["wazuh"]
+        if "indexer_verify_tls" in wazuh and type(wazuh["indexer_verify_tls"]) is not bool:
+            problems.append(
+                "Config error: [wazuh].indexer_verify_tls has the wrong type — "
+                f"expected bool, got {type(wazuh['indexer_verify_tls']).__name__}"
+            )
+        if "indexer_ca_path" in wazuh:
+            ca_path = wazuh["indexer_ca_path"]
+            if not isinstance(ca_path, str):
+                problems.append(
+                    "Config error: [wazuh].indexer_ca_path has the wrong type — "
+                    f"expected str, got {type(ca_path).__name__}"
+                )
+            elif ca_path.strip() and not Path(ca_path.strip()).exists():
+                problems.append(
+                    f"Config error: [wazuh].indexer_ca_path does not exist: {ca_path.strip()}"
+                )
     return problems
 
 

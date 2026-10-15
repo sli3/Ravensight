@@ -1,14 +1,14 @@
 [wazuh]
+# Wazuh host: the default Indexer host
 host = "${WAZUH_HOST}"
-port = ${WAZUH_PORT}
-user = "${WAZUH_API_USER}"
-password = "${WAZUH_API_PASSWORD}"
 
 # Wazuh Indexer (OpenSearch) — usually same host, port 9200
 indexer_host = "${WAZUH_INDEXER_HOST}"
 indexer_port = ${WAZUH_INDEXER_PORT}
 indexer_user = "${WAZUH_INDEXER_USER}"
 indexer_password = "${WAZUH_INDEXER_PASSWORD}"
+indexer_verify_tls = ${WAZUH_INDEXER_VERIFY_TLS}
+indexer_ca_path = "${WAZUH_INDEXER_CA_PATH}"
 
 [llm]
 base_url = "${LLM_BASE_URL}"

@@ -25,9 +25,6 @@ def _valid_config() -> dict[str, Any]:
     return {
         "wazuh": {
             "host": "wazuh.example.local",
-            "port": 55000,
-            "user": "wazuh-wui",
-            "password": "real-password",
             "indexer_host": "indexer.example.local",
             "indexer_port": 9200,
             "indexer_user": "admin",
@@ -173,6 +170,14 @@ def test_valid_config_passes() -> None:
     assert problems == []
 
 
+def test_legacy_manager_api_keys_are_accepted() -> None:
+    """A config still holding the legacy user, password and int port has no problems."""
+    config = _valid_config()
+    config["wazuh"].update({"port": 55000, "user": "wazuh-wui", "password": "old-password"})
+
+    assert config_check.find_problems(config, report_only=False) == []
+
+
 def test_report_only_skips_wazuh_llm() -> None:
     """Report-only mode requires only [reports] and [baseline], and skips wazuh/llm checks."""
     minimal = {
@@ -215,9 +220,6 @@ path = "{tmp}/baseline.json"
 
 [wazuh]
 host = "x"
-port = 55000
-user = "u"
-password = "p"
 indexer_host = "x"
 indexer_port = 9200
 indexer_user = "admin"
@@ -374,3 +376,73 @@ def test_analyse_api_status_error_clean_message(
     assert "LLM server returned HTTP 401" in criticals[0].message
     assert "api_key and model" in criticals[0].message
     assert not criticals[0].exc_info
+
+
+@pytest.mark.parametrize("value", [1, 0, "true", "false", 1.0])
+def test_non_bool_indexer_verify_tls_rejected(value: Any) -> None:
+    """A non-bool indexer_verify_tls is reported, including int 1 and the string true."""
+    config = _valid_config()
+    config["wazuh"]["indexer_verify_tls"] = value
+
+    problems = config_check.find_problems(config, report_only=False)
+
+    assert any("[wazuh].indexer_verify_tls" in p and "expected bool" in p for p in problems)
+
+
+def test_non_string_indexer_ca_path_gives_one_error() -> None:
+    """A non-string indexer_ca_path gives exactly one error."""
+    config = _valid_config()
+    config["wazuh"]["indexer_ca_path"] = 5
+
+    problems = config_check.find_problems(config, report_only=False)
+
+    assert len(problems) == 1
+    assert "[wazuh].indexer_ca_path" in problems[0]
+    assert "expected str" in problems[0]
+
+
+def test_missing_indexer_ca_path_file_reported(tmp_path: Path) -> None:
+    """A CA path that does not exist is reported with the path."""
+    config = _valid_config()
+    missing = tmp_path / "nope.pem"
+    config["wazuh"]["indexer_ca_path"] = str(missing)
+
+    problems = config_check.find_problems(config, report_only=False)
+
+    assert problems == [f"Config error: [wazuh].indexer_ca_path does not exist: {missing}"]
+
+
+def test_existing_ca_file_and_directory_accepted(tmp_path: Path) -> None:
+    """An existing CA file or directory is accepted."""
+    ca_file = tmp_path / "ca.pem"
+    ca_file.write_text("x")
+    for target in (ca_file, tmp_path):
+        config = _valid_config()
+        config["wazuh"]["indexer_ca_path"] = str(target)
+        assert config_check.find_problems(config, report_only=False) == []
+
+
+def test_blank_indexer_ca_path_accepted() -> None:
+    """A blank indexer_ca_path counts as unset."""
+    config = _valid_config()
+    config["wazuh"]["indexer_ca_path"] = "  "
+
+    assert config_check.find_problems(config, report_only=False) == []
+
+
+def test_valid_indexer_tls_values_are_clean() -> None:
+    """Valid bool and empty-string values produce no problems."""
+    config = _valid_config()
+    config["wazuh"]["indexer_verify_tls"] = True
+    config["wazuh"]["indexer_ca_path"] = ""
+
+    assert config_check.find_problems(config, report_only=False) == []
+
+
+def test_indexer_tls_checks_skipped_in_report_only() -> None:
+    """The indexer TLS checks do not run in report-only mode."""
+    config = _valid_config()
+    config["wazuh"]["indexer_verify_tls"] = "true"
+    config["wazuh"]["indexer_ca_path"] = 5
+
+    assert config_check.find_problems(config, report_only=True) == []

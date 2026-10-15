@@ -8,7 +8,7 @@
 
 # Ravensight — Wazuh Security Log Analyser
 
-A local-first security log analyser that pulls alerts from the Wazuh REST API,
+A local-first security log analyser that pulls alerts from the Wazuh Indexer (OpenSearch) REST API,
 analyses them using a local LLM via llama.cpp, and generates structured
 markdown security reports with baseline memory tracking and historical trending.
 
@@ -66,7 +66,6 @@ not in the setup steps below.
 ### Hard requirements (the tool cannot run without these)
 
 - **A reachable Wazuh deployment (4.x or later):**
-  - Wazuh Manager API on TCP/55000 (auth endpoint)
   - Wazuh Indexer (OpenSearch) REST API on TCP/9200 — the actual alert store
   - If the Indexer binds to localhost only, set `network.host: 0.0.0.0` in
     `/etc/wazuh-indexer/opensearch.yml` and restart the indexer service
@@ -161,16 +160,17 @@ Copy the example config and fill in your values:
 cp config.example.toml config.toml
 ```
 
+The Wazuh manager API login is no longer used, so old `wazuh.port`, `wazuh.user` and `wazuh.password` entries (and `WAZUH_API_USER`, `WAZUH_API_PASSWORD` and `WAZUH_PORT` in Docker) can be deleted but are harmless.
+
 | Key | Description |
 |-----|-------------|
-| `wazuh.host` | Your Wazuh manager hostname or IP |
-| `wazuh.port` | Wazuh API port (default: 55000) |
-| `wazuh.user` | Wazuh API username |
-| `wazuh.password` | Wazuh API password |
-| `wazuh.indexer_host` | Wazuh Indexer (OpenSearch) IP — often same as manager |
+| `wazuh.host` | Your Wazuh hostname or IP, used as the default Indexer host |
+| `wazuh.indexer_host` | Wazuh Indexer (OpenSearch) IP — defaults to `wazuh.host` when unset |
 | `wazuh.indexer_port` | Indexer port (default: 9200) |
 | `wazuh.indexer_user` | Indexer username (default: admin) |
 | `wazuh.indexer_password` | Indexer password |
+| `wazuh.indexer_verify_tls` | Optional. `true` verifies the Indexer TLS certificate; default `false` (no verification) |
+| `wazuh.indexer_ca_path` | Optional path to a CA certificate (or folder) used to verify the Indexer; default empty. A set path wins over `indexer_verify_tls = false`. Verification also checks the hostname, so a self-signed certificate must include the `indexer_host` name or IP in its SAN or the request fails with an SSL error (logged as "Failed to connect to Wazuh Indexer") |
 | `llm.base_url` | llama.cpp server URL (e.g. `http://yubaba:8080/v1`) |
 | `llm.model` | Model ID served by llama.cpp — whatever your server exposes (e.g. `Ornith-1.5-9B`) |
 | `llm.api_key` | Any string — llama.cpp does not validate |
@@ -238,14 +238,13 @@ start-up — you never need to hand-edit a config file when running in Docker.
 
 | Variable | Required | Description |
 |----------|----------|--------------|
-| `WAZUH_HOST` | ✅ | Wazuh manager hostname or IP |
-| `WAZUH_PORT` | | Wazuh API port (default: `55000`) |
-| `WAZUH_API_USER` | ✅ | Wazuh API username |
-| `WAZUH_API_PASSWORD` | ✅ | Wazuh API password |
+| `WAZUH_HOST` | ✅ | Wazuh hostname or IP (the default Indexer host) |
 | `WAZUH_INDEXER_HOST` | ✅ | Wazuh Indexer (OpenSearch) IP |
 | `WAZUH_INDEXER_PORT` | | Indexer port (default: `9200`) |
 | `WAZUH_INDEXER_USER` | | Indexer username (default: `admin`) |
 | `WAZUH_INDEXER_PASSWORD` | ✅ | Indexer password |
+| `WAZUH_INDEXER_VERIFY_TLS` | | `true` or `false`, lowercase, no quotes (default: `false`). Sets `wazuh.indexer_verify_tls` |
+| `WAZUH_INDEXER_CA_PATH` | | CA certificate path INSIDE the container, e.g. `/app/data/wazuh-ca.pem` (default: empty). The file must live in the mounted data folder. A set path wins over `WAZUH_INDEXER_VERIFY_TLS=false`. A self-signed certificate must include the indexer host name or IP in its SAN or the request fails with an SSL error (logged as "Failed to connect to Wazuh Indexer"). Sets `wazuh.indexer_ca_path` |
 | `LLM_BASE_URL` | ✅ | llama.cpp server URL (e.g. `http://yubaba:8080/v1`) |
 | `LLM_MODEL` | ✅ | Model ID served by llama.cpp — whatever your server exposes (e.g. `Ornith-1.5-9B`) |
 | `LLM_API_KEY` | | Any string — llama.cpp does not validate (default: `local`) |

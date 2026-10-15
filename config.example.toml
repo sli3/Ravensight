@@ -1,14 +1,22 @@
 [wazuh]
-host = "YOUR_WAZUH_MANAGER_IP"
-port = 55000
-user = "YOUR_WAZUH_API_USER"
-password = "YOUR_WAZUH_API_PASSWORD"
+# Wazuh host: the default Indexer host when indexer_host is not set
+host = "YOUR_WAZUH_HOST"
 
 # Wazuh Indexer (OpenSearch) — usually same host, port 9200
 indexer_host = "YOUR_WAZUH_INDEXER_IP"
 indexer_port = 9200
 indexer_user = "admin"
 indexer_password = "YOUR_INDEXER_PASSWORD"
+# Optional TLS verification for the Indexer. Default false (no verification), which
+# suits the self-signed certificate Wazuh ships with.
+# Set true to verify against the bundled public CA list (certifi), not the operating
+# system store. For a private or self-signed CA, set indexer_ca_path instead.
+indexer_verify_tls = false
+# Optional path to a CA certificate (or CA folder) used to verify the Indexer. Default
+# "" (unset). A set path wins over indexer_verify_tls = false. Verification also checks
+# the hostname, so a self-signed certificate must carry the indexer_host name or IP
+# in its SAN.
+indexer_ca_path = ""
 
 [llm]
 base_url = "http://YOUR_LLAMA_CPP_SERVER_IP:8080/v1"

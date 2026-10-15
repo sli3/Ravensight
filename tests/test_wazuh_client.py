@@ -3,6 +3,7 @@ test_wazuh_client.py — fetch_alerts must build its time bound in true UTC.
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 from collections.abc import Iterator
@@ -43,9 +44,13 @@ class _FakeResponse:
     def raise_for_status(self) -> None:
         """Do nothing, as for a successful response."""
 
+    def __init__(self, payload: dict[str, Any] | None = None) -> None:
+        """Store the payload to return, defaulting to an empty search result."""
+        self._payload = payload if payload is not None else {"hits": {"hits": []}}
+
     def json(self) -> dict[str, Any]:
-        """Return an empty search result."""
-        return {"hits": {"hits": []}}
+        """Return the configured search result."""
+        return self._payload
 
 
 @pytest.fixture
@@ -95,9 +100,7 @@ def test_fetch_alerts_since_is_utc(
     if process_tz == ADELAIDE_TZ:
         assert time.localtime().tm_gmtoff != 0
 
-    client = wazuh_client.Client(
-        {"host": "example.invalid", "user": "u", "password": "p"}
-    )
+    client = wazuh_client.Client({"host": "example.invalid"})
     client.fetch_alerts(hours=hours)
 
     since = captured_body["body"]["query"]["bool"]["must"][0]["range"]["@timestamp"]["gte"]
@@ -105,3 +108,201 @@ def test_fetch_alerts_since_is_utc(
     assert since == expected
     if hours == 1:
         assert since <= FROZEN_UTC.strftime(FORMAT)
+
+
+def _fetch_with_payload(
+    monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any], captured: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Run fetch_alerts against a fake post returning payload, capturing the body."""
+
+    def fake_post(
+        url: str,
+        json: dict[str, Any] | None = None,
+        auth: Any = None,
+        verify: Any = None,
+        timeout: Any = None,
+    ) -> _FakeResponse:
+        """Capture the request body and return the payload."""
+        captured["body"] = json
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(wazuh_client.requests, "post", fake_post)
+    client = wazuh_client.Client({"host": "example.invalid"})
+    return client.fetch_alerts()
+
+
+def _warnings(caplog: pytest.LogCaptureFixture) -> list[Any]:
+    """Return the WARNING records captured so far."""
+    return [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_warns_when_dict_total_exceeds_fetched(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A dict total larger than the fetched count logs exactly one warning with counts."""
+    hits = [{"_id": "1"}, {"_id": "2"}]
+    payload = {"hits": {"total": {"value": 12345, "relation": "eq"}, "hits": hits}}
+    with caplog.at_level(logging.WARNING, logger=wazuh_client.logger.name):
+        _fetch_with_payload(monkeypatch, payload, {})
+    records = _warnings(caplog)
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "12345" in message
+    assert "2 were fetched" in message
+
+
+def test_warns_when_int_total_exceeds_fetched(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A bare int total larger than the fetched count logs a warning."""
+    payload = {"hits": {"total": 500, "hits": [{"_id": "1"}]}}
+    with caplog.at_level(logging.WARNING, logger=wazuh_client.logger.name):
+        _fetch_with_payload(monkeypatch, payload, {})
+    records = _warnings(caplog)
+    assert len(records) == 1
+    assert "500" in records[0].getMessage()
+
+
+def test_no_warning_when_total_equals_fetched(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """No warning is logged when the total equals the fetched count."""
+    payload = {"hits": {"total": {"value": 1, "relation": "eq"}, "hits": [{"_id": "1"}]}}
+    with caplog.at_level(logging.WARNING, logger=wazuh_client.logger.name):
+        _fetch_with_payload(monkeypatch, payload, {})
+    assert _warnings(caplog) == []
+
+
+@pytest.mark.parametrize(
+    "total",
+    [
+        pytest.param(None, id="none"),
+        pytest.param("99999", id="string"),
+        pytest.param({"value": "99999"}, id="dict-non-int"),
+        pytest.param({"relation": "eq"}, id="dict-no-value"),
+        pytest.param(True, id="bool"),
+    ],
+)
+def test_malformed_total_does_not_warn_or_crash(
+    total: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A malformed total is ignored without raising or warning."""
+    payload = {"hits": {"total": total, "hits": []}}
+    with caplog.at_level(logging.WARNING, logger=wazuh_client.logger.name):
+        result = _fetch_with_payload(monkeypatch, payload, {})
+    assert result == []
+    assert _warnings(caplog) == []
+
+
+def test_missing_total_does_not_warn_or_crash(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A payload with no total key is handled without a warning."""
+    with caplog.at_level(logging.WARNING, logger=wazuh_client.logger.name):
+        result = _fetch_with_payload(monkeypatch, {"hits": {"hits": []}}, {})
+    assert result == []
+    assert _warnings(caplog) == []
+
+
+def test_track_total_hits_is_true_in_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The posted query body requests exact total hits."""
+    captured: dict[str, Any] = {}
+    _fetch_with_payload(monkeypatch, {"hits": {"hits": []}}, captured)
+    assert captured["body"]["track_total_hits"] is True
+
+
+def test_indexer_password_defaults_to_empty() -> None:
+    """A missing indexer_password defaults to an empty string."""
+    client = wazuh_client.Client({"host": "example.invalid"})
+    assert client.indexer_password == ""
+
+
+def test_indexer_password_is_kept_when_set() -> None:
+    """An explicit indexer_password is used as given."""
+    client = wazuh_client.Client(
+        {
+            "host": "example.invalid",
+            "indexer_password": "x",
+        }
+    )
+    assert client.indexer_password == "x"
+
+
+def test_returns_posted_hits_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """fetch_alerts returns the very hits list from the response."""
+    hits = [{"_id": "1"}]
+    result = _fetch_with_payload(monkeypatch, {"hits": {"hits": hits}}, {})
+    assert result is hits
+
+
+_BASE_CONFIG: dict[str, Any] = {"host": "example.invalid"}
+
+
+def test_client_constructs_with_host_only() -> None:
+    """A config holding only the host constructs without error."""
+    client = wazuh_client.Client({"host": "example.invalid"})
+    assert client.indexer_host == "example.invalid"
+
+
+def test_indexer_verify_defaults_to_false() -> None:
+    """Without TLS keys, indexer_verify is False."""
+    client = wazuh_client.Client(dict(_BASE_CONFIG))
+    assert client.indexer_verify is False
+
+
+def test_indexer_verify_tls_true_gives_true() -> None:
+    """indexer_verify_tls = true resolves to True."""
+    client = wazuh_client.Client({**_BASE_CONFIG, "indexer_verify_tls": True})
+    assert client.indexer_verify is True
+
+
+def test_indexer_ca_path_is_used_as_given() -> None:
+    """A CA path is used as the exact (stripped) verify string."""
+    client = wazuh_client.Client({**_BASE_CONFIG, "indexer_ca_path": " /app/data/ca.pem "})
+    assert client.indexer_verify == "/app/data/ca.pem"
+
+
+def test_indexer_ca_path_wins_over_verify_false() -> None:
+    """A CA path wins over indexer_verify_tls = false."""
+    client = wazuh_client.Client(
+        {**_BASE_CONFIG, "indexer_verify_tls": False, "indexer_ca_path": "/x/ca.pem"}
+    )
+    assert client.indexer_verify == "/x/ca.pem"
+
+
+@pytest.mark.parametrize("ca_path", ["   ", "", 5, None, ["/x"]])
+def test_blank_or_non_string_ca_path_is_unset(ca_path: Any) -> None:
+    """A blank or non-string CA path is treated as unset."""
+    client = wazuh_client.Client({**_BASE_CONFIG, "indexer_ca_path": ca_path})
+    assert client.indexer_verify is False
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        ({}, False),
+        ({"indexer_verify_tls": True}, True),
+        ({"indexer_ca_path": "/x/ca.pem"}, "/x/ca.pem"),
+    ],
+)
+def test_fetch_alerts_passes_resolved_verify(
+    extra: dict[str, Any], expected: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verify value passed to requests.post equals the resolved value."""
+    seen: dict[str, Any] = {}
+
+    def fake_post(
+        url: str,
+        json: dict[str, Any] | None = None,
+        auth: Any = None,
+        verify: Any = None,
+        timeout: Any = None,
+    ) -> _FakeResponse:
+        """Record the verify argument and return an empty response."""
+        seen["verify"] = verify
+        return _FakeResponse()
+
+    monkeypatch.setattr(wazuh_client.requests, "post", fake_post)
+    wazuh_client.Client({**_BASE_CONFIG, **extra}).fetch_alerts()
+    assert seen["verify"] == expected
+    assert type(seen["verify"]) is type(expected)
