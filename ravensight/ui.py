@@ -135,6 +135,8 @@ class PlainReporter:
 
 @dataclass
 class _ServiceRow:
+    """One service line in the live panel: name, state and detail."""
+
     name: str
     state: ServiceState = "pending"
     detail: str = ""
@@ -142,6 +144,8 @@ class _ServiceRow:
 
 @dataclass
 class _RichRunState:
+    """Mutable state for the live panel: service rows and the LLM info line."""
+
     services: dict[str, _ServiceRow] = field(default_factory=dict)
     llm_info: str | None = None
 

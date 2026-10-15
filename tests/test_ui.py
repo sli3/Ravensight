@@ -90,6 +90,7 @@ class DummyReporter:
     """Records RunReporter calls for assertions."""
 
     def __init__(self) -> None:
+        """Initialise empty call records and the LLM state."""
         self.services: list[tuple[str, str, str]] = []
         self.stages: list[tuple[str, str]] = []
         self.llm_done_calls: list[tuple[int, int | None, float | None]] = []
@@ -97,21 +98,26 @@ class DummyReporter:
         self.chunks = 0
 
     def service(self, name: str, state: str, detail: str = "") -> None:
+        """Record a service update."""
         self.services.append((name, state, detail))
 
     def stage(self, name: str, state: str, total: int | None = None) -> None:
+        """Record a stage update, ignoring the total."""
         self.stages.append((name, state))
 
     def advance(self, name: str, n: int = 1) -> None:
         """No-op advance to satisfy the RunReporter protocol."""
 
     def llm_start(self) -> None:
+        """Mark that the LLM stream has started."""
         self.llm_started = True
 
     def llm_tick(self) -> None:
+        """Count one received chunk."""
         self.chunks += 1
 
     def llm_done(self, chunks: int, tokens: int | None, tok_s: float | None) -> None:
+        """Record the final chunk count, token count and speed."""
         self.llm_done_calls.append((chunks, tokens, tok_s))
 
     def finish(
@@ -121,10 +127,11 @@ class DummyReporter:
         warnings: int,
         errors: int,
     ) -> None:
-        return None
+        """Do nothing on finish."""
 
     @contextmanager
     def run(self) -> Iterator[DummyReporter]:
+        """Yield self as the run context."""
         yield self
 
 
@@ -333,24 +340,35 @@ def test_analyse_stream_with_empty_choices_chunk(monkeypatch: pytest.MonkeyPatch
     )
 
     class _FakeStream:
+        """Fake streaming response that yields the content and timings chunks."""
+
         def __iter__(self) -> _FakeStream:
+            """Load the chunk list and return self as the iterator."""
             self._chunks = [content_chunk, timings_chunk]
             return self
 
         def __next__(self) -> Any:
+            """Pop and return the next chunk, raising StopIteration when none remain."""
             if not self._chunks:
                 raise StopIteration
             return self._chunks.pop(0)
 
     class _Chat:
+        """Fake chat namespace whose completions attribute is itself."""
+
         def __init__(self) -> None:
+            """Point completions at this object."""
             self.completions = self
 
         def create(self, **kwargs: Any) -> Any:
+            """Return a fresh fake stream, ignoring the arguments."""
             return _FakeStream()
 
     class _Client:
+        """Fake OpenAI client exposing a fake chat namespace."""
+
         def __init__(self) -> None:
+            """Attach the fake chat namespace."""
             self.chat = _Chat()
 
     monkeypatch.setattr(analyser, "OpenAI", lambda **kw: _Client())
@@ -434,24 +452,35 @@ def test_analyse_marks_llm_ok_when_first_chunk_has_empty_content(
     )
 
     class _FakeStream:
+        """Fake streaming response that yields the empty-content and content chunks."""
+
         def __iter__(self) -> _FakeStream:
+            """Load the chunk list and return self as the iterator."""
             self._chunks = [empty_content_chunk, content_chunk]
             return self
 
         def __next__(self) -> Any:
+            """Pop and return the next chunk, raising StopIteration when none remain."""
             if not self._chunks:
                 raise StopIteration
             return self._chunks.pop(0)
 
     class _Chat:
+        """Fake chat namespace whose completions attribute is itself."""
+
         def __init__(self) -> None:
+            """Point completions at this object."""
             self.completions = self
 
         def create(self, **kwargs: Any) -> Any:
+            """Return a fresh fake stream, ignoring the arguments."""
             return _FakeStream()
 
     class _Client:
+        """Fake OpenAI client exposing a fake chat namespace."""
+
         def __init__(self) -> None:
+            """Attach the fake chat namespace."""
             self.chat = _Chat()
 
     monkeypatch.setattr(analyser, "OpenAI", lambda **kw: _Client())
