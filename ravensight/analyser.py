@@ -1304,7 +1304,8 @@ Rules:
 6. Recommend only what the evidence justifies. Do not suggest restoring files, forensics or isolating hosts unless the evidence shows a content change or an external source.
 7. In per host evidence, the values inside a host's brackets belong to that host only. Never attribute them to another host.
 8. Do not say who owns an IP address, network or domain (such as a company or cloud provider) unless that name is in the evidence or Host facts. Describe addresses by what the evidence shows: family, port, direction and scope.
-9. Start each recommendation with a verdict word (No action, Monitor or Investigate), then one reason from the evidence. Use Investigate for content changes or external sources. Do not open with "benign".
+9. Start each recommendation with a verdict word (No action, Monitor or Investigate), then one reason from the evidence. Use Investigate only for a content change or a source outside this network. Deleted or removed files, new packages and port changes alone are Monitor or No action. Do not open with "benign".
+10. 127.0.0.1 and ::1 are loopback. 0.0.0.0, :: and :::PORT mean listening on all interfaces, which is not loopback and not necessarily external.
 {alert_summary}
 
 {similar_incidents}

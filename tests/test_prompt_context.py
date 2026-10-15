@@ -131,8 +131,13 @@ PROMPT_RULES_BLOCK = (
     "facts. Describe addresses by what the evidence shows: family, port, "
     "direction and scope.\n"
     "9. Start each recommendation with a verdict word (No action, Monitor or "
-    "Investigate), then one reason from the evidence. Use Investigate for "
-    "content changes or external sources. Do not open with \"benign\"."
+    "Investigate), then one reason from the evidence. Use Investigate only "
+    "for a content change or a source outside this network. Deleted or "
+    "removed files, new packages and port changes alone are Monitor or No "
+    "action. Do not open with \"benign\".\n"
+    "10. 127.0.0.1 and ::1 are loopback. 0.0.0.0, :: and :::PORT mean "
+    "listening on all interfaces, which is not loopback and not necessarily "
+    "external."
 )
 
 
