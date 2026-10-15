@@ -19,6 +19,9 @@ max_tokens = 1024
 
 [reports]
 output_dir = "reports"
+# false (default) writes reports/<date>/security_report_<time>.md so reruns never overwrite.
+# true writes reports/<date>_security_report.md and overwrites the same-day file.
+overwrite = false
 
 [baseline]
 path = "data/baseline_state.json"

@@ -418,8 +418,18 @@ class Reporter:
         Initialise reporter.
 
         Args:
-            config: Reports config with output_dir key.
+            config: Reports config with output_dir key and optional overwrite flag
+                (bool, default False). False writes <output_dir>/<date>/security_report_<time>.md;
+                True writes <output_dir>/<date>_security_report.md, replacing the same-day file.
+
+        Raises:
+            ValueError: If overwrite is not a bool.
        """
+        self._overwrite = config.get("overwrite", False)
+        if type(self._overwrite) is not bool:
+            raise ValueError(
+                f"[reports].overwrite must be true or false, got {type(self._overwrite).__name__}"
+            )
         self._output_dir = Path(config["output_dir"])
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -457,9 +467,24 @@ class Reporter:
             finding_pointers=finding_pointers,
             attestation=attestation,
         )
-        filename = self._output_dir / f"{datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d')}_security_report.md"
-        with filename.open("w") as f:
-            f.write(report)
+        now = datetime.now(timezone.utc).astimezone()
+        if self._overwrite:
+            filename = self._output_dir / f"{now.strftime('%Y-%m-%d')}_security_report.md"
+        else:
+            filename = (
+                self._output_dir
+                / now.strftime("%Y-%m-%d")
+                / f"security_report_{now.strftime('%H-%M-%S')}.md"
+            )
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        tmp = filename.with_name(filename.name + ".tmp")
+        try:
+            with tmp.open("w") as f:
+                f.write(report)
+            tmp.replace(filename)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            raise
         logger.info(f"Report written to {filename}")
         return filename
 

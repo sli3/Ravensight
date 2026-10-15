@@ -1059,3 +1059,71 @@ def test_glossary_lists_sigma_only_when_report_uses_it(tmp_path: Path) -> None:
         trends="### Anomalies\n\n- x (+2.4σ)",
     )
     assert "**σ (sigma)**" in with_sigma.split("## Glossary")[1]
+
+
+_DATA = {"summary": "s", "findings": []}
+
+
+def test_generate_default_writes_dated_folder(tmp_path: Path) -> None:
+    """Default mode writes security_report_<time>.md inside a date folder."""
+    path = _make_reporter(tmp_path).generate(_DATA)
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.parent.name)
+    assert path.parent.parent == tmp_path
+    assert re.fullmatch(r"security_report_\d{2}-\d{2}-\d{2}\.md", path.name)
+    assert path.read_text()
+
+
+def test_generate_overwrite_uses_flat_name(tmp_path: Path) -> None:
+    """Overwrite mode keeps the flat dated file name and makes no sub-folder."""
+    path = Reporter({"output_dir": str(tmp_path), "overwrite": True}).generate(_DATA)
+    assert path.parent == tmp_path
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_security_report\.md", path.name)
+    assert [p for p in tmp_path.iterdir() if p.is_dir()] == []
+
+
+def test_generate_default_reruns_keep_both(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two same-day default runs at different seconds leave two files."""
+    from datetime import datetime, timezone
+
+    # Each generate() calls now() twice: once in _build_report, once for the file name.
+    times = iter(
+        [
+            datetime(2026, 10, 15, 9, 0, sec, tzinfo=timezone.utc)
+            for sec in (1, 1, 2, 2)
+        ]
+    )
+
+    class _FakeDatetime:
+        @staticmethod
+        def now(tz: Any = None) -> datetime:
+            return next(times)
+
+    monkeypatch.setattr(reporter, "datetime", _FakeDatetime)
+    rep = _make_reporter(tmp_path)
+    first = rep.generate(_DATA)
+    second = rep.generate(_DATA)
+    assert first != second
+    assert first.exists() and second.exists()
+    assert len(list(tmp_path.rglob("security_report_*.md"))) == 2
+
+
+def test_generate_overwrite_twice_leaves_one_file(tmp_path: Path) -> None:
+    """Overwrite mode run twice leaves one report and no temp file."""
+    rep = Reporter({"output_dir": str(tmp_path), "overwrite": True})
+    rep.generate(_DATA)
+    rep.generate(_DATA)
+    assert len(list(tmp_path.glob("*_security_report.md"))) == 1
+    assert list(tmp_path.rglob("*.tmp")) == []
+
+
+def test_generate_default_leaves_no_tmp(tmp_path: Path) -> None:
+    """A successful default run leaves no temp file behind."""
+    _make_reporter(tmp_path).generate(_DATA)
+    assert list(tmp_path.rglob("*.tmp")) == []
+
+
+@pytest.mark.parametrize("bad", ["yes", 1])
+def test_non_bool_overwrite_rejected(tmp_path: Path, bad: Any) -> None:
+    """A non-bool overwrite value raises ValueError."""
+    with pytest.raises(ValueError, match="overwrite must be true or false"):
+        Reporter({"output_dir": str(tmp_path), "overwrite": bad})
