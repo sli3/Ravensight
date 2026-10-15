@@ -1,5 +1,5 @@
 """
-Tests for the rewritten trending module (per-cluster keys, default-run filter).
+Tests for the trending module (per-cluster keys, default-run filter).
 
 No network — fixtures build scan-history entries directly, with timestamps
 computed relative to ``datetime.now()`` so the 30-day window is never flaky.

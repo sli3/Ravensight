@@ -350,7 +350,7 @@ def test_build_platform_context_null_rule_id_does_not_match_None_hint() -> None:
     assert "Rule None" not in context
 
 
-# --- platform agents map (Build 1d) ---
+# --- platform agents map ---
 
 
 def test_build_platform_context_falls_back_to_agents_map() -> None:
@@ -471,7 +471,7 @@ def test_build_host_facts_block_preserves_alert_casing() -> None:
     assert "- OPNsense: OPNsense (freebsd)." in block
 
 
-# --- vendor name rewrite (Build 2a) ---
+# --- vendor name rewrite ---
 
 
 def _cluster_for_rewrite(hosts: list[str], description: str) -> dict[str, Any]:
@@ -589,7 +589,7 @@ def test_build_platform_context_uses_mapped_vendor_name() -> None:
     assert "- Agent: fw-a (freebsd — OPNsense)" in context
 
 
-# --- ASD context truncation (Build 2a) ---
+# --- ASD context truncation ---
 
 
 def test_build_asd_context_collapses_before_truncating() -> None:
@@ -642,7 +642,7 @@ def test_platform_context_non_string_agent_name_does_not_crash() -> None:
     assert "- Agent: 7 (freebsd — FreeBSD)" in context
 
 
-# --- ASD Essential Eight context (Build 2b) ---
+# --- ASD context: Essential Eight data is not rendered ---
 
 
 def test_build_asd_context_omits_essential_eight_block_with_ism() -> None:

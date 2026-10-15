@@ -1,5 +1,6 @@
 """
-Tests for the mid-loop break retry-storm fix in Embedder.migrate_baseline().
+Tests for Embedder.migrate_baseline() (including the mid-loop break that stops
+retry storms) and for how Chroma and embedding failures degrade gracefully.
 
 No live embedding server is required: Embedder.encode is monkeypatched so the
 real OpenAI client is never called, and chroma_db_path points at tmp_path so
