@@ -1078,6 +1078,68 @@ Out of scope:
   `RAVENSIGHT_REPORTS_OVERWRITE`
 - `config.toml`
 
+### 17. Structured JSON Report Output
+
+**What it does:**
+Alongside the markdown report, Ravensight writes a machine-readable JSON file
+holding the same findings, evidence, controls and trends. It is the first step
+towards a future read-only web UI, which Prin wants to think about later and is
+not urgent. The JSON file gives any later viewer a stable data source, so a UI
+never has to parse markdown.
+
+**Sessions: 2 so far. Later sessions are added here before they start.**
+
+Decisions (agreed with Prin):
+- The markdown report stays the primary output and is unchanged. The JSON file is
+  an extra, written next to it with the same base name and a `.json` extension
+- The JSON is built from the same data the reporter already receives
+  (`analysis`, trends, ASD data, E8 scores, matched controls, finding pointers
+  and attestation), never by parsing the rendered markdown
+- The file carries a `schema_version` field so a future viewer can detect changes
+- No new network service and no new dependency (standard library `json` only)
+
+#### Session 1 — Define and write the JSON
+
+In scope:
+- `ravensight/reporter.py`: a new method on `Reporter` that builds a plain dict
+  and writes it as UTF-8 JSON beside the markdown report; `generate()` calls it
+  after the markdown file is written and still returns the markdown path
+- The dict holds: `schema_version`, generation time (UTC), the run window and
+  filters (hours, agent, level), the findings (id, verdict, narrative, hosts,
+  times, evidence, CVEs, notes), trends, E8 status per strategy, per-finding
+  control pointers, and attestation when present
+- A short description of the schema in `README.md`
+- Tests: valid JSON, expected keys, `schema_version`, and a markdown report that is
+  byte-identical with and without the JSON feature
+
+Out of scope:
+- `ravensight/analyser.py`, `ravensight/evidence.py` and prompt changes
+- Any change to the markdown wording or layout
+- `config.toml`
+
+#### Session 2 — Config switch and wiring
+
+In scope:
+- `config.example.toml` and `config.template.toml`: a `[reports] json_output`
+  boolean (default `true`), plus the matching Docker entrypoint export if the
+  template needs one
+- `main.py`: pass the setting to `Reporter`
+- `ravensight/config_check.py`: a light type check for the new key
+- Tests for each change
+
+Out of scope:
+- The web UI itself, in any form (server, pages, routes, static files)
+- Authentication or access control
+- Charts and any graphical output
+- Writing to a database or an external service
+- Reading old reports back, or converting existing markdown reports to JSON
+- `config.toml`
+
+Out of scope for the whole section:
+- The web UI itself, authentication and charts
+- Any change to the markdown report content
+- Any change to the LLM prompt or analysis logic
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
