@@ -71,7 +71,7 @@ def main() -> None:
     config_check.validate(config, report_only=args.report_only)
     run_reporter.stage("Config", "done")
 
-    # NEW: Load embeddings config section (optional) and instantiate Embedder
+    # Read the optional [embeddings] section; create the Embedder only when it is present and non-empty.
     embedder_config = config.get("embeddings")
     embedder = embedder_module.Embedder(embedder_config, progress=run_reporter) if embedder_config else None
 

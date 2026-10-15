@@ -1,9 +1,10 @@
 """
-asd_sync.py — Fetch ASD ISM OSCAL catalog and build Essential Eight strategy map.
+asd_sync.py — Fetch the ASD (Australian Signals Directorate) ISM (Information Security
+Manual) catalogue in OSCAL format and write Essential Eight and ISM data to a JSON file.
 
 Usage:
-    python scripts/asd_sync.py [--output data/asd_framework.json] [--categories ...]
-                              [--strategy-map data/defaults/e8_strategy_map.json]
+    uv run python scripts/asd_sync.py [--output data/asd_framework.json] [--categories ...]
+                                     [--strategy-map data/defaults/e8_strategy_map.json]
 """
 
 import argparse

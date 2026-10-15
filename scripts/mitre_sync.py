@@ -2,9 +2,10 @@
 mitre_sync.py — Fetch MITRE ATT&CK Enterprise data and save local lookup file.
 
 Usage:
-    python mitre_sync.py                    # sync to data/mitre_attack.json (default)
-    python mitre_sync.py --source <url>     # custom source URL
-    python mitre_sync.py --dry-run          # fetch but don't write
+    uv run python scripts/mitre_sync.py                 # sync to data/mitre_attack.json (default)
+    uv run python scripts/mitre_sync.py --source <url>  # custom source URL
+    uv run python scripts/mitre_sync.py --output <path> # write to a custom path
+    uv run python scripts/mitre_sync.py --dry-run       # fetch but don't write
 """
 
 import argparse
@@ -26,7 +27,7 @@ DEFAULT_SOURCE_URL = (
 
 def fetch_stix_bundle(source_url: str) -> dict[str, Any]:
     """
-    Fetch MITRE ATT&CK STIX bundle from GitHub.
+    Fetch a MITRE ATT&CK STIX bundle (STIX is the JSON threat-data format) from a URL.
 
     Args:
         source_url: URL to the enterprise-attack.json file.
@@ -60,7 +61,7 @@ def parse_attack_data(bundle: dict[str, Any]) -> dict[str, Any]:
         bundle: Raw STIX bundle dictionary.
 
     Returns:
-        Simplified lookup dict with tactics and techniques lists.
+        Simplified lookup dict with tactics, techniques and subtechniques lists.
     """
     data: dict[str, Any] = {
         "tactics": [],

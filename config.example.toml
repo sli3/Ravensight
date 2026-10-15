@@ -35,7 +35,7 @@ max_rows = 25
 [mitre]
 # Path to local MITRE ATT&CK dataset (JSON format)
 path = "data/mitre_attack.json"
-# MITRE ATT&CK dataset source URL
+# Reference only: Ravensight does not read this key. scripts/mitre_sync.py takes its URL from --source, or falls back to its built-in DEFAULT_SOURCE_URL when --source is not given.
 sync_source = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
 
 # Comment out or remove this entire section (or leave it empty) to disable
@@ -57,7 +57,8 @@ path = "data/asd_framework.json"
 
 [e8]
 overrides_path = "data/e8_keyword_overrides.json"
-# Manual Essential Eight attestations (copy data/defaults/e8_attestation.example.json)
+# Manual Essential Eight attestations (copy data/defaults/e8_attestation.example.json).
+# Entries whose reason still starts with "EXAMPLE:" are skipped, so replace that text.
 attestation_path = "data/e8_attestation.json"
 
 [platform]
