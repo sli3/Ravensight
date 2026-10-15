@@ -264,6 +264,16 @@ Required variables with no value set will cause the container to exit
 immediately with a clear error at start-up, rather than fail later with a
 confusing placeholder value baked into `config.toml`.
 
+**Time zone (optional).** The container runs in UTC unless you set `TZ` in
+`.env` to your IANA time zone name (e.g. `TZ=Australia/Adelaide`). Set it to
+match any host-side runs so Docker and host-side runs agree on the local day
+used by Trends, report folders and file names, and the "Generated" time.
+Recreate the container after setting it (`docker compose run` creates a new one
+each time). Set it once and leave it: changing it later makes old history
+entries read as the new local time, and an empty `TZ=` stays UTC. On days that
+had both host and container runs before `TZ` was set, Trends may show a stale
+"Latest" for that day only, which corrects itself on the next run.
+
 ### 3. Run
 
 ```bash
