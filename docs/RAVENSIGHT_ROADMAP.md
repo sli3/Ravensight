@@ -1015,6 +1015,68 @@ Out of scope for the whole section:
 - A date field on attestation entries
 - Per-maturity-level attestation
 
+---
+
+### 16. Docker Support for E8 Attestation
+
+**What it does:**
+Section 15 added the operator's Essential Eight attestation file, but Docker users
+cannot use it: `config.template.toml` has no `attestation_path`, so the container
+never reads the file. This section makes the attestation usable in the Docker
+setup, which is the main way people run Ravensight.
+
+**Sessions: 1**
+
+Decisions (agreed with Prin):
+- This section is the one allowed exception to the section 15 whole-section
+  out-of-scope line on `docker-entrypoint.sh` and seeding. Everything else in
+  section 15 stays as written
+- The real file is never seeded automatically. A user's attestation is their own
+  claim, and a seeded copy would carry the placeholder reasons that the loader
+  skips
+- Users create the file with an explicit `init-attestation` entrypoint subcommand,
+  in the style of `sync`. It copies `/app/defaults/e8_attestation.example.json`
+  into the mounted data directory only if `e8_attestation.json` is absent, and
+  never overwrites
+- Quiet when absent: every Docker user without a file must not get a "file not
+  found" warning on each run. The entrypoint passes the path to the config only
+  when the file exists, and the loader treats an empty path like "not set"
+- The data directory is already a bind mount (`./data:/app/data`), so no
+  `docker-compose.yml` volume change is needed
+
+#### Session 1 — Wire attestation into the Docker setup
+
+In scope:
+- `config.template.toml`: an `[e8] attestation_path` key built from
+  `RAVENSIGHT_DATA_DIR`, empty when the file does not exist
+- `docker-entrypoint.sh`: the existence check for the path, and the
+  `init-attestation` subcommand (copy-if-absent, run as the dropped user via
+  `run_as`, file owned by PUID:PGID)
+- `ravensight/e8_scorer.py`: `load_attestation()` treats an empty or unset path as
+  "not set" without a warning
+- `.env.example` and `README.md`: how to create the file in the mounted data
+  directory with `init-attestation`, edit it, and where it is read from
+- Docker `overwrite` setting (added at Prin's request): `config.template.toml`
+  `[reports] overwrite = ${RAVENSIGHT_REPORTS_OVERWRITE}`, a default of `false` in
+  `docker-entrypoint.sh`, and a row in `.env.example` and `README.md`. The value
+  must stay a TOML bare `true` or `false`
+- README and docs refresh (added at Prin's request): `README.md` and any file under
+  `docs/` other than the roadmap that still describes the old report file name
+  (`reports/<date>_security_report.md`), the `reports/trending_<date>.md` file, or
+  "ML1 to ML4", corrected to match the code
+- Tests for the Python change. Entrypoint behaviour is checked by running the
+  script's logic in review, as no entrypoint unit tests exist (logged as deferred
+  in the "Container non-root + seeding fix" row)
+
+Out of scope:
+- Seeding the real `data/e8_attestation.json` automatically, on any start
+- The `Dockerfile` (the example already ships in `/app/defaults/`) and
+  `docker-compose.yml`
+- Any change to how the attestation is validated or shown in the report
+- A new environment variable beyond what the template needs and
+  `RAVENSIGHT_REPORTS_OVERWRITE`
+- `config.toml`
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
