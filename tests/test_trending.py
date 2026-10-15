@@ -174,7 +174,20 @@ def test_sigma_spread_rendered_when_prior_not_flat() -> None:
         _run(2, {"rule|spike": 3}),
         _run(1, {"rule|spike": 20}),
     )
-    assert "2.0/day over the previous 3 days (+0.8σ)" in output
+    assert "2.0/day over the previous 3 days (+22.0σ)" in output
+
+
+def test_sigma_is_z_score_not_prior_std() -> None:
+    """The σ figure is the z-score of the latest count, not the prior spread."""
+    output = _generate(
+        _run(4, {"rule|spike": 1}),
+        _run(3, {"rule|spike": 3}),
+        _run(2, {"rule|spike": 1}),
+        _run(1, {"rule|spike": 3}),
+        _run(0, {"rule|spike": 5}),
+    )
+    assert "(+3.0σ)" in output
+    assert "+1.0σ" not in output
 
 
 def test_same_day_reruns_collapse_to_last_run() -> None:

@@ -106,14 +106,32 @@ def test_build_platform_context_freebsd_with_rule_510() -> None:
     assert f"  - Rule 510 on /boot/efi: {FREEBSD_HINT}" in context
 
 
-def test_build_platform_context_freebsd_without_rule_510() -> None:
-    """FreeBSD agent without rule 510 yields agent and notes lines, no rule hints."""
+def test_build_platform_context_freebsd_without_rule_510_yields_no_block() -> None:
+    """FreeBSD agent without a matching rule yields no block, notes included."""
     alerts = [_make_alert("fw1", "freebsd", "5712")]
     context = _build_platform_context(alerts, FREEBSD_HINTS)
-    assert context != ""
-    assert "- Agent: fw1 (freebsd — FreeBSD and derivatives" in context
-    assert "FAT32 (EFI partition) does not implement Unix hard link counts." in context
-    assert "Known false positives" not in context
+    assert context == ""
+
+
+def test_build_platform_context_only_matching_platform_emitted() -> None:
+    """With one matching platform in a two-platform batch, the other's notes are absent."""
+    hints: dict[str, Any] = {
+        **FREEBSD_HINTS,
+        "linux": {
+            "description": "Linux",
+            "filesystem_notes": "linux-only-note",
+            "rules": {"999": {"paths": ["/tmp"], "hint": "linux-hint"}},
+        },
+    }
+    alerts = [
+        _make_alert("fw1", "freebsd", "510"),
+        _make_alert("lx1", "linux", "5712", os_name="Ubuntu"),
+    ]
+    context = _build_platform_context(alerts, hints)
+    assert context.count("- Agent:") == 1
+    assert "- Agent: fw1 (freebsd" in context
+    assert "linux-only-note" not in context
+    assert "lx1" not in context
 
 
 def test_build_platform_context_case_insensitive_platform() -> None:
@@ -324,7 +342,7 @@ def test_build_platform_context_null_rule_id_does_not_match_None_hint() -> None:
         }
     ]
     context = _build_platform_context(alerts, hints)
-    assert context != ""
+    assert context == ""
     assert "should-never-appear-in-output" not in context
     assert "Rule None" not in context
 
@@ -609,7 +627,13 @@ def test_platform_context_non_string_agent_name_does_not_crash() -> None:
             }
         }
     ]
-    hints = {"freebsd": {"description": "FreeBSD", "filesystem_notes": "note"}}
+    hints = {
+        "freebsd": {
+            "description": "FreeBSD",
+            "filesystem_notes": "note",
+            "rules": {"510": {"paths": ["/boot/efi"], "hint": "h"}},
+        }
+    }
     agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
     context = _build_platform_context(alerts, hints, platform_agents=agents)
     assert "- Agent: 7 (freebsd — FreeBSD)" in context

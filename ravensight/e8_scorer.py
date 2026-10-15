@@ -141,6 +141,7 @@ def load_attestation(
     value an object with "status" ("Attested" or "Not applicable"), "reason" (a
     string, may be empty) and, for "Attested" only, "level" ("ML1", "ML2" or "ML3",
     case-insensitive). For "Not applicable" any "level" is ignored and stored as None.
+    An entry whose reason starts with "EXAMPLE:" is a shipped placeholder and is skipped.
 
     Returns:
         Dict of strategy name to {"status", "level", "reason"}. Strategies without a
@@ -187,6 +188,12 @@ def load_attestation(
         reason = entry.get("reason")
         if not isinstance(reason, str):
             logger.warning("e8 attestation entry for %r has a non-string reason", name)
+            continue
+        if reason.strip().casefold().startswith("example:"):
+            logger.warning(
+                "e8 attestation entry for %r still has the EXAMPLE placeholder reason, skipping",
+                name,
+            )
             continue
         level: int | None = None
         if status == "Attested":

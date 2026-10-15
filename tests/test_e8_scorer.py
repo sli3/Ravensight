@@ -892,18 +892,75 @@ def test_attestation_entry_keys_are_exact(tmp_path: Path, caplog: Any) -> None:
         assert set(value) == {"status", "level", "reason"}
 
 
-def test_attestation_example_file_loads_cleanly(caplog: Any) -> None:
-    """The shipped example file loads against its two strategy names without warnings."""
-    example = Path(__file__).resolve().parent.parent / "data/defaults/e8_attestation.example.json"
-    asd = {
-        "essential_eight": [
-            {"strategy": "Application control", "controls": []},
-            {"strategy": "Restrict Microsoft Office macros", "controls": []},
-        ],
-        "ism": [],
-    }
+_EXAMPLE_FILE = (
+    Path(__file__).resolve().parent.parent / "data/defaults/e8_attestation.example.json"
+)
+_EXAMPLE_ASD: dict[str, Any] = {
+    "essential_eight": [
+        {"strategy": "Application control", "controls": []},
+        {"strategy": "Restrict Microsoft Office macros", "controls": []},
+    ],
+    "ism": [],
+}
+
+
+def test_attestation_example_file_untouched_claims_nothing(caplog: Any) -> None:
+    """Shipping the example file untouched cannot produce a claimed attestation."""
     with caplog.at_level(logging.WARNING, logger="ravensight.e8_scorer"):
-        result = load_attestation(str(example), asd)
-    assert caplog.records == []
+        result = load_attestation(str(_EXAMPLE_FILE), _EXAMPLE_ASD)
     assert len(result) == 2
-    assert all(v["status"] != "Not assessed" for v in result.values())
+    assert all(v["status"] == "Not assessed" for v in result.values())
+    records = [r for r in caplog.records if r.name == "ravensight.e8_scorer"]
+    assert len(records) == 2
+    assert all("placeholder" in r.getMessage() for r in records)
+
+
+def test_attestation_example_file_with_prefix_stripped_loads(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """With the EXAMPLE prefix removed the example entries load as claimed."""
+    data = json.loads(_EXAMPLE_FILE.read_text(encoding="utf-8"))
+    for entry in data.values():
+        entry["reason"] = entry["reason"].removeprefix("EXAMPLE: ")
+    path = tmp_path / "edited.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="ravensight.e8_scorer"):
+        result = load_attestation(str(path), _EXAMPLE_ASD)
+    assert caplog.records == []
+    assert result["Application control"]["status"] == "Attested"
+    assert result["Application control"]["level"] == 1
+    assert result["Restrict Microsoft Office macros"]["status"] == "Not applicable"
+
+
+def test_attestation_reason_starting_with_examples_is_kept(tmp_path: Path, caplog: Any) -> None:
+    """A reason starting 'Examples of ...' is not mistaken for the placeholder."""
+    result = _load(
+        tmp_path,
+        {
+            "Application control": {
+                "status": "Attested",
+                "level": "ML1",
+                "reason": "Examples of patched hosts: web01, web02",
+            }
+        },
+        caplog,
+    )
+    assert result["Application control"]["status"] == "Attested"
+    assert caplog.records == []
+
+
+def test_attestation_reason_with_example_mid_string_is_kept(tmp_path: Path, caplog: Any) -> None:
+    """A reason containing 'example:' but not starting with it is kept."""
+    result = _load(
+        tmp_path,
+        {
+            "Application control": {
+                "status": "Attested",
+                "level": "ML1",
+                "reason": "Evidence, for example: change tickets",
+            }
+        },
+        caplog,
+    )
+    assert result["Application control"]["status"] == "Attested"
+    assert caplog.records == []

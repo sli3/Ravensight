@@ -190,7 +190,8 @@ class Trending:
                 if row["prior_std"] == 0:
                     spread = "(previously flat)"
                 else:
-                    spread = f"+{row['prior_std']:.1f}σ"
+                    z = (row["latest"] - row["prior_mean"]) / row["prior_std"]
+                    spread = f"+{z:.1f}σ"
                 lines.append(
                     f"- **{label}**: {row['latest']} latest vs "
                     f"{row['prior_mean']:.1f}/day over the previous {row['n_prior']} days ({spread})"

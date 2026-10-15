@@ -270,6 +270,8 @@ def _build_platform_context(
     Alerts with null _source/agent/os/platform/rule fields are skipped silently.
     When agent.os.platform is missing or empty, falls back to the
     platform_agents agent-name map.
+    A platform block, including its filesystem notes, is emitted only when at least
+    one rule hint matches the batch; notes for a platform with no rule hints are never shown.
     """
     if not hints:
         return ""
@@ -346,7 +348,7 @@ def _build_platform_context(
                     matching_hints.append(f"  - Rule {rule_id} on {paths_str}: {hint}")
 
         # Skip this platform block entirely if there's nothing useful to inject
-        if not matching_hints and not filesystem_notes:
+        if not matching_hints:
             continue
 
         agent_name = info["agent_name"]
