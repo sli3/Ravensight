@@ -433,12 +433,14 @@ def test_analyser_analyse_survives_chroma_failure_in_retrieve_similar(
         """Stand-in for the chat attribute on an OpenAI client."""
 
         def __init__(self) -> None:
+            """Attach a FakeCompletions instance as the completions attribute."""
             self.completions = FakeCompletions()
 
     class FakeOpenAI:
         """Stand-in OpenAI client whose chat completions always return valid text."""
 
         def __init__(self, **kwargs: Any) -> None:
+            """Accept and ignore client arguments, attaching a FakeChat as chat."""
             self.chat = FakeChat()
 
     monkeypatch.setattr(analyser, "OpenAI", FakeOpenAI)
@@ -502,12 +504,14 @@ def test_analyser_analyse_survives_bad_request_error_in_retrieve_similar(
         """Stand-in for the chat attribute on an OpenAI client."""
 
         def __init__(self) -> None:
+            """Attach a FakeCompletions instance as the completions attribute."""
             self.completions = FakeCompletions()
 
     class FakeOpenAI:
         """Stand-in OpenAI client whose chat completions always return valid text."""
 
         def __init__(self, **kwargs: Any) -> None:
+            """Accept and ignore client arguments, attaching a FakeChat as chat."""
             self.chat = FakeChat()
 
     monkeypatch.setattr(analyser, "OpenAI", FakeOpenAI)

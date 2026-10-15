@@ -38,6 +38,7 @@ def _cluster(**overrides: Any) -> dict[str, Any]:
 
 
 def _make_reporter(tmp_path: Path) -> Reporter:
+    """Build a Reporter whose output directory is the given temporary path."""
     return Reporter({"output_dir": str(tmp_path)})
 
 
@@ -1136,8 +1137,11 @@ def test_generate_default_reruns_keep_both(tmp_path: Path, monkeypatch: pytest.M
     )
 
     class _FakeDatetime:
+        """Stand-in for the datetime class whose now() yields preset times."""
+
         @staticmethod
         def now(tz: Any = None) -> datetime:
+            """Return the next preset time, ignoring the timezone argument."""
             return next(times)
 
     monkeypatch.setattr(reporter, "datetime", _FakeDatetime)
