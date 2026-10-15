@@ -29,7 +29,7 @@ def _is_utc(raw: str) -> bool:
 
 
 def _format_finding(finding: str | dict) -> list[str]:
-    """Render one finding (legacy string or cluster dict) as markdown lines."""
+    """Render one finding (legacy string, cluster dict or unattached LLM note) as markdown lines."""
     if isinstance(finding, str):
         return [f"- {finding}"]
 
@@ -429,7 +429,7 @@ class Reporter:
 
         Raises:
             ValueError: If overwrite is not a bool.
-       """
+        """
         self._overwrite = config.get("overwrite", False)
         if type(self._overwrite) is not bool:
             raise ValueError(
@@ -453,7 +453,7 @@ class Reporter:
 
         Args:
             data: Analysis or baseline dict with summary, findings, recommendations.
-            trends: Optional trending markdown to append to report.
+            trends: Optional trending markdown, placed before the Recommendations section.
             asd_data: Optional ASD framework data for Essential Eight and ISM controls.
             e8_scores: Optional E8 scoring results.
             matched_controls: Optional list of matched ISM controls.
@@ -461,7 +461,11 @@ class Reporter:
             attestation: Optional operator E8 attestation shown in the Essential Eight table.
 
         Returns:
-            Path of the written report file.
+            Path of the written report file. It is written to a .tmp file first, then
+            renamed into place, so a failed write leaves no partial report.
+
+        Raises:
+            OSError: If the report cannot be written.
         """
         report = self._build_report(
             data,
