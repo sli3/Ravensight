@@ -2,13 +2,14 @@
 evidence.py — mechanical per-cluster evidence extraction from raw alerts.
 
 Each alert cluster carries a few real values ('evidence') pulled straight from
-its alerts' fields — syscheck file paths and content verdicts, dpkg
-package/version/status pairs, netstat opened and closed ports with their
-processes, docker container action/signal/compose/image tuples, vulnerability
-status/severity/score, firewall action/direction/interface/ipversion/protocol/
-sources/destinations/destination-port tuples parsed from OPNsense filterlog
-lines, and generic srcip/dstuser fallbacks. Evidence is data-built, never
-LLM-written, and bounded in size.
+its alerts' fields — syscheck (Wazuh file-integrity monitoring) file paths and
+content verdicts, dpkg package/version/status pairs, netstat opened and closed
+ports with their processes, docker container action/signal/compose/image
+tuples, vulnerability status/severity/score, firewall action/direction/
+interface/ipversion/protocol/sources/destinations/destination-port tuples
+parsed from OPNsense filterlog lines (the firewall's log format), and generic
+srcip/dstuser fallbacks. Evidence is data-built, never LLM-written, and
+bounded in size.
 """
 
 import ipaddress
@@ -1010,7 +1011,9 @@ _SHAPE_RENDERERS = {
 
 
 def _mark_content_differs(data: dict[str, Any], per_host: Any) -> dict[str, Any]:
-    """Replace the combined syscheck content verdict when hosts disagree."""
+    """Replace the combined syscheck content verdict with 'differs by host'
+    when the per-host verdicts disagree; used for the report only.
+    """
     if not isinstance(per_host, dict) or not data.get("content"):
         return data
     values = set()
@@ -1026,12 +1029,18 @@ def _mark_content_differs(data: dict[str, Any], per_host: Any) -> dict[str, Any]
 def render_evidence(
     evidence: dict[str, Any] | None, plain_labels: bool = False
 ) -> str:
-    """Render a cluster's evidence dict as one bounded single-line string.
+    """Render a cluster's evidence dict as one single-line string.
+
+    Size is bounded by the value caps applied when evidence is extracted and
+    by the per-host cap; the prompt's overall line cap
+    (MAX_EVIDENCE_LINE_CHARS) is applied by the caller, not here.
 
     Fields join with '; ', values within a field with ', '. Whitespace in each
     value collapses to single spaces and '|' escapes as '\\|'. Returns '' when
-    evidence is absent or empty. plain_labels spells out firewall field names
-    (for the report); the default keeps the short labels used in the prompt.
+    evidence is absent or empty. plain_labels (for the report) spells out
+    firewall field names and shows 'content differs by host' when hosts
+    disagree on the syscheck verdict; the default keeps the prompt's short
+    labels.
     """
     if not isinstance(evidence, dict) or not evidence:
         return ""
