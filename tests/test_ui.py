@@ -18,10 +18,13 @@ import pytest
 from ravensight import analyser
 from ravensight.analyser import _extract_timings
 from ravensight.ui import (
+    _RICH_IPV6,
+    _STRICT_IPV6,
     Console,  # re-exported: tests must not import rich directly
     CountingHandler,
     PlainReporter,
     RichRunReporter,
+    _LogHighlighter,
     build_finish_table,
     create_reporter,
     quiet_third_party_loggers,
@@ -149,6 +152,50 @@ def test_create_reporter_no_progress() -> None:
     assert handler.stream is sys.stderr
     assert handler.formatter is not None
     assert handler.formatter._fmt == "%(asctime)s - %(levelname)s - %(message)s"
+
+
+def _styled(text: str, style: str) -> list[str]:
+    """Return the slices of text the log highlighter styles as style."""
+    result = _LogHighlighter()(text)
+    return [result.plain[s.start : s.end] for s in result.spans if s.style == style]
+
+
+def test_highlighter_host_port_not_ipv6() -> None:
+    """chroma:8000 must not style the final 'a' as ipv6, and 8000 stays a number."""
+    text = "Connecting to ChromaDB server at chroma:8000"
+    assert _styled(text, "repr.ipv6") == []
+    assert "8000" in _styled(text, "repr.number")
+
+
+def test_highlighter_real_ipv6() -> None:
+    """A genuine IPv6 address is still styled as ipv6."""
+    assert _styled("peer fd4a:1188:877b::1 down", "repr.ipv6") == ["fd4a:1188:877b::1"]
+
+
+def test_highlighter_ipv4_with_port() -> None:
+    """An IPv4 address with a port is styled ipv4 and not ipv6."""
+    text = "192.168.0.66:8081"
+    assert "192.168.0.66" in _styled(text, "repr.ipv4")
+    assert _styled(text, "repr.ipv6") == []
+
+
+def test_highlighter_replacement_applied() -> None:
+    """Drift guard: rich's original ipv6 pattern must be gone from the highlights."""
+    joined = "".join(_LogHighlighter.highlights).replace(_STRICT_IPV6, "")
+    assert _RICH_IPV6 not in joined
+    assert _STRICT_IPV6 in "".join(_LogHighlighter.highlights)
+
+
+def test_create_reporter_wiring(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Interactive output uses _LogHighlighter; plain output has no highlighter."""
+    monkeypatch.setattr(
+        "ravensight.ui.Console",
+        lambda **kw: Console(file=io.StringIO(), force_terminal=True, force_interactive=True),
+    )
+    _, handler = create_reporter(False)
+    assert isinstance(getattr(handler, "highlighter", None), _LogHighlighter)
+    _, plain = create_reporter(True)
+    assert not hasattr(plain, "highlighter")
 
 
 def test_rich_run_reporter_non_tty_no_ansi() -> None:

@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, ClassVar, Literal, Protocol
 
 from rich import box
 from rich.console import Console, Group
+from rich.highlighter import ReprHighlighter
 from rich.live import Live
 from rich.logging import RichHandler
 from rich.panel import Panel
@@ -35,6 +36,22 @@ from rich.text import Text
 
 # Today's exact non-interactive format. Kept here so the test can assert it.
 _PLAIN_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+
+# rich's ipv6 pattern has no word boundary and accepts a single colon, so
+# "chroma:8000" highlights "a:8000" as an address. The strict form needs a
+# second colon or "::" after the first hex group and may not start mid-word.
+_RICH_IPV6 = r"(?P<ipv6>([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})"
+_STRICT_IPV6 = (
+    r"(?<![\w:])(?=[A-Fa-f0-9]{1,4}::|[A-Fa-f0-9]{1,4}:[A-Fa-f0-9]{1,4}:)"
+    r"(?P<ipv6>([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})"
+)
+
+
+class _LogHighlighter(ReprHighlighter):
+    """ReprHighlighter with a stricter ipv6 pattern for host:port text."""
+
+    highlights: ClassVar[Sequence[str]] = [h.replace(_RICH_IPV6, _STRICT_IPV6) for h in ReprHighlighter.highlights]
+
 
 SERVICE_NAMES = ("wazuh", "llm", "embeddings")
 ServiceState = Literal["pending", "active", "ok", "warn", "fail", "off", "skipped"]
@@ -446,6 +463,7 @@ def create_reporter(no_progress: bool) -> tuple[RunReporter, logging.Handler]:
             console=console,
             show_path=False,
             markup=False,
+            highlighter=_LogHighlighter(),
             # A short time on every line keeps the left column solid instead
             # of leaving gaps wherever the time repeats.
             omit_repeated_times=False,
