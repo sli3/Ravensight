@@ -170,10 +170,10 @@ def _load_platform_hints(hints_path: str) -> dict:
 def _load_platform_agents(path: str | None) -> dict:
     """Load Wazuh agent-name → vendor/platform map from local JSON file.
 
-    Defaults to 'data/platform_agents.json' when path is None. Missing or
-    unreadable file = today's behaviour (no host facts block), logged once
-    at DEBUG. Malformed entries (non-dict values, missing keys) are
-    skipped with a DEBUG log each.
+    Defaults to 'data/platform_agents.json' when path is None. A missing or
+    unparseable file gives an empty map (so no host facts block is built),
+    logged at DEBUG. Malformed entries (non-dict values, missing keys) are
+    skipped with a DEBUG log each. Agent names are stored casefolded.
     """
     chosen = path or "data/platform_agents.json"
     try:
@@ -452,8 +452,9 @@ def _coerce_level(raw_level: Any) -> int:
 def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group raw alerts into data-built clusters for analysis.
 
-    Vulnerability alerts group by (agent name, package); all other alerts
-    group by rule description alone, so hosts merge across agents. Counts,
+    Vulnerability alerts group by (agent name, package), or by (agent name,
+    description) when no package is known; all other alerts group by rule
+    description alone, so hosts merge across agents. Counts,
     hosts, severities, timestamps and CVE lists all come from alert data.
 
     Args:
@@ -608,11 +609,11 @@ def _pair_dpkg_clusters(
     dpkg_records: dict[tuple[str, str], list[tuple[str, str, dict[str, Any]]]],
     acc_to_output: dict[int, dict[str, Any]],
 ) -> None:
-    """Pair half-configured → installed dpkg events per (host, pkg ver).
+    """Pair half-configured → installed dpkg events per (host, package version).
 
     For every half-configured event within 60 s of an installed event for the
-    same (host, pkg ver), add one note to each cluster listing every paired
-    pkg ver and the largest gap. Parses timestamps timezone-aware; skips
+    same (host, package version), add one note to each cluster listing every
+    paired package version and the largest gap. Parses timestamps timezone-aware; skips
     silently when a timestamp fails to parse or is naive.
     """
     pairings: dict[tuple[int, int], tuple[set[str], float]] = {}
@@ -700,10 +701,11 @@ def _new_cluster(
 
 
 def cluster_key(cluster: dict[str, Any]) -> str:
-    """Return the stable per-cluster vector/trend key for one alert cluster.
+    """Return the stable key a cluster is stored under (vector store and trends).
 
     Vulnerability clusters with a package key on (host, package); those without
-    key on (host, description); rule clusters key on description alone.
+    key on (host, description); rule clusters key on description alone. Use
+    cluster_label() to turn a key into display text.
     """
     if cluster["type"] == "vulnerability":
         host = cluster["hosts"][0]
