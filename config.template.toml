@@ -19,6 +19,7 @@ max_tokens = ${LLM_MAX_TOKENS}
 
 [reports]
 output_dir = "${RAVENSIGHT_REPORTS_DIR}"
+overwrite = ${RAVENSIGHT_REPORTS_OVERWRITE}
 
 [baseline]
 path = "${RAVENSIGHT_DATA_DIR}/baseline_state.json"
@@ -50,6 +51,8 @@ path = "${RAVENSIGHT_DATA_DIR}/asd_framework.json"
 
 [e8]
 overrides_path = "${RAVENSIGHT_DATA_DIR}/e8_keyword_overrides.json"
+# Empty when no e8_attestation.json exists in the data folder (set by the entrypoint)
+attestation_path = "${RAVENSIGHT_ATTESTATION_PATH}"
 
 [platform]
 # Path to platform false positive hint table

@@ -156,7 +156,7 @@ def load_attestation(
     result: dict[str, dict[str, Any]] = {
         name: {"status": "Not assessed", "level": None, "reason": ""} for name in strategies
     }
-    if not result or attestation_path is None:
+    if not result or attestation_path is None or not attestation_path.strip():
         return result
 
     path = Path(attestation_path)

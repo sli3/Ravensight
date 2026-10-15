@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ravensight.e8_scorer import (
     MAX_FINDING_POINTERS,
     _stem,
@@ -679,6 +681,17 @@ def test_attestation_none_path_returns_defaults_silently(caplog: Any) -> None:
     """A None path returns all Not assessed with no warning."""
     with caplog.at_level(logging.WARNING, logger="ravensight.e8_scorer"):
         result = load_attestation(None, _attest_asd())
+    assert result == {name: _NOT_ASSESSED for name in (
+        "Application control", "Restrict Microsoft Office macros", "Regular backups"
+    )}
+    assert caplog.records == []
+
+
+@pytest.mark.parametrize("blank_path", ["", "   ", "\t"])
+def test_attestation_blank_path_returns_defaults_silently(blank_path: str, caplog: Any) -> None:
+    """An empty or whitespace-only path is treated like unset, with no warning."""
+    with caplog.at_level(logging.WARNING, logger="ravensight.e8_scorer"):
+        result = load_attestation(blank_path, _attest_asd())
     assert result == {name: _NOT_ASSESSED for name in (
         "Application control", "Restrict Microsoft Office macros", "Regular backups"
     )}

@@ -19,6 +19,7 @@ set -eu
 : "${TRENDING_MAX_ROWS:=25}"; export TRENDING_MAX_ROWS
 : "${RAVENSIGHT_DATA_DIR:=/app/data}"; export RAVENSIGHT_DATA_DIR
 : "${RAVENSIGHT_REPORTS_DIR:=/app/reports}"; export RAVENSIGHT_REPORTS_DIR
+: "${RAVENSIGHT_REPORTS_OVERWRITE:=false}"; export RAVENSIGHT_REPORTS_OVERWRITE
 
 # --- Required variables: fail fast with a clear message rather than let
 # tomllib.load() or main.py fail later with a confusing placeholder value ---
@@ -54,6 +55,14 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+case "$RAVENSIGHT_REPORTS_OVERWRITE" in
+    true|false) ;;
+    *)
+        echo 'ERROR: RAVENSIGHT_REPORTS_OVERWRITE must be exactly true or false, lowercase, no quotes.' >&2
+        exit 1
+        ;;
+esac
+
 run_as() {
     if [ "$RAVENSIGHT_PUID" = "0" ]; then
         "$@"
@@ -61,6 +70,18 @@ run_as() {
         setpriv --reuid="$RAVENSIGHT_PUID" --regid="$RAVENSIGHT_PGID" --clear-groups "$@"
     fi
 }
+
+# --- Point [e8] attestation_path at the operator's file if it exists, else
+# empty (Ravensight treats an empty path as no attestations). Always
+# overwritten here, and always exported because Template.substitute raises
+# KeyError on an unset variable ---
+if [ -f "$RAVENSIGHT_DATA_DIR/e8_attestation.json" ]; then
+    RAVENSIGHT_ATTESTATION_PATH="$RAVENSIGHT_DATA_DIR/e8_attestation.json"
+    export RAVENSIGHT_ATTESTATION_PATH
+else
+    RAVENSIGHT_ATTESTATION_PATH=""
+    export RAVENSIGHT_ATTESTATION_PATH
+fi
 
 # --- Substitute the template into a real config.toml ---
 python3 -c "
@@ -91,6 +112,24 @@ for dir in "$RAVENSIGHT_DATA_DIR" "$RAVENSIGHT_REPORTS_DIR"; do
         echo "Repaired ownership of $repaired entries in $dir"
     fi
 done
+
+# --- On-demand attestation template: `docker run <image> init-attestation`
+# copies the example into the data folder without overwriting an existing
+# file. Runs before any sync, so it needs no network ---
+if [ "${1:-}" = "init-attestation" ]; then
+    if [ -f "$RAVENSIGHT_DATA_DIR/e8_attestation.json" ]; then
+        echo "$RAVENSIGHT_DATA_DIR/e8_attestation.json already exists, left unchanged."
+        exit 0
+    fi
+    if [ ! -f /app/defaults/e8_attestation.example.json ]; then
+        echo "ERROR: missing default file /app/defaults/e8_attestation.example.json" >&2
+        exit 1
+    fi
+    run_as cp /app/defaults/e8_attestation.example.json "$RAVENSIGHT_DATA_DIR/e8_attestation.json"
+    echo "Created $RAVENSIGHT_DATA_DIR/e8_attestation.json from the example."
+    echo "Edit it with your real attestations and remove the EXAMPLE: prefixes; it is picked up on the next start."
+    exit 0
+fi
 
 # --- Seed hand-edited default files only if the user hasn't provided their
 # own (never overwrite an existing file in the mounted data volume) ---

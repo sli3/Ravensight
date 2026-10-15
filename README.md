@@ -30,8 +30,9 @@ markdown security reports with baseline memory tracking and historical trending.
 - Tracks **historical alert trends** per rule group — surfaces slow-burn threats
   that single-run baseline comparison misses
 - Tags findings against **MITRE ATT&CK** and the **ASD Essential Eight / ISM**
-  for Australian-aligned reporting; Essential Eight strategies are reported as
-  Not assessed with related ISM controls
+  for Australian-aligned reporting; Essential Eight strategies are Not assessed
+  unless you supply an attestation file, in which case they can be Attested or
+  Not applicable, shown with related ISM controls
 - Retrieves **similar past incidents** via a local ChromaDB vector store for
   semantic context
 - Runs on a local homelab — designed for self-hosted Wazuh deployments
@@ -174,6 +175,9 @@ cp config.example.toml config.toml
 | `llm.model` | Model ID served by llama.cpp — whatever your server exposes (e.g. `Ornith-1.5-9B`) |
 | `llm.api_key` | Any string — llama.cpp does not validate |
 | `reports.output_dir` | Where to write markdown reports |
+| `reports.overwrite` | `false` (default) writes `reports/<date>/security_report_<time>.md` so reruns never overwrite; `true` writes `reports/<date>_security_report.md` and overwrites the same-day file |
+| `e8.overrides_path` | Essential Eight keyword blocklist. Default: `data/e8_keyword_overrides.json` |
+| `e8.attestation_path` | Optional manual Essential Eight attestations. Copy `data/defaults/e8_attestation.example.json` to `data/e8_attestation.json` |
 | `baseline.path` | Path to the baseline JSON file |
 | `platform.agents_path` | Optional map from Wazuh agent name to vendor/platform so reports name the right product. Default: `data/platform_agents.json` |
 
@@ -254,6 +258,7 @@ start-up — you never need to hand-edit a config file when running in Docker.
 | `TRENDING_MAX_ROWS` | | Maximum rows shown in the trends table (default: `25`) |
 | `RAVENSIGHT_DATA_DIR` | | Path inside the container for data files (default: `/app/data`) |
 | `RAVENSIGHT_REPORTS_DIR` | | Path inside the container for reports (default: `/app/reports`) |
+| `RAVENSIGHT_REPORTS_OVERWRITE` | | `true` or `false`, lowercase, no quotes (default: `false`). See `reports.overwrite` above |
 
 Required variables with no value set will cause the container to exit
 immediately with a clear error at start-up, rather than fail later with a
@@ -284,6 +289,20 @@ the right product even when a rule description says something different), create
 `data/platform_agents.json` in your mounted data folder by copying
 `data/defaults/platform_agents.example.json`. This file is optional, never
 seeded by the container, and not required for Ravensight to run.
+
+To record manual Essential Eight attestations, create `data/e8_attestation.json`
+from the bundled example:
+
+```bash
+docker run --env-file .env -v ./data:/app/data ravensight init-attestation
+# or, with Compose
+docker compose run --rm ravensight init-attestation
+```
+
+This never overwrites an existing file and does not run a sync. Edit
+`data/e8_attestation.json` and remove the `EXAMPLE:` prefixes; it is picked up on
+the next start. Until you edit it, one warning per placeholder entry appears on
+each run.
 
 ### Forcing a re-sync
 
@@ -391,14 +410,17 @@ plain log lines instead.
 ```
 2026-09-22 06:39:00 - INFO - Fetched 9984 alerts from Wazuh Indexer
 2026-09-22 06:39:00 - INFO - Updated baseline with 2 findings
-2026-09-22 06:39:01 - INFO - Report written to reports/2026-09-22_security_report.md
+2026-09-22 06:39:01 - INFO - Report written to reports/2026-09-22/security_report_06-39-01.md
 ```
 
 ---
 
 ## Reports
 
-Reports are saved to the `reports/` directory as markdown files, named by date.
+Reports are saved to the `reports/` directory as markdown files. By default each
+run writes `reports/<YYYY-MM-DD>/security_report_<HH-MM-SS>.md`, so reruns never
+overwrite. With `[reports] overwrite = true` the file is
+`reports/<YYYY-MM-DD>_security_report.md` and is overwritten on the same day.
 Each report contains, in order:
 
 - **Summary** — overall threat posture for the period
@@ -430,8 +452,7 @@ slow-burn threats that single-run baseline comparison misses.
 - `trending.py` reads the history over a configurable rolling window (default 30 days)
 - Rule groups with consistently increasing counts across 3+ consecutive runs are
   flagged as anomalies with a ⚠️ marker
-- Output is a markdown table embedded in the main report or written as a
-  standalone `reports/trending_YYYY-MM-DD.md`
+- Output is a markdown table embedded in the main report
 
 ---
 
@@ -451,6 +472,9 @@ Findings are tagged against the **MITRE ATT&CK** framework and Australia's
   `asd_sync.py`; an `asd_framework.json` from before this change must be regenerated
 - `data/e8_keyword_overrides.json` reduces Essential Eight scoring false
   positives via a keyword blocklist
+- `data/e8_attestation.json` is a hand-edited, git-ignored, optional file of manual
+  Essential Eight attestations. Entries still prefixed `EXAMPLE:` are treated as
+  placeholders and warned about
 - `data/platform_hints.json` is a hand-edited false-positive hint table
 - `data/platform_agents.json` is a hand-edited, git-ignored, optional map of Wazuh agent name → vendor/platform
 
@@ -496,7 +520,10 @@ Ravensight/
 ├── tests/
 ├── data/
 │   ├── defaults/             # Seed files baked into the Docker image
+│   │   ├── e8_attestation.example.json
 │   │   ├── e8_keyword_overrides.json
+│   │   ├── e8_strategy_map.json
+│   │   ├── platform_agents.example.json
 │   │   └── platform_hints.json
 │   ├── mitre_attack.json     # Gitignored — regenerable via mitre_sync.py
 │   ├── asd_framework.json    # Gitignored — regenerable via asd_sync.py
