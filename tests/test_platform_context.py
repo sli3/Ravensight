@@ -13,6 +13,7 @@ from ravensight.analyser import (
     _build_host_facts_block,
     _build_platform_context,
     _load_asd_data,
+    _load_mitre_tactics,
     _load_platform_agents,
     _load_platform_hints,
     _rewrite_cluster_vendor_names,
@@ -95,6 +96,108 @@ def test_load_platform_hints_valid_json_returns_dict(tmp_path: Path) -> None:
     hints_file.write_text(json.dumps(FREEBSD_HINTS), encoding="utf-8")
     result = _load_platform_hints(str(hints_file))
     assert result == FREEBSD_HINTS
+
+
+def test_load_platform_hints_unreadable_path_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """A directory path (OSError) returns {} and logs a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    assert _load_platform_hints(str(tmp_path)) == {}
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_platform_hints_undecodable_bytes_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """Non-UTF-8 bytes return {} and log a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    bad_file = tmp_path / "bad.json"
+    bad_file.write_bytes(b"\xff\xfe\x00bad")
+    assert _load_platform_hints(str(bad_file)) == {}
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_platform_hints_non_object_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """A JSON list root returns {} and logs a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    path = tmp_path / "hints.json"
+    path.write_text(json.dumps([1, 2]), encoding="utf-8")
+    assert _load_platform_hints(str(path)) == {}
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_mitre_tactics_valid_file_loads(tmp_path: Path) -> None:
+    """A valid tactics file still loads."""
+    tactics = [{"name": "Execution", "shortname": "execution"}]
+    path = tmp_path / "mitre.json"
+    path.write_text(json.dumps({"tactics": tactics}), encoding="utf-8")
+    assert _load_mitre_tactics(str(path)) == tactics
+
+
+def test_load_mitre_tactics_unreadable_path_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """A directory path (OSError) returns [] and logs a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    assert _load_mitre_tactics(str(tmp_path)) == []
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_mitre_tactics_undecodable_bytes_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """Non-UTF-8 bytes return [] and log a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    bad_file = tmp_path / "bad.json"
+    bad_file.write_bytes(b"\xff\xfe\x00bad")
+    assert _load_mitre_tactics(str(bad_file)) == []
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_mitre_tactics_invalid_json_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """Invalid JSON returns [] and logs a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    bad_file = tmp_path / "bad.json"
+    bad_file.write_text("{ not valid json", encoding="utf-8")
+    assert _load_mitre_tactics(str(bad_file)) == []
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_mitre_tactics_non_object_root_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """A JSON list root returns [] and logs a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    path = tmp_path / "mitre.json"
+    path.write_text(json.dumps([{"name": "x"}]), encoding="utf-8")
+    assert _load_mitre_tactics(str(path)) == []
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_mitre_tactics_non_list_tactics_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """A non-list tactics value returns [] and logs a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    path = tmp_path / "mitre.json"
+    path.write_text(json.dumps({"tactics": {"name": "x"}}), encoding="utf-8")
+    assert _load_mitre_tactics(str(path)) == []
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_mitre_tactics_drops_non_dict_items(tmp_path: Path) -> None:
+    """Non-dict tactic items are dropped and valid dicts kept."""
+    path = tmp_path / "mitre.json"
+    path.write_text(
+        json.dumps({"tactics": [{"name": "A"}, "junk", 3, None, {"name": "B"}]}),
+        encoding="utf-8",
+    )
+    assert _load_mitre_tactics(str(path)) == [{"name": "A"}, {"name": "B"}]
 
 
 def test_build_platform_context_freebsd_with_rule_510() -> None:
@@ -753,6 +856,26 @@ def test_load_asd_data_non_dict_root_returns_empty(tmp_path: Path, caplog: Any) 
     result = _load_asd_data(str(path))
     assert result == {}
     assert "older format" in caplog.text
+
+
+def test_load_asd_data_unreadable_path_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """A directory path (OSError) returns {} and logs a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    assert _load_asd_data(str(tmp_path)) == {}
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_load_asd_data_undecodable_bytes_returns_empty(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """Non-UTF-8 bytes return {} and log a warning."""
+    caplog.set_level(logging.WARNING, logger="ravensight.analyser")
+    bad_file = tmp_path / "asd.json"
+    bad_file.write_bytes(b"\xff\xfe\x00bad")
+    assert _load_asd_data(str(bad_file)) == {}
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
 
 
 def test_load_asd_data_schema_two_loads(tmp_path: Path, caplog: Any) -> None:

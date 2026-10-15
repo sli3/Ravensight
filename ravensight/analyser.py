@@ -64,8 +64,9 @@ def _load_asd_data(asd_path: str) -> dict:
         asd_path: Path to data/asd_framework.json
 
     Returns:
-        Parsed ASD data dict, or empty dict if the file is absent, cannot be parsed as JSON, or is from an older schema.
-        Other read errors, such as a permission error, are not caught and propagate.
+        Parsed ASD data dict, or an empty dict (with a warning) if the file is
+        missing, unreadable (OSError), not valid UTF-8, or not valid JSON. A
+        non-dict root or a schema other than 2 also returns an empty dict.
     """
     try:
         with Path(asd_path).open("r", encoding="utf-8") as f:
@@ -75,6 +76,12 @@ def _load_asd_data(asd_path: str) -> dict:
         return {}
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse ASD framework file {asd_path}: {e}")
+        return {}
+    except OSError as e:
+        logger.warning(f"Failed to read ASD framework file {asd_path}: {e}")
+        return {}
+    except UnicodeDecodeError as e:
+        logger.warning(f"ASD framework file {asd_path} is not valid UTF-8: {e}")
         return {}
 
     if not isinstance(data, dict) or data.get("schema") != 2:
@@ -129,14 +136,36 @@ logger = logging.getLogger(__name__)
 
 
 def _load_mitre_tactics(path: str) -> list[dict[str, Any]]:
-    """Load MITRE tactics from local JSON file."""
+    """Load MITRE tactics from local JSON file.
+
+    Returns an empty list (with a warning) if the file is missing, unreadable
+    (OSError), not valid UTF-8, not valid JSON, or the wrong shape (non-object
+    root or non-list tactics). Non-dict tactic items are dropped.
+    """
     try:
         with Path(path).open("r", encoding="utf-8") as f:
             data = json.load(f)
-        return data.get("tactics", [])
     except FileNotFoundError:
         logger.warning(f"MITRE tactics file not found: {path}")
         return []
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse MITRE tactics file {path}: {e}")
+        return []
+    except OSError as e:
+        logger.warning(f"Failed to read MITRE tactics file {path}: {e}")
+        return []
+    except UnicodeDecodeError as e:
+        logger.warning(f"MITRE tactics file {path} is not valid UTF-8: {e}")
+        return []
+
+    if not isinstance(data, dict):
+        logger.warning(f"MITRE tactics file {path} is not a JSON object")
+        return []
+    tactics = data.get("tactics", [])
+    if not isinstance(tactics, list):
+        logger.warning(f"MITRE tactics file {path} has a non-list 'tactics' value")
+        return []
+    return [t for t in tactics if isinstance(t, dict)]
 
 
 def _build_mitre_reference(tactics: list[dict[str, Any]]) -> str:
@@ -155,19 +184,29 @@ def _build_mitre_reference(tactics: list[dict[str, Any]]) -> str:
 def _load_platform_hints(hints_path: str) -> dict:
     """Load platform false positive hints from local JSON file.
 
-    Returns an empty dict (with a warning) if the file is absent or is not valid JSON.
-    Other read errors, such as a permission error, propagate. Valid JSON is returned
-    as parsed, without checking that it is an object.
+    Returns an empty dict (with a warning) if the file is missing, unreadable
+    (OSError), not valid UTF-8, or not valid JSON. A non-object root also
+    returns an empty dict.
     """
     try:
         with Path(hints_path).open("r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except FileNotFoundError:
         logger.warning(f"Platform hints file not found: {hints_path}")
         return {}
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse platform hints file {hints_path}: {e}")
         return {}
+    except OSError as e:
+        logger.warning(f"Failed to read platform hints file {hints_path}: {e}")
+        return {}
+    except UnicodeDecodeError as e:
+        logger.warning(f"Platform hints file {hints_path} is not valid UTF-8: {e}")
+        return {}
+    if not isinstance(data, dict):
+        logger.warning(f"Platform hints file {hints_path} is not a JSON object")
+        return {}
+    return data
 
 
 def _load_platform_agents(path: str | None) -> dict:
