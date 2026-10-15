@@ -325,12 +325,54 @@ def test_finding_without_notes_no_note_lines() -> None:
 
 
 def test_finding_with_flags_renders_check_line() -> None:
-    """Findings with fidelity flags render one Check sub-bullet after the notes."""
+    """Findings with fidelity flags render one Check sub-bullet in the new wording."""
     finding = _cluster(flags=["T1100", "8443"], notes=["alpha"])
     lines = reporter._format_finding(finding)
-    check_line = "  - Check: not in this cluster's evidence: T1100, 8443"
+    check_line = (
+        "  - Check: the summary above mentions T1100, 8443, "
+        "which are not in this cluster's evidence"
+    )
     assert check_line in lines
-    assert lines.index(check_line) > lines.index("  - Note: alpha")
+
+
+def test_check_line_directly_after_narrative_before_evidence_and_note() -> None:
+    """The Check line follows the narrative and precedes Evidence and Note lines."""
+    finding = _cluster(
+        flags=["T1100"],
+        notes=["alpha"],
+        evidence={"generic": {"srcips": ["192.0.2.1"]}},
+    )
+    lines = reporter._format_finding(finding)
+    narrative_idx = lines.index(f"  - {finding['narrative']}")
+    check_idx = next(i for i, line in enumerate(lines) if "- Check:" in line)
+    evidence_idx = next(i for i, line in enumerate(lines) if "- Evidence:" in line)
+    note_idx = lines.index("  - Note: alpha")
+    assert check_idx == narrative_idx + 1
+    assert check_idx < evidence_idx < note_idx
+
+
+def test_check_line_absent_with_empty_flags() -> None:
+    """An empty flags list renders no Check line."""
+    lines = reporter._format_finding(_cluster(flags=[]))
+    assert all("Check:" not in line for line in lines)
+
+
+def test_check_line_flag_with_punctuation_intact() -> None:
+    """A flag containing punctuation is rendered unchanged."""
+    lines = reporter._format_finding(_cluster(flags=["T1110.001", "10.0.0.1:8443"]))
+    assert (
+        "  - Check: the summary above mentions T1110.001, 10.0.0.1:8443, "
+        "which are not in this cluster's evidence"
+    ) in lines
+
+
+def test_cluster_note_explains_severity_levels(tmp_path: Path) -> None:
+    """The report header note says severity comes from the rule level with thresholds."""
+    rep = _make_reporter(tmp_path)
+    report = rep._build_report({"summary": "s", "findings": [_cluster()]})
+    assert "rule level" in report
+    assert "12" in report
+    assert "7 to 11" in report
 
 
 def test_finding_without_flags_no_check_line() -> None:

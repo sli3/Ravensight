@@ -955,6 +955,57 @@ def test_dpkg_overflow_renders_more_packages_marker() -> None:
     assert render_evidence(cluster["evidence"]).endswith("(+3 more packages)")
 
 
+def test_dpkg_overflow_of_one_is_singular() -> None:
+    """Exactly one package over the cap renders '(+1 more package)'."""
+    alerts = [_dpkg_alert(package=f"pkg{i}") for i in range(MAX_EVIDENCE_VALUES + 1)]
+    cluster = _only_cluster(alerts)
+    assert cluster["evidence"]["dpkg"]["more"] == {"packages": 1}
+    assert render_evidence(cluster["evidence"]).endswith("(+1 more package)")
+
+
+def _syscheck_hosts_evidence(content_a: str, content_b: str) -> dict[str, Any]:
+    """Build evidence with a combined syscheck verdict and two per-host segments."""
+    return {
+        "syscheck": {"content": "changed", "paths": ["/etc/passwd"]},
+        "per_host": {
+            "host-a": {"syscheck": {"content": content_a, "paths": ["/etc/passwd"]}},
+            "host-b": {"syscheck": {"content": content_b, "paths": ["/etc/passwd"]}},
+        },
+    }
+
+
+def test_syscheck_content_differs_by_host_with_plain_labels() -> None:
+    """Disagreeing hosts replace the combined verdict; segments stay unchanged."""
+    evidence = _syscheck_hosts_evidence("changed", "unchanged")
+    plain = render_evidence(evidence, plain_labels=True)
+    default = render_evidence(evidence)
+    assert plain.startswith("content differs by host; ")
+    assert "[host-a: content changed; paths /etc/passwd]" in plain
+    assert "[host-b: content unchanged; paths /etc/passwd]" in plain
+    assert plain.split("per host ")[1] == default.split("per host ")[1]
+
+
+def test_syscheck_content_agreeing_hosts_unchanged() -> None:
+    """Hosts that agree keep the combined verdict."""
+    evidence = _syscheck_hosts_evidence("changed", "changed")
+    assert render_evidence(evidence, plain_labels=True).startswith("content changed; ")
+
+
+def test_syscheck_content_single_host_unchanged() -> None:
+    """Without per_host the combined verdict is untouched."""
+    evidence = {"syscheck": {"content": "changed", "paths": ["/etc/passwd"]}}
+    assert render_evidence(evidence, plain_labels=True) == (
+        "content changed; paths /etc/passwd"
+    )
+
+
+def test_syscheck_default_render_pins_old_combined_verdict() -> None:
+    """The default (prompt) render keeps the combined verdict even when hosts disagree."""
+    evidence = _syscheck_hosts_evidence("changed", "unchanged")
+    assert render_evidence(evidence).startswith("content changed; paths /etc/passwd; ")
+    assert "differs by host" not in render_evidence(evidence)
+
+
 def test_syscheck_paths_overflow_renders_more_marker() -> None:
     """Syscheck paths beyond the cap render '(+N more)' after the shown paths."""
     alerts = [_syscheck_alert(path=f"/etc/f{i}") for i in range(7)]

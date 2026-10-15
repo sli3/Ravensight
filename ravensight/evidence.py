@@ -762,7 +762,8 @@ def _render_dpkg(data: dict[str, Any]) -> list[str]:
     parts = [_sanitise(entry) for entry in data.get("packages", [])]
     more = data.get("more")
     if parts and isinstance(more, dict) and more.get("packages"):
-        parts[-1] += f" (+{more['packages']} more packages)"
+        noun = "package" if more["packages"] == 1 else "packages"
+        parts[-1] += f" (+{more['packages']} more {noun})"
     return parts
 
 
@@ -1008,6 +1009,20 @@ _SHAPE_RENDERERS = {
 }
 
 
+def _mark_content_differs(data: dict[str, Any], per_host: Any) -> dict[str, Any]:
+    """Replace the combined syscheck content verdict when hosts disagree."""
+    if not isinstance(per_host, dict) or not data.get("content"):
+        return data
+    values = set()
+    for host_data in per_host.values():
+        syscheck = host_data.get("syscheck") if isinstance(host_data, dict) else None
+        if isinstance(syscheck, dict) and syscheck.get("content"):
+            values.add(syscheck["content"])
+    if len(values) >= 2:
+        return {**data, "content": "differs by host"}
+    return data
+
+
 def render_evidence(
     evidence: dict[str, Any] | None, plain_labels: bool = False
 ) -> str:
@@ -1024,6 +1039,8 @@ def render_evidence(
     for shape, renderer in _SHAPE_RENDERERS.items():
         data = evidence.get(shape)
         if isinstance(data, dict) and data:
+            if shape == "syscheck" and plain_labels:
+                data = _mark_content_differs(data, evidence.get("per_host"))
             if shape in ("firewall", "per_host"):
                 parts.extend(renderer(data, plain_labels))
             else:

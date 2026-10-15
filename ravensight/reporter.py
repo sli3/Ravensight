@@ -68,16 +68,19 @@ def _format_finding(finding: str | dict) -> list[str]:
     if narrative:
         lines.append(f"  - {narrative}")
 
+    if finding.get("flags"):
+        lines.append(
+            "  - Check: the summary above mentions "
+            + ", ".join(finding["flags"])
+            + ", which are not in this cluster's evidence"
+        )
+
     evidence_text = render_evidence(finding.get("evidence"), plain_labels=True)
     if evidence_text:
         lines.append(f"  - Evidence: {evidence_text}")
 
     for note in finding.get("notes", []):
         lines.append(f"  - Note: {note}")
-
-    if finding.get("flags"):
-        check_label = "  - Check: not in this cluster's evidence: "
-        lines.append(check_label + ", ".join(finding["flags"]))
 
     if finding.get("type") == "vulnerability":
         cves = finding.get("cves", [])
@@ -112,7 +115,9 @@ HOW_TO_READ_NOTE = _HOW_TO_READ_PREFIX + _NOTE_CLOSING_DEFAULT
 
 CLUSTER_NOTE = (
     "> Findings are grouped into clusters (C1, C2…): alerts that share the same rule. "
-    "The numbers apply to this report only. Finding times are in UTC (Coordinated "
+    "The numbers apply to this report only. Severity comes from the Wazuh rule "
+    "level: High is level 12 or above, Medium is 7 to 11, Low is 6 or below. "
+    "Finding times are in UTC (Coordinated "
     "Universal Time); the Generated time above is local."
 )
 
