@@ -40,17 +40,24 @@ class Trending:
         """
         self._window_days = config.get("window_days", 30)
         self._max_rows = config.get("max_rows", DEFAULT_MAX_ROWS)
+        self._vendor_aliases: dict[str, str] = {}
 
-    def generate(self, baseline_data: dict[str, Any]) -> str:
+    def generate(
+        self,
+        baseline_data: dict[str, Any],
+        vendor_aliases: dict[str, str] | None = None,
+    ) -> str:
         """
         Generate trending markdown from baseline data.
 
         Args:
             baseline_data: Baseline dict with scan_history.
+            vendor_aliases: Optional display-only vendor name rewrites.
 
         Returns:
             Markdown formatted trending summary.
         """
+        self._vendor_aliases = vendor_aliases or {}
         scan_history = baseline_data.get("scan_history", [])
         if not scan_history:
             return self._empty_report()
@@ -216,10 +223,11 @@ class Trending:
         lines.append("")
         return "\n".join(lines)
 
-    @staticmethod
-    def _label(key: str) -> str:
-        """Return the display label for a cluster key."""
-        return analyser.cluster_label(key)
+    def _label(self, key: str) -> str:
+        """Return the display label for a cluster key, with vendor aliases applied."""
+        return analyser.apply_vendor_aliases(
+            analyser.cluster_label(key), self._vendor_aliases
+        )
 
     def _empty_report(self) -> str:
         """Return empty report message."""

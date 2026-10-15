@@ -419,3 +419,26 @@ def test_update_saves_iso_updated_at(tmp_path: Path) -> None:
     updated_at = saved["updated_at"]
     assert isinstance(updated_at, str)
     assert datetime.fromisoformat(updated_at).tzinfo is None
+
+
+def test_cluster_key_and_stored_baseline_unchanged_by_vendor_aliases(
+    tmp_path: Path,
+) -> None:
+    """Display-time aliases never alter cluster_key or the stored baseline keys."""
+    cluster = _cluster(description="pfSense firewall blocks events")
+    key_before = analyser.cluster_key(cluster)
+    aliases = {"pfsense": "OPNsense"}
+    assert analyser.apply_vendor_aliases(analyser.cluster_label(key_before), aliases) == (
+        "OPNsense firewall blocks events"
+    )
+    assert analyser.cluster_key(cluster) == key_before == "rule|pfSense firewall blocks events"
+
+    path = tmp_path / "baseline.json"
+    manager = baseline.Manager({"path": str(path)})
+    manager.update(
+        {"findings": [], "recommendations": []},
+        clusters=[cluster],
+        run_params=DEFAULT_PARAMS,
+    )
+    history = manager.load()["scan_history"]
+    assert key_before in history[-1]["cluster_counts"]

@@ -16,6 +16,9 @@ from ravensight.analyser import (
     _load_platform_agents,
     _load_platform_hints,
     _rewrite_cluster_vendor_names,
+    analyse,
+    apply_vendor_aliases,
+    build_vendor_aliases,
 )
 
 FREEBSD_HINT = (
@@ -761,3 +764,109 @@ def test_load_asd_data_schema_two_loads(tmp_path: Path, caplog: Any) -> None:
     result = _load_asd_data(str(path))
     assert result == data
     assert "older format" not in caplog.text
+
+
+_ALIAS_HINTS: dict[str, Any] = {
+    "freebsd": {"description": "FreeBSD", "vendors": ["OPNsense", "pfSense"]}
+}
+
+
+def test_build_vendor_aliases_single_vendor_maps_others() -> None:
+    """One vendor in use maps every other listed vendor to it."""
+    agents = {"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}
+    assert build_vendor_aliases(agents, _ALIAS_HINTS) == {"pfsense": "OPNsense"}
+
+
+def test_build_vendor_aliases_mixed_vendors_none() -> None:
+    """Mixed vendors on one platform add no alias."""
+    agents = {
+        "fw-a": {"platform": "freebsd", "vendor": "OPNsense"},
+        "fw-b": {"platform": "freebsd", "vendor": "pfSense"},
+    }
+    assert build_vendor_aliases(agents, _ALIAS_HINTS) == {}
+
+
+def test_build_vendor_aliases_no_agents_none() -> None:
+    """No agents on the platform means no alias."""
+    agents = {"x": {"platform": "linux", "vendor": "Ubuntu"}}
+    assert build_vendor_aliases(agents, _ALIAS_HINTS) == {}
+    assert build_vendor_aliases({}, _ALIAS_HINTS) == {}
+
+
+def test_build_vendor_aliases_case_insensitive() -> None:
+    """Vendor comparison ignores case, so differing casings count as one vendor."""
+    agents = {
+        "fw-a": {"platform": "freebsd", "vendor": "OPNsense"},
+        "fw-b": {"platform": "freebsd", "vendor": "opnsense"},
+    }
+    assert build_vendor_aliases(agents, _ALIAS_HINTS) == {"pfsense": "OPNsense"}
+
+
+def test_build_vendor_aliases_skips_malformed_entries() -> None:
+    """Non-string and empty entries are skipped without error."""
+    agents: dict[str, Any] = {
+        "fw-a": {"platform": "freebsd", "vendor": "OPNsense"},
+        "bad": "nope",
+        "empty": {"platform": "freebsd", "vendor": ""},
+        "num": {"platform": "freebsd", "vendor": 5},
+    }
+    hints: dict[str, Any] = {
+        "freebsd": {"vendors": ["OPNsense", "pfSense", "", 7, None]},
+        "other": "junk",
+    }
+    assert build_vendor_aliases(agents, hints) == {"pfsense": "OPNsense"}
+
+
+def test_apply_vendor_aliases_word_boundary_and_case() -> None:
+    """Whole-word, case-insensitive replacement only."""
+    aliases = {"pfsense": "OPNsense"}
+    assert apply_vendor_aliases("PFSENSE and pfSense", aliases) == "OPNsense and OPNsense"
+    assert apply_vendor_aliases("pfSensei", aliases) == "pfSensei"
+    assert apply_vendor_aliases("pfSense", {}) == "pfSense"
+
+
+def test_analyse_rewrites_similar_incident_vendor_text(
+    tmp_path: Path, captured_prompt: dict[str, Any]
+) -> None:
+    """Stored similar-incident summaries show the in-use vendor in the prompt."""
+    hints_path = tmp_path / "hints.json"
+    hints_path.write_text(json.dumps(_ALIAS_HINTS), encoding="utf-8")
+    agents_path = tmp_path / "agents.json"
+    agents_path.write_text(
+        json.dumps({"fw-a": {"platform": "freebsd", "vendor": "OPNsense"}}),
+        encoding="utf-8",
+    )
+
+    class _Embedder:
+        degraded = False
+
+        def retrieve_similar(self, query_text: str) -> list[dict[str, Any]]:
+            """Return one old incident that mentions pfSense."""
+            return [
+                {
+                    "summary": "pfSense firewall blocks events",
+                    "timestamp": "2020-01-01T00:00:00+00:00",
+                    "severity": "High",
+                }
+            ]
+
+    alert = _make_alert("fw-a", "freebsd", "510")
+    alert["_source"]["rule"]["level"] = 7
+    analyse(
+        alerts=[alert],
+        baseline={},
+        llm_config={
+            "base_url": "http://llm.invalid/v1",
+            "api_key": "local",
+            "model": "test-model",
+            "max_tokens": 512,
+            "temperature": 0.0,
+        },
+        embedder=_Embedder(),
+        platform_hints_path=str(hints_path),
+        platform_agents_path=str(agents_path),
+        lookback_hours=24,
+    )
+    prompt_text = captured_prompt["messages"][0]["content"]
+    assert "OPNsense firewall blocks events" in prompt_text
+    assert "pfSense firewall blocks events" not in prompt_text

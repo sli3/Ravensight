@@ -367,3 +367,45 @@ def test_no_sigma_note_without_anomalies() -> None:
         _run(1, {"rule|young": 50}),
     )
     assert "σ (sigma)" not in output
+
+
+_ALIASES = {"pfsense": "OPNsense"}
+
+
+def _generate_aliased(*runs: dict[str, Any], aliases: dict[str, str] | None) -> str:
+    """Generate trending markdown with the given vendor aliases."""
+    return Trending({}).generate(_history(*runs), vendor_aliases=aliases)
+
+
+def test_vendor_alias_applied_in_table_anomalies_and_first_seen() -> None:
+    """Aliased vendor names are rewritten in all three label sites."""
+    key = "rule|pfSense firewall blocks"
+    new_key = "rule|pfSense new event"
+    output = _generate_aliased(
+        _run(4, {key: 3}),
+        _run(3, {key: 3}),
+        _run(2, {key: 3}),
+        _run(1, {key: 30, new_key: 1}),
+        aliases=_ALIASES,
+    )
+    assert "pfSense" not in output
+    assert "| OPNsense firewall blocks |" in output
+    assert "- **OPNsense firewall blocks**" in output
+    assert "- OPNsense new event" in output
+
+
+def test_vendor_alias_none_leaves_output_unchanged() -> None:
+    """No aliases means pfSense text is shown as stored."""
+    runs = (_run(2, {"rule|pfSense x": 3}), _run(1, {"rule|pfSense x": 3}))
+    assert _generate_aliased(*runs, aliases=None) == _generate(*runs)
+    assert "pfSense x" in _generate_aliased(*runs, aliases=None)
+
+
+def test_vendor_alias_pipe_escaping_after_aliasing() -> None:
+    """Pipes are still escaped after the vendor rewrite."""
+    output = _generate_aliased(
+        _run(2, {"rule|pfSense a | b": 3}),
+        _run(1, {"rule|pfSense a | b": 3}),
+        aliases=_ALIASES,
+    )
+    assert "OPNsense a \\| b" in output

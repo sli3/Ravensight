@@ -91,11 +91,15 @@ def main() -> None:
     baseline_mgr = baseline.Manager(config["baseline"], embedder=embedder)
     wazuh = wazuh_client.Client(config["wazuh"], progress=run_reporter)
 
+    platform_hints_path = config.get("platform", {}).get("hints_path") if "platform" in config else None
+    platform_agents_path = config.get("platform", {}).get("agents_path") if "platform" in config else None
+    vendor_aliases = analyser.load_vendor_aliases(platform_hints_path, platform_agents_path)
+
     if args.report_only:
         trends_output = None
         if "trending" in config:
             trend_mgr = trending.Trending(config["trending"])
-            trends_output = trend_mgr.generate(baseline_mgr.load())
+            trends_output = trend_mgr.generate(baseline_mgr.load(), vendor_aliases=vendor_aliases)
 
         rep = reporter.Reporter(config["reports"])
         note = _similar_incidents_note(embedder)
@@ -138,8 +142,6 @@ def main() -> None:
 
         mitre_path = config.get("mitre", {}).get("path") if "mitre" in config else None
         asd_path = config.get("asd", {}).get("path") if "asd" in config else None
-        platform_hints_path = config.get("platform", {}).get("hints_path") if "platform" in config else None
-        platform_agents_path = config.get("platform", {}).get("agents_path") if "platform" in config else None
         try:
             analysis = analyser.analyse(alerts, baseline_mgr.load(), config["llm"], embedder=embedder, mitre_path=mitre_path, asd_path=asd_path, platform_hints_path=platform_hints_path, platform_agents_path=platform_agents_path, progress=run_reporter, lookback_hours=args.hours)
         except openai.APIConnectionError as e:
@@ -181,7 +183,7 @@ def main() -> None:
         if "trending" in config:
             run_reporter.stage("Trends", "active")
             trend_mgr = trending.Trending(config["trending"])
-            trends_output = trend_mgr.generate(baseline_mgr.load())
+            trends_output = trend_mgr.generate(baseline_mgr.load(), vendor_aliases=vendor_aliases)
             run_reporter.stage("Trends", "done")
 
         asd_data = analyser._load_asd_data(asd_path) if asd_path else None

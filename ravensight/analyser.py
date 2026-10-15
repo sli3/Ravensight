@@ -257,6 +257,58 @@ def _rewrite_cluster_vendor_names(
             )
 
 
+def build_vendor_aliases(
+    platform_agents: dict[str, dict[str, str]],
+    platform_hints: dict[str, Any],
+) -> dict[str, str]:
+    """Map alternative vendor names to the single vendor in use on each platform."""
+    aliases: dict[str, str] = {}
+    if not isinstance(platform_agents, dict) or not isinstance(platform_hints, dict):
+        return aliases
+    for platform, hint in platform_hints.items():
+        vendors = hint.get("vendors") if isinstance(hint, dict) else None
+        if not isinstance(vendors, list):
+            continue
+        in_use: dict[str, str] = {}
+        for info in platform_agents.values():
+            if not isinstance(info, dict) or info.get("platform") != platform:
+                continue
+            vendor = info.get("vendor")
+            if isinstance(vendor, str) and vendor:
+                in_use.setdefault(vendor.lower(), vendor)
+        if len(in_use) != 1:
+            continue
+        canonical = next(iter(in_use.values()))
+        for candidate in vendors:
+            if not isinstance(candidate, str) or not candidate:
+                continue
+            if candidate.lower() == canonical.lower():
+                continue
+            aliases[candidate.lower()] = canonical
+    return aliases
+
+
+def apply_vendor_aliases(text: str, aliases: dict[str, str]) -> str:
+    """Replace aliased vendor names in display text (word-boundary, case-insensitive)."""
+    if not aliases:
+        return text
+    for alias, canonical in aliases.items():
+        text = re.sub(
+            r"\b" + re.escape(alias) + r"\b",
+            lambda _m, c=canonical: c,
+            text,
+            flags=re.IGNORECASE,
+        )
+    return text
+
+
+def load_vendor_aliases(hints_path: str | None, agents_path: str | None) -> dict[str, str]:
+    """Load platform hints and agents files and build the vendor alias map."""
+    hints = _load_platform_hints(hints_path or "data/platform_hints.json")
+    agents = _load_platform_agents(agents_path)
+    return build_vendor_aliases(agents, hints)
+
+
 def _build_platform_context(
     alerts: list[dict[str, Any]],
     hints: dict,
@@ -781,8 +833,9 @@ def analyse(
             similar = None
         if similar:
             similar = filter_similar_by_window(similar, lookback_hours)
+            vendor_aliases = build_vendor_aliases(platform_agents, platform_hints)
             for item in similar:
-                summary = item.get("summary", "")
+                summary = apply_vendor_aliases(item.get("summary", ""), vendor_aliases)
                 timestamp = item.get("timestamp", "")
                 severity = item.get("severity", "")
                 if severity and severity != "unknown":
