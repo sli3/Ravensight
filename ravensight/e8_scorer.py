@@ -53,6 +53,8 @@ E8_GENERIC_WORDS = {
     "local", "service", "services", "changed", "system", "systems",
     # Boilerplate from recommendations such as "No action required; confirm ..."
     "action", "confirm", "multiple", "expected",
+    # Boilerplate from the recommendation template "No action / Monitor / Investigate: the evidence shows ..."
+    "evidence", "investigate", "monitor", "shows",
 }
 
 # Endings removed by _stem, longest first. A stem keeps at least this many letters.

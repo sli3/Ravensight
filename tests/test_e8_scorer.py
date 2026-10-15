@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from ravensight.e8_scorer import (
+    _GENERIC_STEMS,
     MAX_FINDING_POINTERS,
     _stem,
     load_attestation,
@@ -579,6 +580,69 @@ def test_boilerplate_words_never_count_toward_a_match() -> None:
         description="Multiple things", recommendation="No action required; confirm expected result"
     )
     assert map_findings_to_controls([finding], asd_data)[0]["ism"] == []
+
+
+def test_verdict_template_words_alone_create_no_pointer() -> None:
+    """evidence, investigate, monitor and shows cannot create an ISM or E8 pointer."""
+    control = {
+        "id": "ISM-EVID",
+        "category": "Event logging",
+        "description": "Evidence is monitored and investigated",
+    }
+    asd_data = _ism_asd(control)
+    finding = _finding(
+        description="Zebra sighting", recommendation="Investigate: the evidence shows content changed"
+    )
+    assert map_findings_to_controls([finding], asd_data)[0]["ism"] == []
+    assert match_ism_controls([finding], asd_data) == []
+
+    e8_data = {
+        "essential_eight": [
+            {
+                "strategy": "Zebra strategy",
+                "controls": [
+                    {"id": "E8-EVID", "levels": [1], "description": "evidence investigate monitor shows"}
+                ],
+            }
+        ],
+        "ism": [],
+    }
+    scores = score_findings([finding], e8_data)
+    assert scores["Zebra strategy"]["related_findings"] == []
+
+
+def test_genuine_topic_overlap_still_matches_with_verdict_template() -> None:
+    """Real topic words still match; template words never appear among the shared words."""
+    asd_data = _ism_asd(
+        {
+            "id": "ISM-EVID",
+            "category": "Event logging",
+            "description": "Evidence is monitored and investigated for firewall logs",
+        }
+    )
+    finding = _finding(
+        description="Zebra sighting", recommendation="Monitor: the evidence shows firewall logs blocked"
+    )
+    ism = map_findings_to_controls([finding], asd_data)[0]["ism"]
+    assert [item["id"] for item in ism] == ["ISM-EVID"]
+    assert ism[0]["shared"] == ["firewall", "logs"]
+
+
+@pytest.mark.parametrize(
+    ("word", "base"),
+    [
+        ("investigated", "investigate"),
+        ("investigates", "investigate"),
+        ("monitoring", "monitor"),
+        ("monitored", "monitor"),
+        ("shows", "shows"),
+        ("evidence", "evidence"),
+    ],
+)
+def test_verdict_template_inflections_share_a_generic_stem(word: str, base: str) -> None:
+    """Inflected forms of the template words stem to a generic stem."""
+    assert _stem(word) == _stem(base)
+    assert _stem(base) in _GENERIC_STEMS
 
 
 def test_than_is_a_stop_word_and_never_matches() -> None:
