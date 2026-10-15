@@ -788,19 +788,27 @@ def analyse(
         alerts: List of alert dicts from wazuh_client.fetch_alerts()
         baseline: Previous baseline data from baseline.Manager.load()
         llm_config: LLM config section with base_url, api_key, model, etc.
-        embedder: Optional Embedder instance for retrieving similar incidents
-       mitre_path: Optional path to MITRE tactics JSON file
+        embedder: Optional Embedder instance for retrieving similar past incidents.
+            Their stored vendor names are rewritten to the current display aliases
+            before they are shown in the prompt and returned under similar_incidents.
+        mitre_path: Optional path to MITRE ATT&CK tactics JSON file
         platform_hints_path: Optional path to platform false positive hints JSON file;
             defaults to "data/platform_hints.json" if not supplied
         platform_agents_path: Optional path to agent-name → vendor/platform JSON
             map; defaults to "data/platform_agents.json" if not supplied
-        asd_path: Optional path to ASD framework JSON file
+        asd_path: Optional path to the ASD framework JSON file (Essential Eight and
+            ISM data); no framework context or ISM check is used if not supplied
         progress: Optional RunReporter for terminal UI service/stage/LLM hooks
         lookback_hours: Report window in hours — similar incidents within this
             window are dropped from the prompt. None disables filtering.
 
     Returns:
-        Analysis dict with summary, findings, and recommendations.
+        Analysis dict with summary (built from the alert data, not the LLM text),
+        findings (one per cluster, with the LLM's narrative and recommendation
+        attached, plus extra "unattached" findings for AI lines whose cluster
+        id is missing or unknown), recommendations and mitre_tags. Adds similar_incidents when
+        any similar past incidents were found. Findings that fail the fidelity
+        guard carry a flags list.
     """
     if not alerts:
         if progress is not None:
@@ -1116,6 +1124,11 @@ def _fidelity_flags(
 ) -> list[str]:
     """Flag narrative/recommendation tokens unsupported by the cluster's evidence.
 
+    Checks: (a) MITRE technique ids, (b) CVE ids, (c) file paths, (d) port
+    numbers, (e) IP addresses and networks, (f) count claims, (g) provider
+    names (such as cloud or social media companies), (h) ISM control ids (only when ism_ids is non-empty).
+    Anything else in the text is not checked.
+
     Read-only: never mutates the finding or anything nested inside it.
     Comparison is lowercased; flagged tokens are returned as written in the
     text, de-duplicated, in first-seen order.
@@ -1231,7 +1244,7 @@ def _build_prompt(
     asd_context: str = "",
     platform_agents: dict | None = None,
 ) -> str:
-    """Build prompt with cluster lines and similar incidents."""
+    """Build the LLM prompt from the rules, the capped cluster lines and the context blocks."""
     if clusters is None:
         clusters = extract_alert_clusters(alerts)
 
@@ -1339,8 +1352,11 @@ def _parse_analysis(
 
     With ``clusters`` given, findings/recommendation lines attach to the
     matching cluster by id; lines with no id (or an unknown id) become
-    unattached finding dicts and are logged. With ``clusters`` None the
-    legacy string-based behaviour is preserved.
+    unattached finding dicts and are logged. The summary built here is
+    replaced by ``analyse``. With ``clusters`` None, findings and
+    recommendations stay as plain strings (older behaviour). Recommendation
+    text (which should begin No action, Monitor or Investigate) is kept as
+    written; the verdict word is not checked here.
     """
     findings: list[Any] = []
     recommendations: list[str] = []
