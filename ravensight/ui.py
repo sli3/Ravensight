@@ -34,7 +34,7 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-# Today's exact non-interactive format. Kept here so the test can assert it.
+# Log line format for non-interactive output (cron, Docker, pipes, or --no-progress on a terminal). Kept here so the test can assert it.
 _PLAIN_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 
 # rich's ipv6 pattern has no word boundary and accepts a single colon, so
@@ -98,7 +98,7 @@ class RunReporter(Protocol):
 
 
 class PlainReporter:
-    """No-op reporter for --no-progress / piped output (D9)."""
+    """No-op reporter used with --no-progress or when output is not an interactive terminal."""
 
     def service(self, name: str, state: ServiceState, detail: str = "") -> None:
         """Ignore a service state change."""
@@ -170,10 +170,10 @@ _STATE_GLYPHS: dict[str, str] = {
 
 
 class _InfoColumn(ProgressColumn):
-    """Render a task's info field, or a live LLM speed readout when absent."""
+    """Render a task's info field, else a vector count (Baseline update) or live speed (LLM analysis)."""
 
     def render(self, task: Task) -> Text:
-        """Return the info field text, or live chunks/s for the LLM task."""
+        """Return the info field text, else "N/M vectors" (Baseline update) or live chunks/s (LLM analysis)."""
         info = task.fields.get("info")
         if info:
             return Text(str(info))
@@ -325,7 +325,7 @@ class RichRunReporter:
     ) -> None:
         """Print the finish screen after the Live panel has closed."""
         rows, severity_counts, notes_count, unattached_count = build_finish_table(analysis)
-        del notes_count  # notes are shown per-row; the aggregate stays in the table
+        del notes_count  # unused here: the table shows notes per row instead
         if rows:
             self._print_finish_table(rows, severity_counts, unattached_count,
                                      warnings, errors, report_path)

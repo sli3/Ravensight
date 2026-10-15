@@ -67,7 +67,12 @@ class Client:
     def fetch_alerts(
         self, hours: int = 24, agent: str | None = None, level: int = 7
     ) -> list[dict[str, Any]]:
-        """Fetch alerts from Wazuh Indexer matching the given criteria."""
+        """Fetch up to 10,000 alerts from the Wazuh Indexer (OpenSearch store), newest first.
+
+        Returns alerts from the last `hours` hours at or above rule `level`, optionally for
+        one agent name. Logs and re-raises requests ConnectionError, Timeout and HTTPError;
+        other errors propagate unchanged.
+        """
         since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         query: dict[str, Any] = {
