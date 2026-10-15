@@ -1,5 +1,5 @@
 """
-Tests for dict-aware report rendering (Build 1b).
+Tests for rendering dict findings (clusters) in the report.
 
 No network — reports are built in-memory via Reporter._build_report.
 """
@@ -55,7 +55,7 @@ def test_dict_finding_renders_data_fields(tmp_path: Path) -> None:
 
 
 def test_legacy_string_finding_unchanged(tmp_path: Path) -> None:
-    """String findings render exactly as the private helper renders them today."""
+    """A plain string finding renders as a single "- " bullet, unchanged."""
     rep = _make_reporter(tmp_path)
     report = rep._build_report({"summary": "s", "findings": ["Plain string finding"]})
     assert reporter._format_finding("Plain string finding") == ["- Plain string finding"]
@@ -288,7 +288,7 @@ def test_evidence_newlines_and_pipes_sanitised(tmp_path: Path) -> None:
 
 
 def test_finding_without_evidence_byte_identical(tmp_path: Path) -> None:
-    """Findings without evidence render byte-identically to today."""
+    """A missing or empty evidence dict renders identically, with only the headline and narrative."""
     assert reporter._format_finding(_cluster()) == reporter._format_finding(
         _cluster(evidence={})
     )
@@ -399,7 +399,7 @@ def test_blank_line_before_mitre_tags_without_similar_incidents(
     assert idx - bullet_idx >= 2
 
 
-# --- ASD/ISM table cell sanitisation (Build 2a) ---
+# --- ASD/ISM table cell sanitisation ---
 
 
 def test_ism_table_sanitises_newline_pipe_and_long_description() -> None:
@@ -475,7 +475,7 @@ def test_truncate_words_no_space_before_ellipsis() -> None:
     assert truncate_words("aaa bbb ccc ddd", 10) == "aaa bbb…"
 
 
-# --- Essential Eight related-controls table (Build 2b) ---
+# --- Essential Eight related-controls table ---
 
 
 def _make_asd_data() -> dict[str, Any]:

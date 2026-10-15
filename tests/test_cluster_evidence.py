@@ -1,5 +1,5 @@
 """
-Tests for per-cluster mechanical evidence extraction (Build 1c).
+Tests for per-cluster mechanical evidence extraction (facts read straight from alerts).
 
 Fixtures are redacted real alerts loaded from tests/fixtures/; synthetic
 alerts use the same _alert factory pattern as test_clusters.py.
@@ -685,7 +685,7 @@ def test_firewall_legacy_dict_renders_flat_scope() -> None:
     assert rendered == ["scope internal → external"]
 
 
-# --- per-host evidence (Build 1e) ---
+# --- per-host evidence ---
 
 
 def test_per_host_two_syscheck_hosts() -> None:
@@ -975,7 +975,7 @@ def _syscheck_hosts_evidence(content_a: str, content_b: str) -> dict[str, Any]:
 
 
 def test_syscheck_content_differs_by_host_with_plain_labels() -> None:
-    """Disagreeing hosts replace the combined verdict; segments stay unchanged."""
+    """With plain_labels, disagreeing hosts replace the combined verdict; segments stay unchanged."""
     evidence = _syscheck_hosts_evidence("changed", "unchanged")
     plain = render_evidence(evidence, plain_labels=True)
     default = render_evidence(evidence)
