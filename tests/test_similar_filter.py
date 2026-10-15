@@ -9,6 +9,7 @@ from ravensight.analyser import filter_similar_by_window
 
 
 def _item(ts: str = "", severity: str = "High", summary: str = "x") -> dict[str, Any]:
+    """Build a similar-incident dict with the given timestamp, severity and summary."""
     return {"timestamp": ts, "severity": severity, "summary": summary}
 
 

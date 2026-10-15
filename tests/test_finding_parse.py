@@ -26,6 +26,7 @@ def _alert(description: str, level: int, agent: str = "host-1") -> dict[str, Any
 
 
 def _two_clusters() -> list[dict[str, Any]]:
+    """Extract clusters from a high-level and a medium-level alert."""
     return extract_alert_clusters(
         [
             _alert("SSHD brute force", 12),
@@ -169,16 +170,23 @@ LLM_CONFIG = {
 def test_summary_is_data_built(monkeypatch: pytest.MonkeyPatch) -> None:
     """Summary comes from alert data only — never from LLM text."""
     class _Chat:
+        """Fake chat object whose completions return a canned stream."""
+
         def __init__(self) -> None:
+            """Point completions at the instance itself."""
             self.completions = self
 
         def create(self, **kwargs: Any) -> Any:
+            """Return a fake stream containing one cluster-tagged finding."""
             return _make_fake_stream(
                 f"<findings>\n- [C1] {LLM_KNOWN_STRING}\n</findings>"
             )
 
     class _Client:
+        """Fake OpenAI client exposing a fake chat object."""
+
         def __init__(self) -> None:
+            """Attach a fake chat object to the client."""
             self.chat = _Chat()
 
     monkeypatch.setattr(analyser, "OpenAI", lambda **kw: _Client())

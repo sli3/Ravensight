@@ -28,6 +28,7 @@ class _CapturingEmbedder:
     _chroma_failure = None
 
     def __init__(self) -> None:
+        """Start with an empty list of recorded queries."""
         self.queries: list[str] = []
 
     def retrieve_similar(self, query_text: str) -> list[dict[str, Any]]:
@@ -40,10 +41,12 @@ class _FakeStream:
     """Single-chunk streaming response carrying no content."""
 
     def __iter__(self) -> "_FakeStream":
+        """Reset the yielded flag and return the stream itself."""
         self._yielded = False
         return self
 
     def __next__(self) -> Any:
+        """Yield one empty-content chunk, then stop."""
         if self._yielded:
             raise StopIteration
         self._yielded = True
@@ -56,6 +59,7 @@ class _FakeOpenAI:
     """Stand-in OpenAI client returning an empty stream."""
 
     def __init__(self, **kwargs: Any) -> None:
+        """Attach a chat object whose create call returns a fake stream."""
         self.chat = SimpleNamespace(
             completions=SimpleNamespace(create=lambda **kw: _FakeStream())
         )
