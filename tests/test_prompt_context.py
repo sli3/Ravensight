@@ -25,6 +25,7 @@ LLM_CONFIG = {
 
 
 def _alert() -> dict[str, Any]:
+    """Build a minimal Wazuh alert for host-1 with an SSHD success rule."""
     return {
         "_source": {
             "agent": {"name": "host-1", "os": {"platform": "linux", "name": "Linux"}},
@@ -34,15 +35,19 @@ def _alert() -> dict[str, Any]:
 
 
 def _item(ts: str, severity: str, summary: str) -> dict[str, Any]:
+    """Build a similar-incident item with the given timestamp, severity and summary."""
     return {"id": "x", "score": 0.1, "timestamp": ts, "severity": severity, "summary": summary}
 
 
 class _FakeEmbedder:
+    """Stub embedder that returns canned items for any query."""
     def __init__(self, items: list[dict[str, Any]]) -> None:
+        """Store the canned items and mark the stub as not degraded."""
         self._items = items
         self.degraded = False
 
     def retrieve_similar(self, query_text: str) -> list[dict[str, Any]]:
+        """Return a copy of the canned items, ignoring the query text."""
         return list(self._items)
 
 

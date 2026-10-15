@@ -1197,6 +1197,7 @@ def _fidelity_flags(
     seen: set[str] = set()
 
     def _flag(token: str) -> None:
+        """Record a token in the flagged list once, keeping first-seen order."""
         if token not in seen:
             seen.add(token)
             flagged.append(token)

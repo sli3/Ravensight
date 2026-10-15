@@ -102,6 +102,7 @@ def _unnegated_count(text_lower: str, term: str) -> int:
         position: int,
         clause: str,
     ) -> bool:
+        """Return True if a negator or 'rather than' / 'instead of' precedes the term."""
         start = max(0, index - 4)
         for token, _, _ in tokens[start:index]:
             if token in NEGATORS or token.endswith(("n't", "n’t")):

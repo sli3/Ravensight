@@ -206,6 +206,7 @@ def _render_finding_pointers(findings: list, finding_pointers: list[dict]) -> li
 
     # Keep the highest-severity rows when over the cap, then show them in finding-ID order.
     def severity_key(row: dict) -> tuple[int, tuple[str, int, str]]:
+        """Return a sort key of severity rank, then finding-ID order."""
         severity = str(by_id.get(row["id"], {}).get("severity", ""))
         return (_SEVERITY_RANK.get(severity, len(_SEVERITY_RANK)), _finding_order_key(row["id"]))
 
