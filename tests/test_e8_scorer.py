@@ -1,7 +1,7 @@
 """
-Tests for Essential Eight related-control scoring (Build 2b).
+Tests for Essential Eight scoring, ISM matching, per-finding pointers and attestation.
 
-The new score_findings returns 'Not assessed' status with related findings and
+score_findings returns 'Not assessed' status with related findings and
 controls; it never produces pass/fail maturity verdicts.
 """
 

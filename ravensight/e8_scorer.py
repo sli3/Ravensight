@@ -1,4 +1,7 @@
-"""Essential Eight compliance scoring and ISM control matching module.
+"""Points findings at Essential Eight (E8) strategies and Information Security Manual (ISM) controls.
+
+It gives no compliance verdicts: scored strategies stay "Not assessed" unless the
+operator supplies a manual attestation file (see load_attestation).
 
 Callers should pass overrides_path from config:
 overrides_path = config.get("e8", {}).get("overrides_path")
@@ -45,9 +48,9 @@ MAX_E8_RELATED_CONTROLS = 3
 # Maximum ISM controls and Essential Eight strategies listed per finding
 MAX_FINDING_POINTERS = 3
 
-# Generic words that carry no matching signal for Essential Eight scoring.
-# These are removed from keyword sets in both score_findings and the ISM
-# matcher (match_ism_controls).
+# Generic words that carry no matching signal for pointers. They are removed
+# before matching findings against both Essential Eight strategies and ISM
+# controls (score_findings, match_ism_controls and map_findings_to_controls).
 E8_GENERIC_WORDS = {
     "only", "required", "event", "events", "access", "content",
     "local", "service", "services", "changed", "system", "systems",
@@ -143,11 +146,14 @@ def load_attestation(
     value an object with "status" ("Attested" or "Not applicable"), "reason" (a
     string, may be empty) and, for "Attested" only, "level" ("ML1", "ML2" or "ML3",
     case-insensitive). For "Not applicable" any "level" is ignored and stored as None.
-    An entry whose reason starts with "EXAMPLE:" is a shipped placeholder and is skipped.
+    An entry whose reason starts with "EXAMPLE:" (any case, leading spaces ignored) is a
+    shipped placeholder and is skipped.
 
     Returns:
         Dict of strategy name to {"status", "level", "reason"}. Strategies without a
-        valid entry are {"status": "Not assessed", "level": None, "reason": ""}.
+        valid entry, and all strategies when attestation_path is None, blank or
+        unreadable, are {"status": "Not assessed", "level": None, "reason": ""}
+        ("Not assessed" means no manual attestation was given).
         Returns {} if asd_data holds no strategies.
     """
     strategies = [
@@ -336,7 +342,7 @@ def score_findings(
         strategy_controls = strategy_entry.get("controls", [])
 
         # Compute each control's keyword set once: strategy name + description,
-        # minus that strategy's blocked keywords.
+        # minus that strategy's blocked keywords and the generic words.
         control_keyword_sets: list[set[str]] = []
         for control in strategy_controls:
             control_keyword_sets.append(_e8_control_keywords(strategy, control, blocked))
