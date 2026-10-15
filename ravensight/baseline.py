@@ -31,7 +31,8 @@ def is_default_run(params: dict[str, Any] | None) -> bool:
     """Return True when the run matches the default daily-run parameters.
 
     A default run looks back DEFAULT_RUN_HOURS hours, has no agent filter and
-    uses the DEFAULT_RUN_LEVEL minimum level. Missing keys are not default.
+    uses the DEFAULT_RUN_LEVEL minimum level. A missing hours or level key is
+    not default; a missing agent key counts as no filter. None is not default.
     """
     if params is None:
         return False

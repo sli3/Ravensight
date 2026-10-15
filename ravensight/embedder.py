@@ -2,9 +2,11 @@
 embedder.py — ChromaDB vector store and Qwen3-Embedding-0.6B embedding client.
 
 Provides semantic memory for alert retrieval by:
-- Connecting to llama.cpp embeddings endpoint (port 8081)
+- Connecting to a llama.cpp embeddings endpoint (default port 8081), which turns
+  text into an embedding: a numeric fingerprint used to find similar incidents
 - Managing ChromaDB collection with SQLite (embedded) or HTTP (networked) backend
-- Migrating existing baseline_state.json entries on every run
+- Migrating existing baseline findings and recommendations into the vector store
+  (migrate_baseline, currently used only by tests)
 """
 from __future__ import annotations
 
@@ -90,7 +92,7 @@ class Embedder:
 
     @property
     def degraded(self) -> bool:
-        """Whether the embedding server has failed and should be treated as unavailable."""
+        """Whether the embedding server or ChromaDB has failed and is treated as unavailable."""
         return self._degraded
 
     def _connect_chroma(self, config: dict[str, Any]) -> None:
@@ -134,6 +136,10 @@ class Embedder:
 
         Returns:
             List of floats representing the embedding vector.
+
+        Raises:
+            APIConnectionError, APITimeoutError or ValueError when the embedding
+            server fails; the embedder is also marked degraded.
         """
         try:
             response = self._embedding_client.embeddings.create(
@@ -153,6 +159,9 @@ class Embedder:
     ) -> None:
         """
         Add embedding to vector store.
+
+        Does nothing (with a warning) when degraded. Embedding or ChromaDB
+        failures are re-raised after marking the embedder degraded.
 
         Args:
             text: Text to embed (alert cluster summary).
@@ -197,14 +206,15 @@ class Embedder:
 
     def query_similar(self, query_text: str, top_k: int | None = None) -> list[dict[str, Any]]:
         """
-        Retrieve most similar past incidents by cosine similarity.
+        Retrieve the most similar past incidents by cosine distance.
 
         Args:
             query_text: Text to embed for retrieval (current alert cluster summary).
             top_k: Number of results to return (uses config default if not specified).
 
         Returns:
-            List of dicts with id, score, metadata (timestamp, rule_group, severity, summary).
+            List of dicts with id, score (cosine distance, lower is more similar),
+            timestamp, rule_group, severity and summary.
         """
         k = top_k if top_k is not None else self._top_k
 
@@ -257,13 +267,23 @@ class Embedder:
 
     def migrate_baseline(self, baseline_data: dict[str, Any]) -> int:
         """
-        Migrate existing baseline_state.json entries into vector store.
+        Replace the baseline findings and recommendations in the vector store.
+
+        When the embedder is not degraded, the old finding vectors are deleted
+        and the findings re-embedded, then the old recommendation vectors are
+        deleted and the recommendations re-embedded. A failed delete is logged
+        and the run carries on. A failed embed is logged and stops that loop
+        (the embedder is then degraded, so the recommendations are skipped).
+        If the embedder is already degraded at the start, nothing is deleted
+        or written, and add_embedding returns without raising, so every
+        finding is still counted and the recommendations are skipped.
 
         Args:
             baseline_data: Dict with findings and recommendations keys from baseline.Manager.load().
 
         Returns:
-            Number of entries migrated.
+            Count of entries passed to add_embedding without an exception. When
+            the embedder is degraded this includes findings that were not written.
         """
         count = 0
 
@@ -326,7 +346,7 @@ class Embedder:
 
 def load_baseline_embeddings(baseline_path: str) -> dict[str, Any] | None:
     """
-    Load baseline_state.json for migration.
+    Load baseline_state.json for migration (currently only called from tests).
 
     Args:
         baseline_path: Path to baseline_state.json file.
