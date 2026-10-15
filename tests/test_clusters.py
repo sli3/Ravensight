@@ -205,15 +205,22 @@ def test_prompt_caps_clusters_and_reports_omitted(
     sink: dict[str, Any] = {}
 
     class _Chat:
+        """Fake chat namespace that captures the messages sent to the LLM."""
+
         def __init__(self) -> None:
+            """Expose itself as the completions namespace."""
             self.completions = self
 
         def create(self, **kwargs: Any) -> Any:
+            """Store the messages in the sink and return an empty fake stream."""
             sink["messages"] = kwargs.get("messages", [])
             return _make_fake_stream("")
 
     class _Client:
+        """Fake OpenAI client exposing a capturing chat attribute."""
+
         def __init__(self) -> None:
+            """Attach a capturing _Chat as the chat attribute."""
             self.chat = _Chat()
 
     monkeypatch.setattr(analyser, "OpenAI", lambda **kw: _Client())

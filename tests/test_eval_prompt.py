@@ -125,6 +125,7 @@ def test_error_row_is_only_error_key(
     """A failed run row stays exactly {'error': '...'} with no F keys."""
 
     def _boom(alerts: Any, **kw: Any) -> Any:
+        """Raise a RuntimeError to simulate the LLM being down."""
         raise RuntimeError("llm down")
 
     fixtures = _patch_main(monkeypatch, tmp_path, None)

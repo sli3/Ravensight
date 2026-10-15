@@ -56,6 +56,7 @@ class _StubEmbedder:
     """Records add_embedding calls instead of touching a vector store."""
 
     def __init__(self) -> None:
+        """Start non-degraded with an empty call log."""
         self.degraded = False
         self._chroma_failure: str | None = None
         self.calls: list[tuple[str, dict[str, Any], str | None]] = []
@@ -63,6 +64,7 @@ class _StubEmbedder:
     def add_embedding(
         self, text: str, metadata: dict[str, Any], doc_id: str | None = None
     ) -> None:
+        """Record the call arguments without storing anything."""
         self.calls.append((text, metadata, doc_id))
 
 
@@ -166,6 +168,7 @@ def test_update_doc_id_changes_across_days(
 
         @classmethod
         def now(cls, tz: Any = None) -> datetime:
+            """Return the frozen datetime, ignoring tz."""
             return cls._frozen
 
     monkeypatch.setattr(baseline, "datetime", _FrozenDateTime)
@@ -297,6 +300,7 @@ def test_update_breaks_when_embedder_degrades_mid_run(tmp_path: Path) -> None:
         def add_embedding(
             self, text: str, metadata: dict[str, Any], doc_id: str | None = None
         ) -> None:
+            """Record the call, mark the embedder degraded, then raise ValueError."""
             self.calls.append((text, metadata, doc_id))
             self.degraded = True
             self._chroma_failure = "ChromaError: vanished"
