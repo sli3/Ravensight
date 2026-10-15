@@ -1047,3 +1047,15 @@ def test_generate_forwards_attestation(tmp_path: Path) -> None:
         attestation={"Patch applications": _att("Attested", 3, "Audited")},
     )
     assert "Attested at ML3 — Audited" in path.read_text()
+
+
+def test_glossary_lists_sigma_only_when_report_uses_it(tmp_path: Path) -> None:
+    """The sigma entry appears when the report text contains σ, and not otherwise."""
+    rep = _make_reporter(tmp_path)
+    plain = rep._build_report({"summary": "s", "findings": [_cluster(id="C1")]})
+    assert "**σ (sigma)**" not in plain
+    with_sigma = rep._build_report(
+        {"summary": "s", "findings": [_cluster(id="C1")]},
+        trends="### Anomalies\n\n- x (+2.4σ)",
+    )
+    assert "**σ (sigma)**" in with_sigma.split("## Glossary")[1]

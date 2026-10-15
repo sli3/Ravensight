@@ -17,6 +17,14 @@ ANOMALY_MIN_PRIOR = 3
 ANOMALY_SIGMA = 2.0
 DEFAULT_MAX_ROWS = 25
 
+_SIGMA_NOTE = (
+    "> σ (sigma) shows how many standard deviations the latest count is above "
+    "the average of the previous days. A rise of more than 2.0σ is flagged. A "
+    "count that rose from a previously flat history is flagged too. At least 3 "
+    "earlier days are needed, and with few earlier days the figure is a rough "
+    "guide."
+)
+
 _DIRECTION_SYMBOLS = {"up": "↑", "down": "↓", "stable": "→"}
 
 
@@ -185,6 +193,7 @@ class Trending:
         anomalies = [r for r in rows if r["anomaly"]]
         if anomalies:
             lines.extend(["", "### Anomalies", ""])
+            lines.extend([_SIGMA_NOTE, ""])
             for row in anomalies:
                 label = self._label(row["key"]).replace("|", "\\|")
                 if row["prior_std"] == 0:

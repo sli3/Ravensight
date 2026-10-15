@@ -85,13 +85,41 @@ def truncate_words(text: str, limit: int) -> str:
 
 
 def _add_unique(
-    values: list[str], value: Any, cap: int = MAX_EVIDENCE_VALUES
+    values: list[str],
+    value: Any,
+    cap: int = MAX_EVIDENCE_VALUES,
+    dropped: dict[str, set[str]] | None = None,
+    field: str = "",
 ) -> None:
-    """Append a cleaned distinct value, first-seen order, bounded by cap."""
+    """Append a cleaned distinct value, first-seen order, bounded by cap.
+
+    A distinct value refused only because of the cap is recorded in dropped[field].
+    """
     text = _clean(value)
-    if not text or text in values or len(values) >= cap:
+    if not text or text in values:
+        return
+    if len(values) >= cap:
+        if dropped is not None:
+            dropped.setdefault(field, set()).add(text)
         return
     values.append(text)
+
+
+def _with_more(values: str, data: dict[str, Any], field: str) -> str:
+    """Append ' (+N more)' to rendered values when the field overflowed its cap."""
+    more = data.get("more")
+    if isinstance(more, dict) and more.get(field):
+        return f"{values} (+{more[field]} more)"
+    return values
+
+
+def _more_out(out: dict[str, Any], acc: dict[str, Any]) -> dict[str, Any]:
+    """Add the 'more' overflow counts to a projection, only when a cap was hit."""
+    dropped = acc.get("dropped") or {}
+    more = {field: len(vals) for field, vals in sorted(dropped.items()) if vals}
+    if out and more:
+        out["more"] = more
+    return out
 
 
 def detect_shape(alert: dict[str, Any]) -> str:
@@ -138,11 +166,11 @@ def detect_shape(alert: dict[str, Any]) -> str:
 def _empty_shape_acc(shape: str) -> dict[str, Any]:
     """Create the empty per-shape accumulator dict."""
     if shape == "syscheck":
-        return {"paths": [], "events": [], "changed": []}
+        return {"paths": [], "events": [], "changed": [], "dropped": {}}
     if shape == "dpkg":
-        return {"entries": {}}
+        return {"entries": {}, "dropped": {}}
     if shape == "netstat":
-        return {"added": [], "removed": []}
+        return {"added": [], "removed": [], "dropped": {}}
     if shape == "docker":
         return {
             "containers": [],
@@ -150,9 +178,16 @@ def _empty_shape_acc(shape: str) -> dict[str, Any]:
             "signals": [],
             "compose": [],
             "images": [],
+            "dropped": {},
         }
     if shape == "vulnerability":
-        return {"statuses": {}, "versions": [], "severities": [], "score_bases": []}
+        return {
+            "statuses": {},
+            "versions": [],
+            "severities": [],
+            "score_bases": [],
+            "dropped": {},
+        }
     if shape == "firewall":
         return {
             "actions": [],
@@ -169,8 +204,9 @@ def _empty_shape_acc(shape: str) -> dict[str, Any]:
             "sources_total": 0,
             "sources_distinct": set(),
             "sources_by_version": {"ipv4": set(), "ipv6": set()},
+            "dropped": {},
         }
-    return {"srcips": [], "dstusers": []}
+    return {"srcips": [], "dstusers": [], "dropped": {}}
 
 
 def _accumulate_syscheck(acc: dict[str, Any], alert: dict[str, Any]) -> None:
@@ -179,12 +215,22 @@ def _accumulate_syscheck(acc: dict[str, Any], alert: dict[str, Any]) -> None:
     syscheck = source.get("syscheck")
     if not isinstance(syscheck, dict):
         return
-    _add_unique(acc["paths"], syscheck.get("path"))
-    _add_unique(acc["events"], syscheck.get("event"))
+    _add_unique(
+        acc["paths"],
+        syscheck.get("path"),
+        dropped=acc["dropped"], field="paths",
+    )
+    _add_unique(
+        acc["events"],
+        syscheck.get("event"),
+        dropped=acc["dropped"], field="events",
+    )
     changed = syscheck.get("changed_attributes")
     if isinstance(changed, list):
         for attribute in changed:
-            _add_unique(acc["changed"], attribute)
+            _add_unique(
+                acc["changed"], attribute, dropped=acc["dropped"], field="changed"
+            )
 
 
 def _dpkg_fields(alert: dict[str, Any]) -> tuple[str, str, str] | None:
@@ -229,6 +275,7 @@ def _accumulate_dpkg(acc: dict[str, Any], alert: dict[str, Any]) -> None:
     key = f"{package} {version}"
     entries: dict[str, list[str]] = acc["entries"]
     if key not in entries and len(entries) >= MAX_EVIDENCE_VALUES:
+        acc["dropped"].setdefault("packages", set()).add(key)
         return
     statuses = entries.setdefault(key, [])
     if status:
@@ -264,12 +311,17 @@ def _parse_netstat_log(log: Any) -> dict[str, dict[str, Any]]:
 
 
 def _add_netstat_entry(
-    entries: list[dict[str, Any]], entry: dict[str, Any]
+    entries: list[dict[str, Any]],
+    entry: dict[str, Any],
+    dropped: dict[str, set[str]] | None = None,
+    field: str = "",
 ) -> None:
     """Append a distinct netstat diff entry, bounded by the netstat cap."""
     if any(existing["label"] == entry["label"] for existing in entries):
         return
     if len(entries) >= MAX_EVIDENCE_NETSTAT_VALUES:
+        if dropped is not None:
+            dropped.setdefault(field, set()).add(entry["label"])
         return
     entries.append(entry)
 
@@ -290,10 +342,10 @@ def _accumulate_netstat(acc: dict[str, Any], alert: dict[str, Any]) -> None:
         return
     for key, entry in current_entries.items():
         if key not in previous_entries:
-            _add_netstat_entry(acc["added"], entry)
+            _add_netstat_entry(acc["added"], entry, acc["dropped"], "added")
     for key, entry in previous_entries.items():
         if key not in current_entries:
-            _add_netstat_entry(acc["removed"], entry)
+            _add_netstat_entry(acc["removed"], entry, acc["dropped"], "removed")
 
 
 def _compose_fields(attrs: dict[str, Any]) -> tuple[str, str]:
@@ -324,15 +376,33 @@ def _accumulate_docker(acc: dict[str, Any], alert: dict[str, Any]) -> None:
     actor = actor if isinstance(actor, dict) else {}
     attrs = actor.get("Attributes")
     attrs = attrs if isinstance(attrs, dict) else {}
-    _add_unique(acc["actions"], docker.get("Action"))
-    _add_unique(acc["containers"], attrs.get("name"))
-    _add_unique(acc["signals"], attrs.get("signal"))
-    _add_unique(acc["images"], attrs.get("image"))
+    _add_unique(
+        acc["actions"], docker.get("Action"), dropped=acc["dropped"], field="actions"
+    )
+    _add_unique(
+        acc["containers"], attrs.get("name"), dropped=acc["dropped"], field="containers"
+    )
+    _add_unique(
+        acc["signals"], attrs.get("signal"), dropped=acc["dropped"], field="signals"
+    )
+    _add_unique(
+        acc["images"], attrs.get("image"), dropped=acc["dropped"], field="images"
+    )
     project, service = _compose_fields(attrs)
     if project and service:
-        _add_unique(acc["compose"], f"{project}/{service}")
+        _add_unique(
+            acc["compose"],
+            f"{project}/{service}",
+            dropped=acc["dropped"],
+            field="compose",
+        )
     elif project or service:
-        _add_unique(acc["compose"], project or service)
+        _add_unique(
+            acc["compose"],
+            project or service,
+            dropped=acc["dropped"],
+            field="compose",
+        )
 
 
 def _accumulate_vulnerability(acc: dict[str, Any], alert: dict[str, Any]) -> None:
@@ -350,15 +420,27 @@ def _accumulate_vulnerability(acc: dict[str, Any], alert: dict[str, Any]) -> Non
         statuses[status] = statuses.get(status, 0) + 1
     package = vuln.get("package")
     if isinstance(package, dict):
-        _add_unique(acc["versions"], package.get("version"))
+        _add_unique(
+            acc["versions"],
+            package.get("version"),
+            dropped=acc["dropped"],
+            field="versions",
+        )
     severity = _clean(vuln.get("severity"))
     if severity not in _EXCLUDED_SEVERITIES:
-        _add_unique(acc["severities"], severity)
+        _add_unique(
+            acc["severities"], severity, dropped=acc["dropped"], field="severities"
+        )
     score = vuln.get("score")
     if isinstance(score, dict):
         base = _clean(score.get("base"))
         if base not in _EXCLUDED_SCORE_BASES:
-            _add_unique(acc["score_bases"], base)
+            _add_unique(
+                acc["score_bases"],
+                base,
+                dropped=acc["dropped"],
+                field="score_bases",
+            )
 
 
 def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
@@ -407,11 +489,19 @@ def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
             src = _clean(version_fields[6])
             dst = _clean(version_fields[7])
 
-        _add_unique(acc["actions"], action)
-        _add_unique(acc["directions"], direction)
-        _add_unique(acc["interfaces"], interface)
-        _add_unique(acc["ipversions"], ipversion)
-        _add_unique(acc["protocols"], protoname)
+        _add_unique(acc["actions"], action, dropped=acc["dropped"], field="actions")
+        _add_unique(
+            acc["directions"], direction, dropped=acc["dropped"], field="directions"
+        )
+        _add_unique(
+            acc["interfaces"], interface, dropped=acc["dropped"], field="interfaces"
+        )
+        _add_unique(
+            acc["ipversions"], ipversion, dropped=acc["dropped"], field="ipversions"
+        )
+        _add_unique(
+            acc["protocols"], protoname, dropped=acc["dropped"], field="protocols"
+        )
         src_scope = _classify_ip_scope(src)
         if src_scope:
             acc["src_scopes"].add(src_scope)
@@ -422,7 +512,9 @@ def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
             acc["direction_scopes"].setdefault(direction, set()).add(
                 (src_scope, dst_scope)
             )
-        _add_unique(acc["destinations"], dst)
+        _add_unique(
+            acc["destinations"], dst, dropped=acc["dropped"], field="destinations"
+        )
 
         if src:
             _add_unique(acc["sources"], src)
@@ -434,7 +526,12 @@ def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
             port_start = 9 + version_slice_len
             if len(fields) >= port_start + 3:
                 dstport = _clean(fields[port_start + 1])
-                _add_unique(acc["dstports"], dstport)
+                _add_unique(
+                    acc["dstports"],
+                    dstport,
+                    dropped=acc["dropped"],
+                    field="dstports",
+                )
 
 
 def _accumulate_generic(acc: dict[str, Any], alert: dict[str, Any]) -> None:
@@ -450,8 +547,15 @@ def _accumulate_generic(acc: dict[str, Any], alert: dict[str, Any]) -> None:
         except ValueError:
             pass
         else:
-            _add_unique(acc["srcips"], srcip)
-    _add_unique(acc["dstusers"], data.get("dstuser"))
+            _add_unique(
+                acc["srcips"], srcip, dropped=acc["dropped"], field="srcips"
+            )
+    _add_unique(
+        acc["dstusers"],
+        data.get("dstuser"),
+        dropped=acc["dropped"],
+        field="dstusers",
+    )
 
 
 _SHAPE_ACCUMULATORS = {
@@ -493,7 +597,7 @@ def _project_syscheck(acc: dict[str, Any]) -> dict[str, Any]:
         out["changed"] = changed
     if paths:
         out["paths"] = paths
-    return out
+    return _more_out(out, acc)
 
 
 def _project_dpkg(acc: dict[str, Any]) -> dict[str, Any]:
@@ -507,7 +611,7 @@ def _project_dpkg(acc: dict[str, Any]) -> dict[str, Any]:
             rendered.append(f"{key}: {', '.join(sorted(statuses))}")
         else:
             rendered.append(key)
-    return {"packages": sorted(rendered)}
+    return _more_out({"packages": sorted(rendered)}, acc)
 
 
 def _render_port(entry: dict[str, Any]) -> str:
@@ -525,7 +629,7 @@ def _project_netstat(acc: dict[str, Any]) -> dict[str, Any]:
         out["added"] = sorted(_render_port(entry) for entry in acc["added"])
     if acc["removed"]:
         out["removed"] = sorted(_render_port(entry) for entry in acc["removed"])
-    return out
+    return _more_out(out, acc)
 
 
 def _project_docker(acc: dict[str, Any]) -> dict[str, Any]:
@@ -534,7 +638,7 @@ def _project_docker(acc: dict[str, Any]) -> dict[str, Any]:
     for field in ("containers", "actions", "signals", "compose", "images"):
         if acc[field]:
             out[field] = sorted(acc[field])
-    return out
+    return _more_out(out, acc)
 
 
 def _project_vulnerability(acc: dict[str, Any]) -> dict[str, Any]:
@@ -545,7 +649,7 @@ def _project_vulnerability(acc: dict[str, Any]) -> dict[str, Any]:
     for field in ("versions", "severities", "score_bases"):
         if acc[field]:
             out[field] = sorted(acc[field])
-    return out
+    return _more_out(out, acc)
 
 
 def _project_firewall(acc: dict[str, Any]) -> dict[str, Any]:
@@ -581,7 +685,7 @@ def _project_firewall(acc: dict[str, Any]) -> dict[str, Any]:
             direction: sorted([list(pair) for pair in pairs])[:2]
             for direction, pairs in sorted(acc["direction_scopes"].items())
         }
-    return out
+    return _more_out(out, acc)
 
 
 def _project_generic(acc: dict[str, Any]) -> dict[str, Any]:
@@ -591,7 +695,7 @@ def _project_generic(acc: dict[str, Any]) -> dict[str, Any]:
         out["srcips"] = sorted(acc["srcips"])
     if acc["dstusers"]:
         out["dstusers"] = sorted(acc["dstusers"])
-    return out
+    return _more_out(out, acc)
 
 
 _SHAPE_PROJECTORS = {
@@ -630,28 +734,55 @@ def _render_syscheck(data: dict[str, Any]) -> list[str]:
     if data.get("content"):
         parts.append("content " + _sanitise(data["content"]))
     if data.get("events"):
-        parts.append("event " + ", ".join(_sanitise(e) for e in data["events"]))
+        parts.append(
+            "event "
+            + _with_more(
+                ", ".join(_sanitise(e) for e in data["events"]), data, "events"
+            )
+        )
     if data.get("changed"):
         parts.append(
-            "changed " + ", ".join(_sanitise(a) for a in data["changed"])
+            "changed "
+            + _with_more(
+                ", ".join(_sanitise(a) for a in data["changed"]), data, "changed"
+            )
         )
     if data.get("paths"):
-        parts.append("paths " + ", ".join(_sanitise(p) for p in data["paths"]))
+        parts.append(
+            "paths "
+            + _with_more(
+                ", ".join(_sanitise(p) for p in data["paths"]), data, "paths"
+            )
+        )
     return parts
 
 
 def _render_dpkg(data: dict[str, Any]) -> list[str]:
     """Render dpkg evidence entries."""
-    return [_sanitise(entry) for entry in data.get("packages", [])]
+    parts = [_sanitise(entry) for entry in data.get("packages", [])]
+    more = data.get("more")
+    if parts and isinstance(more, dict) and more.get("packages"):
+        parts[-1] += f" (+{more['packages']} more packages)"
+    return parts
 
 
 def _render_netstat(data: dict[str, Any]) -> list[str]:
     """Render netstat evidence fields."""
     parts = []
     if data.get("added"):
-        parts.append("opened " + ", ".join(_sanitise(e) for e in data["added"]))
+        parts.append(
+            "opened "
+            + _with_more(
+                ", ".join(_sanitise(e) for e in data["added"]), data, "added"
+            )
+        )
     if data.get("removed"):
-        parts.append("closed " + ", ".join(_sanitise(e) for e in data["removed"]))
+        parts.append(
+            "closed "
+            + _with_more(
+                ", ".join(_sanitise(e) for e in data["removed"]), data, "removed"
+            )
+        )
     return parts
 
 
@@ -670,7 +801,11 @@ def _render_docker(data: dict[str, Any]) -> list[str]:
     for field, label in _DOCKER_LABELS:
         if data.get(field):
             parts.append(
-                label + " " + ", ".join(_sanitise(v) for v in data[field])
+                label
+                + " "
+                + _with_more(
+                    ", ".join(_sanitise(v) for v in data[field]), data, field
+                )
             )
     return parts
 
@@ -694,7 +829,11 @@ def _render_vulnerability(data: dict[str, Any]) -> list[str]:
     ):
         if data.get(field):
             parts.append(
-                label + " " + ", ".join(_sanitise(v) for v in data[field])
+                label
+                + " "
+                + _with_more(
+                    ", ".join(_sanitise(v) for v in data[field]), data, field
+                )
             )
     return parts
 
@@ -724,15 +863,28 @@ def _render_firewall(data: dict[str, Any], plain_labels: bool = False) -> list[s
     parts = []
     if data.get("actions"):
         parts.append(
-            "action " + ", ".join(_sanitise(v) for v in data["actions"])
+            "action "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["actions"]), data, "actions"
+            )
         )
     if data.get("directions"):
         parts.append(
-            f"{label('dir')} " + ", ".join(_sanitise(v) for v in data["directions"])
+            f"{label('dir')} "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["directions"]),
+                data,
+                "directions",
+            )
         )
     if data.get("interfaces"):
         parts.append(
-            f"{label('iface')} " + ", ".join(_sanitise(v) for v in data["interfaces"])
+            f"{label('iface')} "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["interfaces"]),
+                data,
+                "interfaces",
+            )
         )
     src_scopes = data.get("src_scopes") or []
     dst_scopes = data.get("dst_scopes") or []
@@ -749,10 +901,18 @@ def _render_firewall(data: dict[str, Any], plain_labels: bool = False) -> list[s
         dst_side = ", ".join(dst_scopes)
         parts.append(f"scope {src_side} → {dst_side}")
     if data.get("ipversions"):
-        parts.append(f"{label('ip versions')} " + ", ".join(sorted(data["ipversions"])))
+        parts.append(
+            f"{label('ip versions')} "
+            + _with_more(
+                ", ".join(sorted(data["ipversions"])), data, "ipversions"
+            )
+        )
     if data.get("protocols"):
         parts.append(
-            f"{label('proto')} " + ", ".join(_sanitise(v) for v in data["protocols"])
+            f"{label('proto')} "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["protocols"]), data, "protocols"
+            )
         )
     sources = data.get("sources")
     if sources:
@@ -769,11 +929,19 @@ def _render_firewall(data: dict[str, Any], plain_labels: bool = False) -> list[s
         parts.append(src_part)
     if data.get("destinations"):
         parts.append(
-            f"{label('dst')} " + ", ".join(_sanitise(v) for v in data["destinations"])
+            f"{label('dst')} "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["destinations"]),
+                data,
+                "destinations",
+            )
         )
     if data.get("dstports"):
         parts.append(
-            f"{label('dport')} " + ", ".join(_sanitise(v) for v in data["dstports"])
+            f"{label('dport')} "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["dstports"]), data, "dstports"
+            )
         )
     return parts
 
@@ -782,10 +950,18 @@ def _render_generic(data: dict[str, Any]) -> list[str]:
     """Render generic evidence fields."""
     parts = []
     if data.get("srcips"):
-        parts.append("srcip " + ", ".join(_sanitise(v) for v in data["srcips"]))
+        parts.append(
+            "srcip "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["srcips"]), data, "srcips"
+            )
+        )
     if data.get("dstusers"):
         parts.append(
-            "dstuser " + ", ".join(_sanitise(v) for v in data["dstusers"])
+            "dstuser "
+            + _with_more(
+                ", ".join(_sanitise(v) for v in data["dstusers"]), data, "dstusers"
+            )
         )
     return parts
 
@@ -812,7 +988,8 @@ def _render_per_host(data: dict[str, Any], plain_labels: bool = False) -> list[s
                     inner_parts.extend(renderer(inner))
         inner = "; ".join(inner_parts)
         if len(inner) > MAX_EVIDENCE_HOST_CHARS:
-            inner = inner[: MAX_EVIDENCE_HOST_CHARS - 1] + _ELLIPSIS
+            cut = truncate_words(inner, MAX_EVIDENCE_HOST_CHARS)
+            inner = cut[: -len(_ELLIPSIS)].rstrip(",; ") + _ELLIPSIS
         segments.append(f"[{_sanitise(host)}: {inner}]")
     if not segments:
         return []

@@ -941,3 +941,118 @@ def test_plain_labels_reach_per_host_firewall_evidence() -> None:
     assert "destination port 443" in render_evidence(evidence, plain_labels=True)
     assert "dport 443" in render_evidence(evidence)
     assert "destination port" not in render_evidence(evidence)
+
+# --- visible truncation markers ---
+
+
+def test_dpkg_overflow_renders_more_packages_marker() -> None:
+    """More than five distinct packages renders '(+N more packages)'."""
+    alerts = [_dpkg_alert(package=f"pkg{i}") for i in range(8)]
+    cluster = _only_cluster(alerts)
+    dpkg = cluster["evidence"]["dpkg"]
+    assert len(dpkg["packages"]) == MAX_EVIDENCE_VALUES
+    assert dpkg["more"] == {"packages": 3}
+    assert render_evidence(cluster["evidence"]).endswith("(+3 more packages)")
+
+
+def test_syscheck_paths_overflow_renders_more_marker() -> None:
+    """Syscheck paths beyond the cap render '(+N more)' after the shown paths."""
+    alerts = [_syscheck_alert(path=f"/etc/f{i}") for i in range(7)]
+    cluster = _only_cluster(alerts)
+    syscheck = cluster["evidence"]["syscheck"]
+    assert syscheck["more"] == {"paths": 2}
+    assert "paths /etc/f0, /etc/f1, /etc/f2, /etc/f3, /etc/f4 (+2 more)" in (
+        render_evidence(cluster["evidence"])
+    )
+
+
+def test_netstat_overflow_renders_more_marker() -> None:
+    """Netstat ports beyond the cap of three render '(+N more)'."""
+    previous = "tcp 0.0.0.0:22 0.0.0.0:* 1/systemd"
+    current_lines = [previous] + [
+        f"tcp 127.0.0.1:{50000 + i} 0.0.0.0:* {100 + i}/svc{i}" for i in range(5)
+    ]
+    cluster = _only_cluster([_netstat_alert("\n".join(current_lines), previous)])
+    netstat = cluster["evidence"]["netstat"]
+    assert netstat["more"] == {"added": 2}
+    assert "(+2 more)" in render_evidence(cluster["evidence"])
+
+
+def test_no_more_key_when_no_cap_hit() -> None:
+    """Within the caps there is no 'more' key and rendering is unchanged."""
+    alerts = [_syscheck_alert(path=f"/etc/f{i}") for i in range(5)]
+    cluster = _only_cluster(alerts)
+    assert "more" not in cluster["evidence"]["syscheck"]
+    rendered = render_evidence(cluster["evidence"])
+    assert "more" not in rendered
+    assert "paths /etc/f0, /etc/f1, /etc/f2, /etc/f3, /etc/f4" in rendered
+
+
+def test_repeated_dropped_values_counted_once() -> None:
+    """A refused value seen many times is counted once in 'more'."""
+    alerts = [_syscheck_alert(path=f"/etc/f{i}") for i in range(5)]
+    alerts += [_syscheck_alert(path="/etc/extra") for _ in range(4)]
+    cluster = _only_cluster(alerts)
+    assert cluster["evidence"]["syscheck"]["more"] == {"paths": 1}
+
+
+def test_per_host_segment_carries_more_marker() -> None:
+    """The overflow marker appears inside the per-host segment."""
+    alerts = [
+        _alert(
+            description="Integrity checksum changed.",
+            level=7,
+            rule_id="550",
+            groups=["ossec", "syscheck"],
+            agent="kamaji",
+            syscheck={"path": f"/e/{i}", "event": "modified"},
+        )
+        for i in range(7)
+    ]
+    alerts.append(
+        _alert(
+            description="Integrity checksum changed.",
+            level=7,
+            rule_id="550",
+            groups=["ossec", "syscheck"],
+            agent="OPNsense",
+            syscheck={"path": "/etc/passwd", "event": "modified"},
+        )
+    )
+    cluster = _only_cluster(alerts)
+    per_host = cluster["evidence"]["per_host"]
+    assert per_host["kamaji"]["syscheck"]["more"] == {"paths": 2}
+    assert "more" not in per_host["OPNsense"]["syscheck"]
+    rendered = render_evidence(cluster["evidence"])
+    segment = rendered.split("[kamaji: ", 1)[1].split("]", 1)[0]
+    assert "(+2 more)" in segment
+
+
+def test_per_host_cut_at_word_boundary() -> None:
+    """An over-long per-host segment is cut at a word boundary, not mid-word."""
+    evidence_dict = {
+        "per_host": {
+            "h": {
+                "syscheck": {
+                    "content": "unchanged",
+                    "events": ["modified"],
+                    "changed": ["inode"],
+                    "paths": ["/etc/aaaaaaaa", "/etc/bbbbbbbb", "/etc/cccccccc"] * 4,
+                }
+            }
+        }
+    }
+    rendered = render_evidence(evidence_dict)
+    segment = rendered.split("[h: ", 1)[1]
+    assert segment.endswith("…]")
+    body = segment[:-2]
+    assert len(body) < 120
+    assert not body.endswith(",")
+    last = body.split(" ")[-1].rstrip(",;")
+    assert last in {"/etc/aaaaaaaa", "/etc/bbbbbbbb", "/etc/cccccccc"}
+
+
+def test_evidence_absent_when_nothing_extracted() -> None:
+    """With nothing extractable the 'evidence' key stays absent."""
+    cluster = _only_cluster([_alert(description="Plain")])
+    assert "evidence" not in cluster

@@ -1196,11 +1196,23 @@ def _build_prompt(
         if cluster.get("evidence"):
             rendered_evidence = evidence.render_evidence(cluster["evidence"])
             if rendered_evidence:
-                if len(rendered_evidence) > evidence.MAX_EVIDENCE_LINE_CHARS:
-                    rendered_evidence = (
-                        rendered_evidence[: evidence.MAX_EVIDENCE_LINE_CHARS - 1]
-                        + "…"
+                limit = evidence.MAX_EVIDENCE_LINE_CHARS
+                if len(rendered_evidence) > limit:
+                    ev = cluster["evidence"]
+                    host_part = evidence.render_evidence(
+                        {"per_host": ev["per_host"]} if "per_host" in ev else None
                     )
+                    combined = evidence.render_evidence(
+                        {k: v for k, v in ev.items() if k != "per_host"}
+                    )
+                    budget = limit - len(host_part) - 2
+                    if host_part and combined and budget > 1:
+                        # Keep the per-host part whole; cut only the combined part.
+                        rendered_evidence = (
+                            combined[: budget - 1] + "…; " + host_part
+                        )
+                    else:
+                        rendered_evidence = rendered_evidence[: limit - 1] + "…"
                 line += f" — evidence: {rendered_evidence}"
         if cluster.get("notes"):
             line += " — notes: " + "; ".join(cluster["notes"])

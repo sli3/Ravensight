@@ -345,3 +345,25 @@ def test_module_constants() -> None:
     assert trending.ANOMALY_MIN_PRIOR == 3
     assert trending.ANOMALY_SIGMA == 2.0
     assert trending.DEFAULT_MAX_ROWS == 25
+
+
+def test_sigma_note_under_anomalies_heading() -> None:
+    """The sigma explanation sits directly under the Anomalies heading."""
+    output = _generate(
+        _run(4, {"rule|spike": 1}),
+        _run(3, {"rule|spike": 2}),
+        _run(2, {"rule|spike": 3}),
+        _run(1, {"rule|spike": 20}),
+    )
+    after = output.split("### Anomalies\n\n", 1)[1]
+    assert after.startswith("> σ (sigma) shows how many standard deviations")
+    assert after.index("> σ (sigma)") < after.index("- **")
+
+
+def test_no_sigma_note_without_anomalies() -> None:
+    """With no anomalies there is no sigma note."""
+    output = _generate(
+        _run(2, {"rule|young": 1}),
+        _run(1, {"rule|young": 50}),
+    )
+    assert "σ (sigma)" not in output

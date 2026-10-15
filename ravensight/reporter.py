@@ -128,6 +128,7 @@ _GLOSSARY: list[tuple[str, str, str]] = [
     ("dpkg", "The Debian and Ubuntu package manager.", r"(?i)\bdpkg\b"),
     ("MITRE ATT&CK", "A public catalogue of attacker tactics and techniques.", r"## MITRE ATT&CK Tags"),
     ("IPv4 and IPv6", "Internet Protocol versions 4 and 6, the two IP address formats.", r"(?i)\bipv[46]\b"),
+    ("σ (sigma)", "Standard deviation: the usual size of day-to-day swings. +2.4σ means the latest count is 2.4 swings above the average of the previous days.", r"σ"),
 ]
 
 

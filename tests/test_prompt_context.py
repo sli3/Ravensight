@@ -383,3 +383,34 @@ def test_unknown_severity_not_rendered(captured_prompt: dict[str, Any]) -> None:
     assert f"- {old} (High): High-sev entry" in stored
     assert "(unknown)" not in stored
     assert "(): " not in stored
+
+
+def test_prompt_per_host_segment_survives_long_combined_line() -> None:
+    """The per-host part stays whole when the combined fields are cut."""
+    cluster = {
+        "id": "C1",
+        "type": "rule",
+        "description": "Integrity checksum changed.",
+        "rule_ids": ["550"],
+        "hosts": ["h1", "h2"],
+        "count": 5,
+        "max_level": 7,
+        "severity": "Medium",
+        "first_seen": "2026-09-24T08:15:00.000Z",
+        "last_seen": "2026-09-24T10:30:00.000Z",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+        "evidence": {
+            "syscheck": {"paths": [f"/etc/{'p' * 90}{i}" for i in range(5)]},
+            "per_host": {"h1": {"syscheck": {"paths": ["/etc/one"]}}},
+        },
+    }
+    prompt_text = _build_prompt([], {}, clusters=[cluster])
+    cluster_line = next(
+        line for line in prompt_text.splitlines() if line.startswith("[C1]")
+    )
+    segment = cluster_line.split(" — evidence: ", 1)[1]
+    assert len(segment) == MAX_EVIDENCE_LINE_CHARS
+    assert segment.endswith("per host [h1: paths /etc/one]")
