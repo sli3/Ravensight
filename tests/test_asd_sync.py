@@ -1,5 +1,5 @@
 """
-Tests for scripts/asd_sync.py (Build 2b).
+Tests for scripts/asd_sync.py.
 
 No network, no real sleeps — requests.get and RETRY_DELAY_SECONDS are patched.
 """

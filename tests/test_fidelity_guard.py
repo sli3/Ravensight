@@ -1,5 +1,5 @@
 """
-Tests for the Build 1e fidelity guard in ravensight.analyser.
+Tests for the fidelity guard in ravensight.analyser.
 
 The guard flags narrative/recommendation tokens that the cluster's own
 evidence cannot support. No network, no LLM.
@@ -202,7 +202,7 @@ def test_technique_id_in_notes_not_flagged() -> None:
     assert flags == ["T1078"]
 
 
-# --- ISM control id checks (Build 2b) ---
+# --- ISM control id checks ---
 
 
 def test_unknown_ism_id_flagged() -> None:

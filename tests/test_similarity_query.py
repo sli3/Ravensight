@@ -1,5 +1,5 @@
 """
-Tests for the bounded similarity query text (Build 1b-fix).
+Tests for the bounded similarity query text.
 
 No network — the OpenAI client is monkeypatched and a capturing
 stand-in embedder records what analyse() sends to retrieve_similar().

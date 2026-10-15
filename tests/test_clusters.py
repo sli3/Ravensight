@@ -1,5 +1,5 @@
 """
-Tests for data-built alert clustering (Build 1b).
+Tests for data-built alert clustering.
 
 Fixtures use documented Wazuh alert shapes only — no live fetch, no network.
 """

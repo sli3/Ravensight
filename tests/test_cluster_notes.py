@@ -1,5 +1,5 @@
 """
-Tests for data-built cluster notes (Build 1d): the notes field default, dpkg
+Tests for data-built cluster notes: the notes field default, dpkg
 upgrade-sequence pairing, and the rule 87702 IPv6 artefact note.
 
 Fixtures are redacted real alerts loaded from tests/fixtures/; synthetic

@@ -1,4 +1,4 @@
-"""Tests for scripts/eval_prompt.py scoring and row shape (Build 1e).
+"""Tests for scripts/eval_prompt.py scoring and row shape.
 
 No LLM, no network: analyser.analyse() and the config/ping helpers are
 monkeypatched.
@@ -150,7 +150,7 @@ def test_error_row_is_only_error_key(
     assert "RuntimeError" in rows[0]["error"]
 
 
-# --- negation-aware scoring (Build 2a) ---
+# --- negation-aware scoring ---
 
 
 def test_unnegated_count_basic_cases() -> None:
