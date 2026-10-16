@@ -46,6 +46,8 @@ The base project is complete. All modules are working end-to-end:
 | Wazuh Manager Login Removal | ✅ Complete | Unused Wazuh manager API login removed from `ravensight/wazuh_client.py` (`_authenticate`, `_ensure_authenticated`, token fields), `user` and `password` no longer required, and `WAZUH_API_USER`, `WAZUH_API_PASSWORD` and `WAZUH_PORT` dropped from the template and entrypoint (commit `3e22fcd`). `indexer_password` now defaults to an empty string. |
 | Alert Cap Warning | ✅ Complete | `Client.fetch_alerts` sets `track_total_hits` and `Client._matched_total` logs one warning when the matched total exceeds the fetched count, so the 10,000-alert cap is no longer silent (commit `3e22fcd`). Warning only, no pagination. |
 | Data File Loader Hardening | ✅ Complete | `_load_mitre_tactics`, `_load_platform_hints` and `_load_asd_data` in `ravensight/analyser.py` return an empty result with a warning when a data file is unreadable, not valid UTF-8 or the wrong shape, instead of aborting the run; 12 new tests (commit `b255ebf`). |
+| Wazuh Indexer Connection Mode Log Line (section 18) | ✅ Complete | `Client.__init__` in `ravensight/wazuh_client.py` logs one INFO line with host, port and the configured TLS mode (CA file, bundled public CA list, or encrypted but not verified), never a negotiated protocol and never the user or password; four new caplog tests in `tests/test_wazuh_client.py`; 596 tests pass (commit `381237a`). Seen in a live Docker run: `HTTPS, encrypted but certificate not verified (indexer_verify_tls = false)`. |
+| Structured JSON Report Output (section 17) | 🔶 In progress | Session 1 done (uncommitted at time of update): `Reporter.generate()` in `ravensight/reporter.py` writes a `.json` file beside the markdown report (`schema_version` 1, `generated_at`, `run`, `findings`, `trends_markdown`, `e8_status`, `finding_pointers`, `matched_controls`, `attestation` when present) through `_write_json`, which logs a warning and carries on if the write fails; new optional `run_params` argument; README JSON section; 16 new tests in `tests/test_reporter_json.py`; markdown output proved byte-identical; 612 tests pass. Session 2 (the `[reports] json_output` switch and `main.py` passing the run parameters) is not started. Known limitations are listed in section 17. |
 
 ---
 
@@ -1101,6 +1103,9 @@ Decisions (agreed with Prin):
   and attestation), never by parsing the rendered markdown
 - The file carries a `schema_version` field so a future viewer can detect changes
 - No new network service and no new dependency (standard library `json` only)
+- Session 1 carries trends as the rendered markdown string (key `trends_markdown`,
+  `null` when absent), because the reporter receives trends as text. Structured
+  trends are a later session
 
 #### Session 1 — Define and write the JSON
 
@@ -1109,7 +1114,7 @@ In scope:
   and writes it as UTF-8 JSON beside the markdown report; `generate()` calls it
   after the markdown file is written and still returns the markdown path
 - The dict holds: `schema_version`, generation time (UTC), the run window and
-  filters (hours, agent, level), the findings (id, verdict, narrative, hosts,
+  filters (hours, agent, level), the findings (id, severity, recommendation, narrative, hosts,
   times, evidence, CVEs, notes), trends, E8 status per strategy, per-finding
   control pointers, and attestation when present
 - A short description of the schema in `README.md`
@@ -1127,7 +1132,8 @@ In scope:
 - `config.example.toml` and `config.template.toml`: a `[reports] json_output`
   boolean (default `true`), plus the matching Docker entrypoint export if the
   template needs one
-- `main.py`: pass the setting to `Reporter`
+- `main.py`: pass the setting to `Reporter`, and pass the run parameters (hours,
+  agent, level) to `generate()`
 - `ravensight/config_check.py`: a light type check for the new key
 - Tests for each change
 
@@ -1143,6 +1149,27 @@ Out of scope for the whole section:
 - The web UI itself, authentication and charts
 - Any change to the markdown report content
 - Any change to the LLM prompt or analysis logic
+
+Known limitations after Session 1 (to improve in a later session, not yet planned):
+- Trends are carried as the rendered markdown string (`trends_markdown`), not as
+  structured data. Structured trends need `ravensight/trending.py` and `main.py`
+- `run` (hours, agent, level) is `null` in real runs until Session 2 wires `main.py`
+- In overwrite mode, if the JSON write fails on a same-day rerun, the previous
+  run's `.json` stays beside the new markdown, and the only sign is a warning.
+  A later viewer could read stale data
+- Blank unattached findings are dropped from the JSON, as they are in the markdown,
+  which loses a little data from a machine-readable file
+- If the temporary `.json.tmp` file cannot be deleted during failure cleanup, the
+  `OSError` escapes `generate()` after the markdown is already written
+- A non-iterable `hosts`, `flags`, `notes` or `cves` value (malformed data) makes
+  the whole JSON be skipped with a warning, and a string value is split into
+  characters
+- `json.dumps` keeps its default `allow_nan=True`, so a NaN or infinity value
+  would be written as `NaN` or `Infinity`, which is not strictly valid JSON
+- The `reporter.py` module and `Reporter` class docstrings still describe
+  markdown only
+- The Docker image, entrypoint and compose files were not checked for the new
+  `.json` files, and the feature has not been run in a container
 
 ### 18. Wazuh Indexer Connection Mode Log Line
 
