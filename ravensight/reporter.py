@@ -2,6 +2,7 @@
 reporter.py — Markdown security report generation.
 """
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -416,6 +417,78 @@ def _render_asd_section(
     return "\n".join(lines)
 
 
+JSON_SCHEMA_VERSION = 1
+
+_CLUSTER_LIST_KEYS = ("hosts", "flags", "notes", "cves")
+_CLUSTER_SCALAR_KEYS = (
+    "id",
+    "severity",
+    "description",
+    "count",
+    "first_seen",
+    "last_seen",
+    "narrative",
+    "recommendation",
+    "evidence",
+)
+
+
+def _json_finding(finding: Any) -> dict[str, Any] | None:
+    """Map one finding (legacy string, cluster dict or unattached note) to a JSON-ready dict, or None to skip it."""
+    if isinstance(finding, str):
+        return {"type": "legacy", "text": finding}
+    if not isinstance(finding, dict):
+        return {"type": "legacy", "text": str(finding)}
+
+    if finding.get("type") == "unattached":
+        # Mirror the markdown, which drops unattached notes with no description.
+        if not str(finding.get("description", "")).strip():
+            return None
+        return {
+            "type": "unattached",
+            "description": finding.get("description", ""),
+            "recommendation": finding.get("recommendation"),
+        }
+
+    mapped: dict[str, Any] = {"type": finding.get("type") or "cluster"}
+    for key in _CLUSTER_SCALAR_KEYS:
+        mapped[key] = finding.get(key)
+    for key in _CLUSTER_LIST_KEYS:
+        mapped[key] = list(finding.get(key) or [])
+    return mapped
+
+
+def _build_json_payload(
+    data: dict[str, Any],
+    generated_at: datetime,
+    trends: str | None,
+    run_params: dict | None,
+    e8_scores: dict | None,
+    matched_controls: list | None,
+    finding_pointers: list | None,
+    attestation: dict | None,
+) -> dict[str, Any]:
+    """Build the plain dict written as the JSON report (no summary, MITRE tags or similar incidents)."""
+    findings = [
+        mapped
+        for mapped in (_json_finding(f) for f in data.get("findings", []))
+        if mapped is not None
+    ]
+    payload: dict[str, Any] = {
+        "schema_version": JSON_SCHEMA_VERSION,
+        "generated_at": generated_at.astimezone(timezone.utc).isoformat(),
+        "run": run_params,
+        "findings": findings,
+        "trends_markdown": trends or None,
+        "e8_status": e8_scores,
+        "finding_pointers": finding_pointers,
+        "matched_controls": matched_controls,
+    }
+    if attestation:
+        payload["attestation"] = attestation
+    return payload
+
+
 class Reporter:
     """Generates markdown security reports."""
 
@@ -448,9 +521,10 @@ class Reporter:
         matched_controls: list | None = None,
         finding_pointers: list | None = None,
         attestation: dict | None = None,
+        run_params: dict | None = None,
     ) -> Path:
         """
-        Generate markdown report from analysis data.
+        Generate markdown report from analysis data, plus a JSON file beside it.
 
         Args:
             data: Analysis or baseline dict with summary, findings, recommendations.
@@ -460,13 +534,15 @@ class Reporter:
             matched_controls: Optional list of matched ISM controls.
             finding_pointers: Optional per-finding ISM and Essential Eight pointers.
             attestation: Optional operator E8 attestation shown in the Essential Eight table.
+            run_params: Optional run window and filters, echoed under "run" in the JSON only.
 
         Returns:
-            Path of the written report file. It is written to a .tmp file first, then
-            renamed into place, so a failed write leaves no partial report.
+            Path of the written markdown report file. It is written to a .tmp file first,
+            then renamed into place, so a failed write leaves no partial report. A JSON
+            copy is written beside it with the .json suffix; a JSON failure only logs a warning.
 
         Raises:
-            OSError: If the report cannot be written.
+            OSError: If the markdown report cannot be written.
         """
         report = self._build_report(
             data,
@@ -496,7 +572,53 @@ class Reporter:
             tmp.unlink(missing_ok=True)
             raise
         logger.info(f"Report written to {filename}")
+        self._write_json(
+            filename.with_suffix(".json"),
+            data=data,
+            generated_at=now,
+            trends=trends,
+            run_params=run_params,
+            e8_scores=e8_scores,
+            matched_controls=matched_controls,
+            finding_pointers=finding_pointers,
+            attestation=attestation,
+        )
         return filename
+
+    def _write_json(
+        self,
+        json_path: Path,
+        *,
+        data: dict[str, Any],
+        generated_at: datetime,
+        trends: str | None,
+        run_params: dict | None,
+        e8_scores: dict | None,
+        matched_controls: list | None,
+        finding_pointers: list | None,
+        attestation: dict | None,
+    ) -> None:
+        """Write the JSON report beside the markdown; log a warning and carry on if it fails."""
+        tmp = json_path.with_name(json_path.name + ".tmp")
+        try:
+            payload = _build_json_payload(
+                data=data,
+                generated_at=generated_at,
+                trends=trends,
+                run_params=run_params,
+                e8_scores=e8_scores,
+                matched_controls=matched_controls,
+                finding_pointers=finding_pointers,
+                attestation=attestation,
+            )
+            text = json.dumps(payload, ensure_ascii=False, indent=2)
+            tmp.write_text(text + "\n", encoding="utf-8")
+            tmp.replace(json_path)
+        except (OSError, TypeError, ValueError) as err:
+            tmp.unlink(missing_ok=True)
+            logger.warning("JSON report not written to %s: %s", json_path, err)
+            return
+        logger.info(f"JSON report written to {json_path}")
 
     def _build_report(
         self,

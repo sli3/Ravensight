@@ -10,7 +10,7 @@
 
 A local-first security log analyser that pulls alerts from the Wazuh Indexer (OpenSearch) REST API,
 analyses them using a local LLM via llama.cpp, and generates structured
-markdown security reports with baseline memory tracking and historical trending.
+markdown security reports (plus a JSON copy) with baseline memory tracking and historical trending.
 
 > Named for Huginn and Muninn, Odin's ravens — sent out each day to watch the
 > world and report back what they see. Ravensight does the same for your logs.
@@ -23,7 +23,7 @@ markdown security reports with baseline memory tracking and historical trending.
   agent, or severity level
 - Analyses alert patterns using a **local LLM via llama.cpp** — no data leaves
   your network
-- Generates **markdown security reports** summarising threats, anomalies, and
+- Generates **markdown security reports** (plus a JSON copy) summarising threats, anomalies, and
   recommended actions
 - Maintains a **baseline memory** of normal behaviour so repeated noise is
   distinguished from genuine alerts
@@ -46,7 +46,7 @@ main.py               # Entry point — CLI and orchestration
 ravensight/
 ├── wazuh_client.py    # Wazuh Indexer (OpenSearch) REST API client
 ├── analyser.py        # LLM analysis via llama.cpp OpenAI-compatible API
-├── reporter.py        # Markdown report generation
+├── reporter.py        # Markdown report generation plus a JSON copy
 ├── baseline.py        # Baseline memory persistence (JSON store)
 ├── trending.py        # Historical trend analysis and anomaly detection
 ├── embedder.py        # ChromaDB vector store and embedding client
@@ -426,7 +426,8 @@ plain log lines instead.
 
 ## Reports
 
-Reports are saved to the `reports/` directory as markdown files. By default each
+Reports are saved to the `reports/` directory as markdown files, each with a
+JSON copy beside it (see [JSON report](#json-report)). By default each
 run writes `reports/<YYYY-MM-DD>/security_report_<HH-MM-SS>.md`, so reruns never
 overwrite. With `[reports] overwrite = true` the file is
 `reports/<YYYY-MM-DD>_security_report.md` and is overwritten on the same day.
@@ -439,6 +440,36 @@ Each report contains, in order:
 - **MITRE ATT&CK Tags** — tactics and techniques mapped to the period's findings
 - **Historical Trends** — slow-burn anomalies flagged across recent runs
 - **Recommendations** — LLM-generated response suggestions
+
+### JSON report
+
+Each run also writes a machine-readable JSON file with the same name as the
+markdown report and a `.json` suffix, for example
+`reports/<YYYY-MM-DD>/security_report_<HH-MM-SS>.json`, or
+`reports/<YYYY-MM-DD>_security_report.json` with `overwrite = true`. It is UTF-8
+and carries `"schema_version": 1`. Top-level keys:
+
+- `schema_version` — integer, currently `1`
+- `generated_at` — generation time in UTC (ISO 8601)
+- `run` — run window and filters as given by the caller, or `null` when none were passed
+- `findings` — a list; each item has a `type`. Clusters and vulnerabilities carry
+  `id`, `severity`, `description`, `count`, `hosts`, `first_seen`, `last_seen`,
+  `narrative`, `flags`, `evidence`, `notes`, `cves` and `recommendation`. LLM notes
+  not linked to alert data have `type` `"unattached"` with `description` and
+  `recommendation`. Plain-text findings from older baselines are
+  `{"type": "legacy", "text": ...}`
+- `trends_markdown` — the Historical Trends section as a markdown string (not
+  structured data), or `null`
+- `e8_status` — Essential Eight strategies with their status and related findings and
+  controls, or `null`
+- `finding_pointers` — per-finding Essential Eight and ISM control pointers, or `null`
+- `matched_controls` — matched ISM controls, or `null`
+- `attestation` — your Essential Eight attestation; the key is omitted when there is none
+
+`severity` and `recommendation` hold what the markdown shows. The summary, MITRE
+ATT&CK tags and similar past incidents are not in the JSON. The markdown is the
+primary output: if the JSON cannot be written, Ravensight logs a warning and the
+markdown report is still produced.
 
 ---
 
