@@ -1144,6 +1144,32 @@ Out of scope for the whole section:
 - Any change to the markdown report content
 - Any change to the LLM prompt or analysis logic
 
+### 18. Wazuh Indexer Connection Mode Log Line
+
+**What it does:**
+Ravensight tells the operator, at startup, how it is configured to connect to
+the Wazuh Indexer, so people can see which TLS mode they are using. It reports
+the configured mode only, never a negotiated protocol or handshake result.
+
+**Sessions: 1**
+
+#### Session 1 — One INFO line in Client.__init__
+
+In scope:
+- `ravensight/wazuh_client.py`: `Client.__init__`, after `indexer_verify` is
+  resolved, logs one INFO line with host, port and the configured mode: CA file
+  path, bundled public CA list, or encrypted but not verified
+  (`indexer_verify_tls = false`)
+- `tests/test_wazuh_client.py`: caplog tests for each mode, and one test that a
+  distinctive test user and password never appear in the logs
+
+Out of scope:
+- Any change to verify behaviour, `fetch_alerts` or the hard-coded `https://` URL
+- Any new config key, `ravensight/config_check.py`, `main.py`, `README.md` and
+  `.env.example`
+- Reporting a negotiated TLS version or cipher
+- `config.toml` and `config.example.toml`
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
