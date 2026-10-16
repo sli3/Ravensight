@@ -44,6 +44,23 @@ class Client:
         if self.indexer_verify is False:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+        target = f"{self.indexer_host}:{self.indexer_port}"
+        if isinstance(self.indexer_verify, str):
+            logger.info(
+                f"Wazuh Indexer {target}: HTTPS, certificate verified against "
+                f"CA file {self.indexer_verify}"
+            )
+        elif self.indexer_verify is True:
+            logger.info(
+                f"Wazuh Indexer {target}: HTTPS, certificate verified against "
+                "the bundled public CA list"
+            )
+        else:
+            logger.info(
+                f"Wazuh Indexer {target}: HTTPS, encrypted but certificate not "
+                "verified (indexer_verify_tls = false)"
+            )
+
     @staticmethod
     def _matched_total(hits: Any) -> int | None:
         """Return hits.total as an int from dict or int form, else None."""

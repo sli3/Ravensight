@@ -277,6 +277,67 @@ def test_blank_or_non_string_ca_path_is_unset(ca_path: Any) -> None:
     assert client.indexer_verify is False
 
 
+def _tls_info_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """Return the INFO records captured from the wazuh_client logger."""
+    return [
+        r
+        for r in caplog.records
+        if r.levelno == logging.INFO and r.name == wazuh_client.logger.name
+    ]
+
+
+def test_logs_ca_file_mode(caplog: pytest.LogCaptureFixture) -> None:
+    """A CA path logs one INFO line naming host, port and the CA file."""
+    with caplog.at_level(logging.INFO, logger=wazuh_client.logger.name):
+        wazuh_client.Client(
+            {**_BASE_CONFIG, "indexer_port": 9201, "indexer_ca_path": "/x/ca.pem"}
+        )
+    records = _tls_info_records(caplog)
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "example.invalid" in message
+    assert "9201" in message
+    assert "CA file /x/ca.pem" in message
+
+
+def test_logs_bundled_ca_mode(caplog: pytest.LogCaptureFixture) -> None:
+    """indexer_verify_tls = true logs one INFO line naming the bundled CA list."""
+    with caplog.at_level(logging.INFO, logger=wazuh_client.logger.name):
+        wazuh_client.Client({**_BASE_CONFIG, "indexer_verify_tls": True})
+    records = _tls_info_records(caplog)
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "example.invalid" in message
+    assert "9200" in message
+    assert "bundled public CA list" in message
+
+
+def test_logs_not_verified_mode(caplog: pytest.LogCaptureFixture) -> None:
+    """The default config logs one INFO line saying the certificate is not verified."""
+    with caplog.at_level(logging.INFO, logger=wazuh_client.logger.name):
+        wazuh_client.Client(dict(_BASE_CONFIG))
+    records = _tls_info_records(caplog)
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "example.invalid" in message
+    assert "9200" in message
+    assert "not verified" in message
+
+
+def test_tls_log_does_not_leak_credentials(caplog: pytest.LogCaptureFixture) -> None:
+    """Neither the indexer user nor password appears in the captured log text."""
+    with caplog.at_level(logging.INFO, logger=wazuh_client.logger.name):
+        wazuh_client.Client(
+            {
+                **_BASE_CONFIG,
+                "indexer_user": "testuser-xyz",
+                "indexer_password": "testpass-xyz",
+            }
+        )
+    assert "testuser-xyz" not in caplog.text
+    assert "testpass-xyz" not in caplog.text
+
+
 @pytest.mark.parametrize(
     ("extra", "expected"),
     [
