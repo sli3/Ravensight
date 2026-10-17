@@ -1222,7 +1222,7 @@ for Docker. Prin wants the project as simple as it can be, with one place to cha
 setting, because two places are confusing and error-prone. This section first decides
 how to unify them, then builds it. No design is chosen yet.
 
-**Sessions: 1 so far. Later sessions are added here before they start.**
+**Sessions: 3. Session 1 (the decision) is done. Sessions 2 and 3 build it.**
 
 How settings work today (checked in the repository):
 - Host runs read `config.toml` through `main.py` (`--config`, default `config.toml`
@@ -1254,8 +1254,19 @@ Options to decide in Session 1 (none chosen):
   environment overrides over built-in defaults. Larger code change
 - C. Keep two files but remove the chance of drift: generate one from the other, or
   add a test that both list the same keys. Smallest change, but two places remain
-- Sequencing: section 17 Session 2 adds one more setting to every place above. Prin
-  decides whether it is built before or after the unification
+- Sequencing: section 17 Session 2 was built first (commit `2fc9301`), then this
+  section
+
+Decision (agreed with Prin): Option A. One `config.toml` holds every Ravensight
+setting for host and Docker runs. Docker mounts it read-only and `.env` keeps only
+variables that configure Docker itself (`RAVENSIGHT_PUID`, `RAVENSIGHT_PGID`, `TZ`,
+the host mount paths and the Chroma port). A missing `config.toml` stops the
+container with a clear message that points at `config.example.toml`.
+
+Open decision for Prin before Session 2: `chroma_host` is `chroma` for Docker with the
+bundled Chroma service, but `127.0.0.1` for a host run against the same service (its
+port is published on localhost). One file holds one value. Prin says which way he
+runs it.
 
 #### Session 1 — Decide how to unify (no code)
 
@@ -1272,6 +1283,47 @@ Out of scope:
 - Any edit to code, tests, config examples, `.env.example`, the entrypoint, the
   Dockerfile, compose or the README
 - Opening, printing or quoting `config.toml` or `.env` (they hold live credentials)
+
+#### Session 2 — Docker runs from the shared config.toml
+
+In scope:
+- `docker-compose.yml`: mount the host `config.toml` read-only at `/app/config.toml`,
+  with the host path taken from a variable that defaults to `./config.toml`, like the
+  data and reports mounts
+- `Dockerfile`: stop copying `config.template.toml`
+- `docker-entrypoint.sh`: remove the template substitution, the defaults, required
+  checks and true/false checks for Ravensight settings, the export of the attestation
+  path, and the `chown` and `chmod` of `config.toml`. Add a check that
+  `/app/config.toml` exists, with a clear message pointing at `config.example.toml`.
+  Keep the PUID and PGID checks, the ownership repair, the seeding, the syncs and
+  `init-attestation`, using the container paths `/app/data` and `/app/reports`
+- Delete `config.template.toml`
+- `.env.example`: keep only the variables that configure Docker itself, with a note
+  that every other setting now lives in `config.toml`
+- Tests for any Python change (the entrypoint has no tests)
+
+Out of scope:
+- `README.md`, `ravensight/config_check.py` message text and `config.example.toml`
+  (Session 3)
+- Renaming a setting, or any change to how `main.py` reads `config.toml`
+- Opening, editing or printing `config.toml` or `.env`
+
+#### Session 3 — Documents, messages and checks
+
+In scope:
+- `README.md`: rewrite the configuration and Docker sections for the single file,
+  including how to copy `config.example.toml` and the migration from `.env`
+- `config.example.toml`: comments that say which values to use for Docker and for a
+  host run, including `chroma_host` (decided before Session 2) and the relative data
+  and report paths
+- `ravensight/config_check.py` and `main.py`: change the messages that say
+  "config.toml (or .env with Docker)" so they say `config.toml`
+- Tests for the changed messages
+
+Out of scope:
+- Any change to settings, defaults, validation rules or code paths other than the
+  message text
+- Opening, editing or printing `config.toml` or `.env`
 
 Out of scope for the whole section:
 - Opening, editing or printing `config.toml` or `.env`
