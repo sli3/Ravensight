@@ -1197,6 +1197,72 @@ Out of scope:
 - Reporting a negotiated TLS version or cipher
 - `config.toml` and `config.example.toml`
 
+### 19. Unify the Settings Files
+
+**What it does:**
+Ravensight keeps its settings in two parallel sets of files, one for host runs and one
+for Docker. Prin wants the project as simple as it can be, with one place to change a
+setting, because two places are confusing and error-prone. This section first decides
+how to unify them, then builds it. No design is chosen yet.
+
+**Sessions: 1 so far. Later sessions are added here before they start.**
+
+How settings work today (checked in the repository):
+- Host runs read `config.toml` through `main.py` (`--config`, default `config.toml`
+  and `tomllib`). Prin copies `config.example.toml` to `config.toml` by hand. Its
+  values are literal placeholders such as `YOUR_WAZUH_HOST`, with long comments
+- Docker runs read `.env` through `env_file` in `docker-compose.yml`. At start,
+  `docker-entrypoint.sh` fills `config.template.toml` (values such as
+  `${LLM_MAX_TOKENS}`) with `string.Template.substitute`, and writes the result as
+  the container's `config.toml`. A host `config.toml` is never mounted or used in
+  Docker
+- The entrypoint also holds the defaults for optional variables, the list of
+  required variables and the exact `true` or `false` checks. `.env.example` lists the
+  variables
+- A new setting therefore has to be added in up to five places: `config.example.toml`,
+  `config.template.toml`, `docker-entrypoint.sh`, `.env.example`, and the README. Edits
+  made in the wrong file have no effect (for example, `max_tokens` set in `config.toml`
+  does nothing for a Docker run)
+- The two TOML files have already drifted in their comments. No test checks that they
+  list the same keys (a search of `tests/` finds no reference to either file)
+- `main.py` and `ravensight/config_check.py` messages say "config.toml (or .env with
+  Docker)", so users are told about both
+
+Options to decide in Session 1 (none chosen):
+- A. One TOML file for both. Docker mounts the operator's `config.toml` and the
+  template, the variable substitution and most of the `.env` variables are removed.
+  Needs relative data and report paths to work inside the container (to be verified
+  against the Dockerfile working directory), and a rule for the Chroma host name
+- B. Environment variables as the single source for both host and Docker. The code reads
+  environment overrides over built-in defaults. Larger code change
+- C. Keep two files but remove the chance of drift: generate one from the other, or
+  add a test that both list the same keys. Smallest change, but two places remain
+- Sequencing: section 17 Session 2 adds one more setting to every place above. Prin
+  decides whether it is built before or after the unification
+
+#### Session 1 — Decide how to unify (no code)
+
+In scope:
+- A read-only study of `config.example.toml`, `config.template.toml`, `.env.example`,
+  `docker-entrypoint.sh`, `docker-compose.yml`, `Dockerfile`, the settings parts of
+  `README.md`, the config loading in `main.py`, and `ravensight/config_check.py`
+- A written proposal to Prin: each option with its trade-offs, every file and setting
+  it affects, how Prin's existing `.env` and `config.toml` would migrate, and the
+  follow-on sessions needed, which are then added to this section for Prin to review
+  before any build starts
+
+Out of scope:
+- Any edit to code, tests, config examples, `.env.example`, the entrypoint, the
+  Dockerfile, compose or the README
+- Opening, printing or quoting `config.toml` or `.env` (they hold live credentials)
+
+Out of scope for the whole section:
+- Opening, editing or printing `config.toml` or `.env`
+- Renaming a setting or changing its meaning or default, unless Prin agrees it in
+  Session 1
+- Putting credentials in git or in the Docker image
+- A new dependency, unless Prin agrees it in Session 1
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
