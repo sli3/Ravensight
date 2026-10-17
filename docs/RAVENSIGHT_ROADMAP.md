@@ -1132,10 +1132,27 @@ In scope:
 - `config.example.toml` and `config.template.toml`: a `[reports] json_output`
   boolean (default `true`), plus the matching Docker entrypoint export if the
   template needs one
-- `main.py`: pass the setting to `Reporter`, and pass the run parameters (hours,
-  agent, level) to `generate()`
-- `ravensight/config_check.py`: a light type check for the new key
+- `docker-entrypoint.sh`: the variable `RAVENSIGHT_REPORTS_JSON_OUTPUT` with a default
+  of `true`, and a check that it is exactly `true` or `false`, the same way
+  `RAVENSIGHT_REPORTS_OVERWRITE` is handled
+- `main.py`: pass the setting to `Reporter` (it already receives the whole
+  `[reports]` section, so this needs no change if that stays true), and pass the run
+  parameters (hours, agent, level) to `generate()` in the full run only
+- `ravensight/reporter.py`: `Reporter.__init__` reads `[reports] json_output`
+  (default `true`, a bool, otherwise `ValueError`, as for `overwrite`), and
+  `generate()` skips the JSON write when it is `false`. The markdown output is
+  unchanged
+- `ravensight/config_check.py`: a light type check for the new key, run in both
+  normal and report-only mode
+- `README.md` and `.env.example`: document the `json_output` switch
+  (`RAVENSIGHT_REPORTS_JSON_OUTPUT`) and the `run` key now being filled
 - Tests for each change
+
+Decisions (agreed with Prin):
+- Report-only runs have no run window, so their JSON keeps `run` as `null`
+- With `json_output = false` in overwrite mode, an older same-day `.json` stays
+  beside the new markdown and no warning is logged. This is accepted and documented
+  in the README. Deleting files is not part of this session
 
 Out of scope:
 - The web UI itself, in any form (server, pages, routes, static files)
