@@ -20,6 +20,7 @@ max_tokens = ${LLM_MAX_TOKENS}
 [reports]
 output_dir = "${RAVENSIGHT_REPORTS_DIR}"
 overwrite = ${RAVENSIGHT_REPORTS_OVERWRITE}
+json_output = ${RAVENSIGHT_REPORTS_JSON_OUTPUT}
 
 [baseline]
 path = "${RAVENSIGHT_DATA_DIR}/baseline_state.json"

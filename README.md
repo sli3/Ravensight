@@ -176,6 +176,7 @@ The Wazuh manager API login is no longer used, so old `wazuh.port`, `wazuh.user`
 | `llm.api_key` | Any string — llama.cpp does not validate |
 | `reports.output_dir` | Where to write markdown reports |
 | `reports.overwrite` | `false` (default) writes `reports/<date>/security_report_<time>.md` so reruns never overwrite; `true` writes `reports/<date>_security_report.md` and overwrites the same-day file |
+| `reports.json_output` | `true` (default) writes a JSON copy of each report beside the markdown; `false` writes markdown only. Must be exactly `true` or `false` |
 | `e8.overrides_path` | Essential Eight keyword blocklist. Default: `data/e8_keyword_overrides.json` |
 | `e8.attestation_path` | Optional manual Essential Eight attestations. Copy `data/defaults/e8_attestation.example.json` to `data/e8_attestation.json` |
 | `baseline.path` | Path to the baseline JSON file |
@@ -258,6 +259,7 @@ start-up — you never need to hand-edit a config file when running in Docker.
 | `RAVENSIGHT_DATA_DIR` | | Path inside the container for data files (default: `/app/data`) |
 | `RAVENSIGHT_REPORTS_DIR` | | Path inside the container for reports (default: `/app/reports`) |
 | `RAVENSIGHT_REPORTS_OVERWRITE` | | `true` or `false`, lowercase, no quotes (default: `false`). See `reports.overwrite` above |
+| `RAVENSIGHT_REPORTS_JSON_OUTPUT` | | `true` or `false`, lowercase, no quotes (default: `true`). See `reports.json_output` above |
 
 Required variables with no value set will cause the container to exit
 immediately with a clear error at start-up, rather than fail later with a
@@ -451,7 +453,8 @@ and carries `"schema_version": 1`. Top-level keys:
 
 - `schema_version` — integer, currently `1`
 - `generated_at` — generation time in UTC (ISO 8601)
-- `run` — run window and filters as given by the caller, or `null` when none were passed
+- `run` — run window and filters: `hours`, `agent` and `level` in a full run, and
+  `null` in a `--report-only` run
 - `findings` — a list; each item has a `type`. Clusters and vulnerabilities carry
   `id`, `severity`, `description`, `count`, `hosts`, `first_seen`, `last_seen`,
   `narrative`, `flags`, `evidence`, `notes`, `cves` and `recommendation`. LLM notes
@@ -470,6 +473,11 @@ and carries `"schema_version": 1`. Top-level keys:
 ATT&CK tags and similar past incidents are not in the JSON. The markdown is the
 primary output: if the JSON cannot be written, Ravensight logs a warning and the
 markdown report is still produced.
+
+To turn the JSON copy off, set `[reports] json_output = false` (default `true`; it
+must be exactly `true` or `false`). With Docker set `RAVENSIGHT_REPORTS_JSON_OUTPUT`
+instead. With `json_output = false` and `overwrite = true`, an older same-day `.json`
+file stays beside the new markdown report and no warning is logged.
 
 ---
 

@@ -140,6 +140,13 @@ def _type_problems(config: dict[str, Any], report_only: bool) -> list[str]:
                 problems.append(
                     f"Config error: [wazuh].indexer_ca_path does not exist: {ca_path.strip()}"
                 )
+    if isinstance(config.get("reports"), dict) and "json_output" in config["reports"]:
+        json_output = config["reports"]["json_output"]
+        if type(json_output) is not bool:
+            problems.append(
+                "Config error: [reports].json_output has the wrong type — "
+                f"expected bool, got {type(json_output).__name__}"
+            )
     return problems
 
 

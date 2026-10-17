@@ -500,14 +500,20 @@ class Reporter:
             config: Reports config with output_dir key and optional overwrite flag
                 (bool, default False). False writes <output_dir>/<date>/security_report_<time>.md;
                 True writes <output_dir>/<date>_security_report.md, replacing the same-day file.
+                Optional json_output flag (bool, default True); False skips the JSON copy.
 
         Raises:
-            ValueError: If overwrite is not a bool.
+            ValueError: If overwrite or json_output is not a bool.
         """
         self._overwrite = config.get("overwrite", False)
         if type(self._overwrite) is not bool:
             raise ValueError(
                 f"[reports].overwrite must be true or false, got {type(self._overwrite).__name__}"
+            )
+        self._json_output = config.get("json_output", True)
+        if type(self._json_output) is not bool:
+            raise ValueError(
+                f"[reports].json_output must be true or false, got {type(self._json_output).__name__}"
             )
         self._output_dir = Path(config["output_dir"])
         self._output_dir.mkdir(parents=True, exist_ok=True)
@@ -572,17 +578,18 @@ class Reporter:
             tmp.unlink(missing_ok=True)
             raise
         logger.info(f"Report written to {filename}")
-        self._write_json(
-            filename.with_suffix(".json"),
-            data=data,
-            generated_at=now,
-            trends=trends,
-            run_params=run_params,
-            e8_scores=e8_scores,
-            matched_controls=matched_controls,
-            finding_pointers=finding_pointers,
-            attestation=attestation,
-        )
+        if self._json_output:
+            self._write_json(
+                filename.with_suffix(".json"),
+                data=data,
+                generated_at=now,
+                trends=trends,
+                run_params=run_params,
+                e8_scores=e8_scores,
+                matched_controls=matched_controls,
+                finding_pointers=finding_pointers,
+                attestation=attestation,
+            )
         return filename
 
     def _write_json(

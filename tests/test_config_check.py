@@ -17,7 +17,7 @@ import pytest
 import requests
 
 import main
-from ravensight import analyser, config_check, wazuh_client
+from ravensight import analyser, config_check, reporter, wazuh_client
 
 
 def _valid_config() -> dict[str, Any]:
@@ -446,3 +446,78 @@ def test_indexer_tls_checks_skipped_in_report_only() -> None:
     config["wazuh"]["indexer_ca_path"] = 5
 
     assert config_check.find_problems(config, report_only=True) == []
+
+
+@pytest.mark.parametrize("report_only", [False, True])
+@pytest.mark.parametrize("value", [True, False])
+def test_bool_json_output_accepted(value: bool, report_only: bool) -> None:
+    """A bool [reports].json_output produces no problems in either mode."""
+    config = _valid_config()
+    config["reports"]["json_output"] = value
+
+    assert config_check.find_problems(config, report_only=report_only) == []
+
+
+@pytest.mark.parametrize("report_only", [False, True])
+@pytest.mark.parametrize("value", ["true", 1])
+def test_non_bool_json_output_reported(value: Any, report_only: bool) -> None:
+    """A non-bool [reports].json_output is reported in normal and report-only mode."""
+    config = _valid_config()
+    config["reports"]["json_output"] = value
+
+    problems = config_check.find_problems(config, report_only=report_only)
+
+    expected = (
+        "Config error: [reports].json_output has the wrong type — "
+        f"expected bool, got {type(value).__name__}"
+    )
+    assert problems == [expected]
+
+
+def _capture_generate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
+    """Replace Reporter.generate with a fake that records its kwargs and returns a path."""
+    captured: dict[str, Any] = {}
+
+    def fake_generate(self: Any, data: Any, **kwargs: Any) -> Path:
+        """Record the keyword arguments and return a report path."""
+        captured.update(kwargs)
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr(reporter.Reporter, "generate", fake_generate)
+    return captured
+
+
+def test_full_run_passes_run_params_to_generate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A full run hands hours, agent and level to Reporter.generate as run_params."""
+    captured = _capture_generate(monkeypatch, tmp_path)
+    monkeypatch.setattr(wazuh_client.Client, "fetch_alerts", lambda self, **kwargs: [])
+    monkeypatch.setattr(
+        analyser, "analyse", lambda *args, **kwargs: {"summary": "s", "findings": [], "recommendations": []}
+    )
+    monkeypatch.setattr(analyser, "extract_alert_clusters", lambda alerts: [])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["main.py", "--config", str(_write_config(tmp_path)), "--hours", "6", "--agent", "web01", "--level", "9"],
+    )
+
+    main.main()
+
+    assert captured["run_params"] == {"hours": 6, "agent": "web01", "level": 9}
+
+
+def test_report_only_does_not_pass_run_params(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A --report-only run passes no run_params, so the JSON run key is null."""
+    captured = _capture_generate(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        sys, "argv", ["main.py", "--config", str(_write_config(tmp_path)), "--report-only"]
+    )
+
+    main.main()
+
+    assert "trends" in captured
+    assert "run_params" not in captured

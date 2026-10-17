@@ -198,7 +198,7 @@ def main() -> None:
         analysis["similar_incidents_unavailable_note"] = _similar_incidents_note(embedder)
         rep = reporter.Reporter(config["reports"])
         run_reporter.stage("Report", "active")
-        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers, attestation=attestation)
+        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers, attestation=attestation, run_params=run_params)
         run_reporter.stage("Report", "done")
 
     run_reporter.finish(analysis, report_path, counter.warnings, counter.errors)

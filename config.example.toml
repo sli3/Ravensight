@@ -30,6 +30,9 @@ output_dir = "reports"
 # false (default) writes reports/<date>/security_report_<time>.md so reruns never overwrite.
 # true writes reports/<date>_security_report.md and overwrites the same-day file.
 overwrite = false
+# true (default) also writes a JSON copy of each report beside the markdown.
+# Must be exactly true or false.
+json_output = true
 
 [baseline]
 path = "data/baseline_state.json"

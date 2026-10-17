@@ -21,6 +21,7 @@ set -eu
 : "${RAVENSIGHT_DATA_DIR:=/app/data}"; export RAVENSIGHT_DATA_DIR
 : "${RAVENSIGHT_REPORTS_DIR:=/app/reports}"; export RAVENSIGHT_REPORTS_DIR
 : "${RAVENSIGHT_REPORTS_OVERWRITE:=false}"; export RAVENSIGHT_REPORTS_OVERWRITE
+: "${RAVENSIGHT_REPORTS_JSON_OUTPUT:=true}"; export RAVENSIGHT_REPORTS_JSON_OUTPUT
 
 # --- Required variables: fail fast with a clear message rather than let
 # tomllib.load() or main.py fail later with a confusing placeholder value ---
@@ -60,6 +61,14 @@ case "$RAVENSIGHT_REPORTS_OVERWRITE" in
     true|false) ;;
     *)
         echo 'ERROR: RAVENSIGHT_REPORTS_OVERWRITE must be exactly true or false, lowercase, no quotes.' >&2
+        exit 1
+        ;;
+esac
+
+case "$RAVENSIGHT_REPORTS_JSON_OUTPUT" in
+    true|false) ;;
+    *)
+        echo 'ERROR: RAVENSIGHT_REPORTS_JSON_OUTPUT must be exactly true or false, lowercase, no quotes.' >&2
         exit 1
         ;;
 esac

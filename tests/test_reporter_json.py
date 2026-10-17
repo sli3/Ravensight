@@ -228,6 +228,43 @@ def test_markdown_byte_identical_with_json_disabled(
     assert with_json.read_bytes() == without_json.read_bytes()
 
 
+def test_json_output_false_writes_no_json_and_same_markdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """json_output = false writes no .json and the markdown matches a default run."""
+    monkeypatch.setattr(reporter, "datetime", _FrozenDatetime)
+    data = {"summary": "s", "findings": [_cluster(id="C1"), "legacy"]}
+    default = Reporter({"output_dir": str(tmp_path / "a"), "overwrite": True}).generate(data)
+    off = Reporter(
+        {"output_dir": str(tmp_path / "b"), "overwrite": True, "json_output": False}
+    ).generate(data)
+    assert default.with_suffix(".json").is_file()
+    assert not off.with_suffix(".json").exists()
+    assert list((tmp_path / "b").rglob("*.json*")) == []
+    assert default.read_bytes() == off.read_bytes()
+
+
+def test_json_output_absent_writes_json(tmp_path: Path) -> None:
+    """With the json_output key absent the JSON copy is still written."""
+    path = Reporter({"output_dir": str(tmp_path)}).generate({"summary": "s", "findings": []})
+    assert path.with_suffix(".json").is_file()
+
+
+def test_json_output_true_writes_json(tmp_path: Path) -> None:
+    """An explicit json_output = true writes the JSON copy."""
+    path = Reporter({"output_dir": str(tmp_path), "json_output": True}).generate(
+        {"summary": "s", "findings": []}
+    )
+    assert path.with_suffix(".json").is_file()
+
+
+@pytest.mark.parametrize("bad", ["true", 1])
+def test_non_bool_json_output_rejected(tmp_path: Path, bad: Any) -> None:
+    """A non-bool json_output value raises ValueError."""
+    with pytest.raises(ValueError, match="json_output must be true or false"):
+        Reporter({"output_dir": str(tmp_path), "json_output": bad})
+
+
 def test_json_write_oserror_logs_warning_and_keeps_markdown(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
