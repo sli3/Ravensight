@@ -178,6 +178,8 @@ The Wazuh manager API login is no longer used, so old `wazuh.port`, `wazuh.user`
 | `reports.json_output` | `true` (default) writes a JSON copy of each report beside the markdown; `false` writes markdown only. Must be exactly `true` or `false` |
 | `e8.overrides_path` | Essential Eight keyword blocklist. Default: `data/e8_keyword_overrides.json` |
 | `e8.attestation_path` | Optional manual Essential Eight attestations. Copy `data/defaults/e8_attestation.example.json` to `data/e8_attestation.json` |
+| `essentials.path` | ASD Essentials dataset (reference data, do not edit). Value in `config.example.toml`: `data/defaults/essentials_enterprise_it.json` (not built into the code). Docker needs a different value, see [Docker](#2-configure-1) |
+| `essentials.attestation_path` | Optional manual Essentials attestations. Value in `config.example.toml`: `data/essentials_attestation.json` (not built into the code). Copy `data/defaults/essentials_attestation.example.json` to start |
 | `baseline.path` | Path to the baseline JSON file |
 | `platform.agents_path` | Optional map from Wazuh agent name to vendor/platform so reports name the right product. Default: `data/platform_agents.json` |
 
@@ -241,6 +243,15 @@ container at `/app/config.toml`.
    Wazuh and LLM hosts must be reachable from inside the container, so use real
    hostnames or IPs, not `localhost`. Leave the relative paths (`data/...`,
    `reports`) as written: the container runs from `/app`.
+
+   The one exception is `essentials.path`. Docker users must set
+   `path = "defaults/essentials_enterprise_it.json"` in the `[essentials]`
+   section, because the image holds the dataset at `/app/defaults/`. The host
+   default `data/defaults/essentials_enterprise_it.json` would resolve to
+   `/app/data/defaults/...`, which does not exist, and the Essentials section
+   would be missing from the report (the log would show an "Essentials
+   dataset not found" warning). `attestation_path = "data/essentials_attestation.json"`
+   works unchanged, because `/app/data` is the mounted data folder.
 
 2. Copy `.env.example` to `.env` for the Docker-only settings:
 
@@ -343,6 +354,21 @@ This never overwrites an existing file and does not run a sync. Edit
 `data/e8_attestation.json` and remove the `EXAMPLE:` prefixes; it is picked up on
 the next start. Until you edit it, one warning per placeholder entry appears on
 each run.
+
+To record manual ASD Essentials declarations, create
+`data/essentials_attestation.json` from the bundled example (see
+[ASD Essentials](#asd-essentials-in-the-report)):
+
+```bash
+docker run --env-file .env -v ./data:/app/data ravensight init-essentials-attestation
+# or, with Compose
+docker compose run --rm ravensight init-essentials-attestation
+```
+
+This never overwrites an existing file and does not run a sync. Edit
+`data/essentials_attestation.json` and remove the `EXAMPLE:` prefixes; it is
+picked up on the next start. Until you edit it, one warning per placeholder
+entry appears on each run.
 
 ### Forcing a re-sync
 
@@ -479,9 +505,9 @@ Each run also writes a machine-readable JSON file with the same name as the
 markdown report and a `.json` suffix, for example
 `reports/<YYYY-MM-DD>/security_report_<HH-MM-SS>.json`, or
 `reports/<YYYY-MM-DD>_security_report.json` with `overwrite = true`. It is UTF-8
-and carries `"schema_version": 1`. Top-level keys:
+and carries `"schema_version": 2`. Top-level keys:
 
-- `schema_version` — integer, currently `1`
+- `schema_version` — integer, currently `2`
 - `generated_at` — generation time in UTC (ISO 8601)
 - `run` — run window and filters: `hours`, `agent` and `level` in a full run, and
   `null` in a `--report-only` run
@@ -498,6 +524,13 @@ and carries `"schema_version": 1`. Top-level keys:
 - `finding_pointers` — per-finding Essential Eight and ISM control pointers, or `null`
 - `matched_controls` — matched ISM controls, or `null`
 - `attestation` — your Essential Eight attestation; the key is omitted when there is none
+- `essentials` — always present; `null` when there is no Essentials data. When
+  present its keys are `attribution`, `licence`, `notice`,
+  `dataset_schema_version` (the dataset file's own version, currently `1`, not the
+  report's `schema_version`), `finding_actions` (a list) and `attestation` (an
+  object keyed by principle id, each entry with `status`, `reason` and
+  `domains`). `essentials.attestation` is separate from the top-level Essential
+  Eight `attestation` key
 
 `severity` and `recommendation` hold what the markdown shows. The summary, MITRE
 ATT&CK tags and similar past incidents are not in the JSON. The markdown is the
@@ -553,20 +586,52 @@ Findings are tagged against the **MITRE ATT&CK** framework and Australia's
 - `data/e8_attestation.json` is a hand-edited, git-ignored, optional file of manual
   Essential Eight attestations. Entries still prefixed `EXAMPLE:` are treated as
   placeholders and warned about
+- `data/essentials_attestation.json` is a hand-edited, git-ignored, optional file of
+  manual ASD Essentials declarations (see
+  [ASD Essentials in the report](#asd-essentials-in-the-report))
 - `data/platform_hints.json` is a hand-edited false-positive hint table
 - `data/platform_agents.json` is a hand-edited, git-ignored, optional map of Wazuh agent name → vendor/platform
 
 Ravensight is an independent open-source project. It is not produced, endorsed or supported by ASD. Essential Eight statuses come only from the attestations you provide; otherwise they show as Not assessed.
 
+ASD plans to deprecate the Essential Eight in about 12 months and retire it in about 24 from the 15 October 2026 launch of the ASD Essentials. Ravensight runs the Essentials alongside the Essential Eight and keeps the Essential Eight section and data as they are. Retiring them is a separate later decision.
+
+---
+
+## ASD Essentials in the report
+
+Full runs add an Essentials section to the report, but only when `config.toml`
+has an `[essentials]` section (copy it from `config.example.toml`). Without it,
+no Essentials section appears and no warning is logged. The section points findings at the
+Essentials principles and actions they relate to. It never rates anything: ASD's
+phases are an implementation order, not a rating, and ASD's ATT&CK mapping is a
+guide for setting priorities, not a rating. Report-only runs (`--report-only`)
+have no Essentials section.
+
+Findings are matched to principles by three routes: MITRE ATT&CK, ISM controls and
+keywords. The MITRE route needs `data/mitre_attack.json`, which Docker syncs
+automatically on first start. Without it, only the ISM and keyword routes can match.
+
+Statuses come only from your own declarations in `data/essentials_attestation.json`,
+keyed by principle id (for example `DET-01`). The status words are Not applicable,
+Not assessed, Not effective, Partially effective and Fully effective. Every
+principle defaults to Not assessed. Ravensight does not assess anything itself.
+
+On a host run, copy `data/defaults/essentials_attestation.example.json` to
+`data/essentials_attestation.json`, edit it with your real declarations and remove
+the `EXAMPLE:` prefixes. In Docker, run `init-essentials-attestation` (see
+[Docker](#3-run-1)). A missing file gives a warning on every run, and a file with
+`EXAMPLE:` entries gives one warning per placeholder entry on every run.
+
 ---
 
 ## ASD Essentials for enterprise IT dataset
 
-`data/defaults/essentials_enterprise_it.json` is a structured JSON version of the enterprise IT chapter of ASD's Essentials for enterprise IT. It has 8 domains, 28 principles, 58 actions, 212 domain/action pairs and 529 implementation statements, plus the mapped ISM controls and MITRE ATT&CK technique names. It is reference data for Ravensight's planned Essentials mapping.
+`data/defaults/essentials_enterprise_it.json` is a structured JSON version of the enterprise IT chapter of ASD's Essentials for enterprise IT. It has 8 domains, 28 principles, 58 actions, 212 domain/action pairs and 529 implementation statements, plus the mapped ISM controls and MITRE ATT&CK technique names. The report's Essentials section uses it as reference data.
 
 **This is an unofficial community dataset.** It is not produced, endorsed or supported by the Australian Signals Directorate (ASD). It contains no ratings or assessments, and nothing here implies any ASD partnership, approval or certification. Please check against ASD's official documents at [cyber.gov.au](https://www.cyber.gov.au/publication/essentials-for-enterprise-it) before relying on it.
 
-**Source and licence.** All content is derived from ASD's official publications, which are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), © Commonwealth of Australia 2026. See [ASD's copyright page](https://www.cyber.gov.au/about-us/copyright). The documents used are:
+**Source and licence.** All content is derived from ASD's official publications, which are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), © Commonwealth of Australia 2026. See [ASD's copyright page](https://www.cyber.gov.au/about-us/copyright). The dataset's own notice reads: "UNOFFICIAL community dataset. Not produced, endorsed or supported by ASD. Check against ASD's official documents at cyber.gov.au before relying on it." The documents used are:
 
 - ASD Essentials for enterprise IT (the chapter)
 - Assessment evidence guide for enterprise IT
