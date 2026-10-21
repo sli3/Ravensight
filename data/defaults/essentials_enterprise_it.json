@@ -3,15 +3,19 @@
   "source": {
     "publisher": "Australian Signals Directorate (ASD), Australian Cyber Security Centre",
     "documents": [
-      "Assessment evidence guide for enterprise IT (PDF, published 15 Oct 2026)",
-      "Essentials for enterprise IT - Assessment Workbook (XLSX, published 15 Oct 2026)",
-      "ASD Essentials for enterprise IT (PDF)"
+      "Assessment evidence guide for enterprise IT (PDF, published 15 Oct 2026) https://www.cyber.gov.au/sites/default/files/2026-10/Assessment%20evidence%20guide%20for%20enterprise%20IT.pdf",
+      "Essentials for enterprise IT - Assessment Workbook (XLSX, published 15 Oct 2026) https://www.cyber.gov.au/publication/essentials-for-enterprise-it",
+      "ASD Essentials for enterprise IT (PDF) https://www.cyber.gov.au/publication/essentials-for-enterprise-it"
     ],
     "licence": "CC BY 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by/4.0/",
     "attribution": "© Commonwealth of Australia 2026",
+    "copyright_page": "https://www.cyber.gov.au/about-us/copyright",
+    "changes": "Restructured from ASD's PDF and XLSX publications into JSON and checked against the three documents listed above. Where those documents differ, both versions are kept.",
+    "notice": "UNOFFICIAL community dataset. Not produced, endorsed or supported by ASD. Check against ASD's official documents at cyber.gov.au before relying on it.",
     "retrieved": "2026-10-21",
     "note": "Technique names are ASD's names, not ATT&CK T-IDs. E8 ISM controls were cross-checked against the workbook.",
-    "technique_sources": "mitre_technique_names comes from the Assessment evidence guide; mitre_technique_names_chapter comes from the chapter's Matrix 3; Ravensight matches on both."
+    "technique_sources": "mitre_technique_names comes from the Assessment evidence guide; mitre_technique_names_chapter comes from the chapter's Matrix 3."
   },
   "domains": [
     {
