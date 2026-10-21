@@ -1390,15 +1390,22 @@ Decisions (agreed with Prin):
 - Essentials is added alongside the Essential Eight, not as a replacement. Removing the
   Essential Eight is a separate decision for later
 - The dataset is Prin's hand-built `essentials_enterprise_it.json` (from ASD's evidence
-  guide PDF and assessment workbook, CC BY 4.0, "© Commonwealth of Australia 2026"),
-  verified on 21 Oct 2026 against the evidence guide, the workbook and the chapter PDF.
-  It is tracked in `data/defaults/` because it is reference data no script can
-  regenerate, and gains a top-level `schema_version`
+  guide PDF and assessment workbook), verified on 21 Oct 2026 against the evidence guide,
+  the workbook and the chapter PDF. It is tracked in `data/defaults/` because it is
+  reference data no script can regenerate, and has a top-level `schema_version`. It is
+  an unofficial community dataset, derived from ASD's publications under CC BY 4.0,
+  "© Commonwealth of Australia 2026"; its `source` block keeps the copyright line, the
+  licence name and link, the change note and the unofficial/not-endorsed notice
 - Each technical action keeps two technique lists: `mitre_technique_names` from the
   evidence guide and `mitre_technique_names_chapter` from the chapter. Matching uses both.
   Where ASD's documents word an action differently, `action_text_chapter` records the
   chapter's wording
-- The ASD source documents are not kept in this repo (they carry the Coat of Arms and ASD logos, which CC BY 4.0 does not cover). Re-verify against the official publications at cyber.gov.au.
+- The ASD source documents are not kept in this repo, in any commit or in any post. The
+  PDFs carry the Coat of Arms and ASD logos, which CC BY 4.0 does not cover, and the
+  workbook carries no licence notice. Re-verify against the official publications at
+  cyber.gov.au
+- ASD's ATT&CK mapping is a guide for setting priorities, not a rating. Ravensight never
+  rates or assesses compliance itself
 
 #### Session 0 — Research and confirm (no code), done 21 Oct 2026
 

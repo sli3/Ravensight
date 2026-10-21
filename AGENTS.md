@@ -80,6 +80,23 @@ any other agent, it is out of date — do not attempt it. Report it to Prin.
 
 ---
 
+## ASD Material and Claims
+
+- Never add ASD publications (PDF, xlsx), ASD or ACSC logos, the Commonwealth Coat of
+  Arms or screenshots of ASD documents to the repo, docs, README or any post. Verify
+  the dataset against ASD's official publications at cyber.gov.au; any local reference
+  copies stay outside the repo
+- Any change to the `source` block of `data/defaults/essentials_enterprise_it.json` must
+  keep: the creator and copyright line ("© Commonwealth of Australia 2026"), the CC BY 4.0
+  licence name and link, the note that it was modified, and the unofficial/not-endorsed
+  notice
+- Never imply ASD partnership, endorsement or certification
+- Ravensight never rates or assesses compliance itself. Essential Eight and Essentials
+  statuses come only from Prin's attestation files, otherwise "Not assessed"
+- ASD's ATT&CK mapping is a guide for setting priorities, not a rating
+
+---
+
 ## Editing and Scope
 
 - Make ONLY the change that was agreed. Do not change formatting, imports, or unrelated lines
