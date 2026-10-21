@@ -1263,10 +1263,10 @@ variables that configure Docker itself (`RAVENSIGHT_PUID`, `RAVENSIGHT_PGID`, `T
 the host mount paths and the Chroma port). A missing `config.toml` stops the
 container with a clear message that points at `config.example.toml`.
 
-Open decision for Prin before Session 2: `chroma_host` is `chroma` for Docker with the
-bundled Chroma service, but `127.0.0.1` for a host run against the same service (its
-port is published on localhost). One file holds one value. Prin says which way he
-runs it.
+Decision (agreed with Prin): ChromaDB comes from the Ravensight bundle to keep things
+simple at this stage. `chroma_host` is `chroma` (port 8000) for the bundled Chroma
+service in Docker. Support for a separate or external ChromaDB server is a later item
+and is not part of this section.
 
 #### Session 1 — Decide how to unify (no code)
 
@@ -1312,7 +1312,12 @@ Out of scope:
 
 In scope:
 - `README.md`: rewrite the configuration and Docker sections for the single file,
-  including how to copy `config.example.toml` and the migration from `.env`
+  including how to copy `config.example.toml` and the migration from `.env`, that the
+  host folders can be changed in `.env` (`RAVENSIGHT_HOST_DATA_PATH`,
+  `RAVENSIGHT_HOST_REPORTS_PATH`, `RAVENSIGHT_HOST_CONFIG_PATH`) while the paths inside
+  the container are fixed (`/app/data`, `/app/reports`, `/app/config.toml`), that a
+  missing host `config.toml` makes Docker create a directory of that name, and that the
+  host file must be readable by the uid set in `RAVENSIGHT_PUID`
 - `config.example.toml`: comments that say which values to use for Docker and for a
   host run, including `chroma_host` (decided before Session 2) and the relative data
   and report paths
