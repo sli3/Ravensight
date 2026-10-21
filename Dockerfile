@@ -15,7 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY ravensight/ ravensight/
 COPY scripts/ scripts/
-COPY config.template.toml .
 COPY data/defaults/ defaults/
 COPY docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh

@@ -8,14 +8,16 @@ services:
     volumes:
       - ${RAVENSIGHT_HOST_DATA_PATH:-./data}:/app/data
       - ${RAVENSIGHT_HOST_REPORTS_PATH:-./reports}:/app/reports
+      - ${RAVENSIGHT_HOST_CONFIG_PATH:-./config.toml}:/app/config.toml:ro
     # Default run is a normal analysis pass (see Dockerfile CMD).
     # Override at the command line for a one-off, e.g.:
     #   docker compose run --rm ravensight sync
 
   # Optional bundled ChromaDB server — only starts under the 'chroma' profile.
   # Activate with: docker compose --profile chroma up -d chroma
-  # Then point Ravensight at it by setting EMBEDDINGS_CHROMA_HOST=chroma in .env
-  # (empty EMBEDDINGS_CHROMA_HOST keeps today's embedded mode unchanged).
+  # Then point Ravensight at it by setting chroma_host = "chroma" (and
+  # chroma_port = 8000) in config.toml
+  # (empty chroma_host keeps today's embedded mode unchanged).
   # Image tag pinned to match chromadb==1.5.9 in requirements.txt — see
   # https://docs.trychroma.com for the REST API changes between versions.
   chroma:
