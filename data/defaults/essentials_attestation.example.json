@@ -1,0 +1,15 @@
+{
+  "DET-01": {
+    "status": "Partially effective",
+    "reason": "EXAMPLE: replace with the evidence supporting this declaration.",
+    "domains": ["Visibility and response"]
+  },
+  "GOV-01": {
+    "status": "Not applicable",
+    "reason": "EXAMPLE: replace with why this principle does not apply."
+  },
+  "IDE-01": {
+    "status": "Fully effective",
+    "reason": "EXAMPLE: replace with the evidence supporting this declaration."
+  }
+}

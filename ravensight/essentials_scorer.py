@@ -4,6 +4,9 @@ essentials_scorer.py — Load and validate the ASD Essentials for enterprise IT 
 Also provides build_technique_names and map_findings_to_actions, which point each
 finding at Essentials actions worth reading. The output is pointers only, never a
 rating or an assessment of compliance.
+
+load_essentials_attestation reads ratings the operator declared in their own file; they
+are the operator's declaration, not an ASD assessment.
 """
 import json
 import logging
@@ -222,6 +225,158 @@ def _validate(data: Any) -> list[str]:
 
 
 _ROUTE_STRENGTH = {"mitre": 0, "ism": 1, "keyword": 2}
+
+ATTESTATION_STATUSES = (
+    "Not applicable",
+    "Not assessed",
+    "Not effective",
+    "Partially effective",
+    "Fully effective",
+)
+
+
+def _attestation_defaults(principle_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Return a fresh default attestation entry for every principle id."""
+    return {
+        pid: {"status": "Not assessed", "reason": "", "domains": []}
+        for pid in principle_ids
+    }
+
+
+def _known_principles_and_domains(essentials: Any) -> tuple[list[str], set[str]]:
+    """Return principle ids (first-appearance order) and domain names from the dataset."""
+    principle_ids: list[str] = []
+    domain_names: set[str] = set()
+    if not isinstance(essentials, dict):
+        return principle_ids, domain_names
+    actions = essentials.get("actions")
+    if isinstance(actions, list):
+        for action in actions:
+            principle = action.get("principle") if isinstance(action, dict) else None
+            pid = principle.get("id") if isinstance(principle, dict) else None
+            if isinstance(pid, str) and pid not in principle_ids:
+                principle_ids.append(pid)
+    domains = essentials.get("domains")
+    if isinstance(domains, list):
+        for dom in domains:
+            name = dom.get("name") if isinstance(dom, dict) else None
+            if isinstance(name, str):
+                domain_names.add(name)
+    return principle_ids, domain_names
+
+
+def _check_attestation_entry(
+    key: str, entry: Any, domain_names: set[str]
+) -> dict[str, Any] | None:
+    """Validate one attestation entry, warning once and returning None if it is bad."""
+    if not isinstance(entry, dict):
+        logger.warning("Essentials attestation %r skipped: entry must be an object", key)
+        return None
+    status = entry.get("status")
+    if not isinstance(status, str) or status not in ATTESTATION_STATUSES:
+        logger.warning(
+            "Essentials attestation %r skipped: bad status %s", key, _short(status)
+        )
+        return None
+    reason = entry.get("reason")
+    if not isinstance(reason, str):
+        logger.warning(
+            "Essentials attestation %r skipped: reason must be a string, got %s",
+            key,
+            _short(reason),
+        )
+        return None
+    if reason.strip().casefold().startswith("example:"):
+        logger.warning(
+            "Essentials attestation %r skipped: reason is still the example text", key
+        )
+        return None
+    domains = entry.get("domains", [])
+    if not isinstance(domains, list):
+        logger.warning(
+            "Essentials attestation %r skipped: domains must be a list, got %s",
+            key,
+            _short(domains),
+        )
+        return None
+    seen: list[str] = []
+    for dom in domains:
+        if not isinstance(dom, str) or dom not in domain_names:
+            logger.warning(
+                "Essentials attestation %r skipped: unknown domain %s", key, _short(dom)
+            )
+            return None
+        if dom in seen:
+            logger.warning(
+                "Essentials attestation %r skipped: duplicate domain %s", key, _short(dom)
+            )
+            return None
+        seen.append(dom)
+    return {"status": status, "reason": reason, "domains": list(seen)}
+
+
+def load_essentials_attestation(
+    attestation_path: str | None, essentials: dict | None = None
+) -> dict[str, dict[str, Any]]:
+    """Load the operator's declared Essentials attestations, keyed by principle id.
+
+    Every known principle id is returned, defaulting to "Not assessed". Ratings are the
+    operator's own declaration, not an ASD assessment. A blank path returns defaults
+    silently; an unreadable file (missing, malformed JSON, not UTF-8, OSError or
+    ValueError) or a non-object root returns defaults with one warning. Each bad entry
+    is skipped with one warning without affecting the others.
+    """
+    principle_ids, domain_names = _known_principles_and_domains(essentials)
+    defaults = _attestation_defaults(principle_ids)
+    if not principle_ids:
+        return {}
+    if attestation_path is None or not str(attestation_path).strip():
+        return defaults
+
+    try:
+        with Path(attestation_path).open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        logger.warning("Essentials attestation file not found: %s", attestation_path)
+        return defaults
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "Failed to parse Essentials attestation %s: %s", attestation_path, e
+        )
+        return defaults
+    except UnicodeDecodeError as e:
+        logger.warning(
+            "Essentials attestation %s is not valid UTF-8: %s", attestation_path, e
+        )
+        return defaults
+    except OSError as e:
+        logger.warning(
+            "Failed to read Essentials attestation %s: %s", attestation_path, e
+        )
+        return defaults
+    except ValueError as e:
+        logger.warning(
+            "Essentials attestation %s could not be loaded: %s", attestation_path, e
+        )
+        return defaults
+
+    if not isinstance(data, dict):
+        logger.warning(
+            "Essentials attestation %s must be a JSON object", attestation_path
+        )
+        return defaults
+
+    known = set(principle_ids)
+    for key, entry in data.items():
+        if key not in known:
+            logger.warning(
+                "Essentials attestation %r skipped: not a known principle id", key
+            )
+            continue
+        checked = _check_attestation_entry(key, entry, domain_names)
+        if checked is not None:
+            defaults[key] = checked
+    return defaults
 
 
 def build_technique_names(mitre_data: Any) -> dict[str, str]:
