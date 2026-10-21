@@ -51,9 +51,10 @@ run_as() {
 }
 
 # --- The mounted config.toml must exist and be readable by the app user.
-# Skipped for init-attestation and sync, which run without a config.toml.
+# Skipped for init-attestation, init-essentials-attestation and sync, which run
+# without a config.toml.
 # [ ! -f ] also catches Docker creating a directory for a missing host file ---
-if [ "${1:-}" != "init-attestation" ] && [ "${1:-}" != "sync" ]; then
+if [ "${1:-}" != "init-attestation" ] && [ "${1:-}" != "init-essentials-attestation" ] && [ "${1:-}" != "sync" ]; then
     if [ ! -f /app/config.toml ]; then
         echo "ERROR: /app/config.toml is missing or is not a file. Copy config.example.toml to config.toml, fill in your settings, and mount it (see RAVENSIGHT_HOST_CONFIG_PATH in .env.example)." >&2
         exit 1
@@ -95,6 +96,24 @@ if [ "${1:-}" = "init-attestation" ]; then
     run_as cp /app/defaults/e8_attestation.example.json "$data_dir/e8_attestation.json"
     echo "Created $data_dir/e8_attestation.json from the example."
     echo "Edit it with your real attestations and remove the EXAMPLE: prefixes; it is picked up on the next start."
+    exit 0
+fi
+
+# --- On-demand Essentials attestation template: `docker run <image>
+# init-essentials-attestation` copies the example into the data folder
+# without overwriting an existing file. Needs no network ---
+if [ "${1:-}" = "init-essentials-attestation" ]; then
+    if [ -f "$data_dir/essentials_attestation.json" ]; then
+        echo "$data_dir/essentials_attestation.json already exists, left unchanged."
+        exit 0
+    fi
+    if [ ! -f /app/defaults/essentials_attestation.example.json ]; then
+        echo "ERROR: missing default file /app/defaults/essentials_attestation.example.json" >&2
+        exit 1
+    fi
+    run_as cp /app/defaults/essentials_attestation.example.json "$data_dir/essentials_attestation.json"
+    echo "Created $data_dir/essentials_attestation.json from the example."
+    echo "Edit it with your real declarations and remove the EXAMPLE: prefixes; it is picked up on the next start."
     exit 0
 fi
 
