@@ -1398,7 +1398,7 @@ Decisions (agreed with Prin):
   evidence guide and `mitre_technique_names_chapter` from the chapter. Matching uses both.
   Where ASD's documents word an action differently, `action_text_chapter` records the
   chapter's wording
-- The ASD source files are kept in `docs/asd-essentials-sources/` for re-verification
+- The ASD source documents are not kept in this repo (they carry the Coat of Arms and ASD logos, which CC BY 4.0 does not cover). Re-verify against the official publications at cyber.gov.au.
 
 #### Session 0 — Research and confirm (no code), done 21 Oct 2026
 
