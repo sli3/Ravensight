@@ -1372,7 +1372,7 @@ principles and actions, with the reason. A rating appears only when the operator
 declares it in an attestation file, and the report says so. No pass or fail wording,
 and no domain percentage.
 
-**Sessions: 7 (Session 0 done). Later phases are added here before they start.
+**Sessions: 8 (Session 0 done). Later phases are added here before they start.
 Section 19 Session 3 is built first.**
 
 Decisions (agreed with Prin):
@@ -1531,6 +1531,29 @@ In scope:
 Out of scope:
 - The Essential Eight section, apart from keeping it in place
 - The LLM prompt
+- `config.toml`
+
+#### Session 7 — Matching corrections (built before Session 6)
+
+In scope:
+- `main.py`: `_build_essentials` passes shallow copies of the findings to
+  `map_findings_to_actions`. For a finding whose `notes` list contains
+  `analyser.RULE_87702_IPV6_ARTEFACT_NOTE`, the copy has an empty `mitre_ids`, so the
+  MITRE route finds nothing for it. Wazuh rule 87702's T1110 tag is wrong for IPv6
+  filterlog, as the report itself says. The ISM and keyword routes are unchanged, the
+  original findings and the stored baseline are not changed, and no new suppression is
+  added (the keyword route may now fire for those findings, which is accepted)
+- `ravensight/reporter.py`: `_essentials_matched_on` shows a MITRE reason that came
+  from a parent technique as "Name (parent of Tid)", for example
+  "Indicator Removal (parent of T1070.004)". A direct match still shows "Name (Tid)"
+- Tests for each change in `tests/test_main_essentials.py` and
+  `tests/test_reporter_essentials.py`
+
+Out of scope:
+- `ravensight/essentials_scorer.py` and `ravensight/analyser.py`
+- The ISM and keyword routes, and any rating
+- `JSON_SCHEMA_VERSION` and any other JSON shape change
+- Docker, the README and `config.example.toml` (Session 6)
 - `config.toml`
 
 #### Session 6 — Docker and documents
