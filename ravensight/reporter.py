@@ -130,6 +130,9 @@ _GLOSSARY: list[tuple[str, str, str]] = [
     ("ISM", "Information Security Manual, the ASD's catalogue of security controls (IDs like ISM-0298).", r"\bISM\b"),
     ("Essential Eight", "The ASD's eight core mitigation strategies, such as patching and multi-factor authentication.", r"Essential Eight"),
     ("ML", "Maturity level (ML1 to ML3) of an Essential Eight control.", r"\bML\d"),
+    ("ASD Essentials", "The Australian Signals Directorate's framework of principles and actions for enterprise IT.", r"## ASD Essentials"),
+    ("Principle and action", "A principle is an outcome to achieve; an action is something that must be done to achieve it.", r"## ASD Essentials"),
+    ("Priority phase", "The order in which ASD suggests implementing the domains of the Essentials. It is not a rating.", r"## ASD Essentials"),
     ("CVE", "Common Vulnerabilities and Exposures, a public ID for a known software flaw.", r"CVE-\d"),
     ("dpkg", "The Debian and Ubuntu package manager.", r"(?i)\bdpkg\b"),
     ("MITRE ATT&CK", "A public catalogue of attacker tactics and techniques.", r"## MITRE ATT&CK Tags"),
@@ -417,7 +420,255 @@ def _render_asd_section(
     return "\n".join(lines)
 
 
-JSON_SCHEMA_VERSION = 1
+ESSENTIALS_ATTRIBUTION = "© Commonwealth of Australia 2026"
+ESSENTIALS_LICENCE = "CC BY 4.0"
+ESSENTIALS_NOTICE = (
+    "UNOFFICIAL community dataset. Not produced, endorsed or supported by ASD. "
+    "Check against ASD's official documents at cyber.gov.au before relying on it."
+)
+
+_ESSENTIALS_HOW_TO_READ = (
+    "> **How to read this:** ASD's Essentials for enterprise IT are a set of principles and "
+    "actions. Ravensight reads alerts, not system settings, so it cannot say whether an action "
+    "is met. Entries below are pointers: actions worth checking because ASD's mapping of "
+    "ATT&CK techniques to actions, an ISM control or shared key words link them to a finding. "
+    "ASD's mapping is a guide for setting priorities, not a rating. A priority phase is ASD's "
+    "suggested implementation order, not a rating. Ratings below come only from your own "
+    "attestation file, not from Wazuh or Ravensight, and not from ASD, and are given per "
+    "principle, a simplification of ASD's per-action, per-domain ratings. Everything else is "
+    "Not assessed. Pointers can vary a little between runs."
+)
+_NO_PHASE = 99
+
+
+def _essentials_source(dataset: Any) -> dict[str, str]:
+    """Return the attribution, licence and notice from the dataset's source block, else the constants."""
+    source = dataset.get("source") if isinstance(dataset, dict) else None
+    source = source if isinstance(source, dict) else {}
+    defaults = {
+        "attribution": ESSENTIALS_ATTRIBUTION,
+        "licence": ESSENTIALS_LICENCE,
+        "notice": ESSENTIALS_NOTICE,
+    }
+    result: dict[str, str] = {}
+    for key, fallback in defaults.items():
+        value = source.get(key)
+        result[key] = value if isinstance(value, str) and value.strip() else fallback
+    return result
+
+
+def _essentials_matched_on(actions: list[dict]) -> str:
+    """Summarise the reasons behind a principle's matched actions as a de-duplicated, capped cell."""
+    links: list[str] = []
+    words: set[str] = set()
+    for action in actions:
+        reasons = action.get("reasons")
+        for reason in reasons if isinstance(reasons, list) else []:
+            if not isinstance(reason, dict):
+                continue
+            route = reason.get("route")
+            if route == "mitre":
+                name = str(reason.get("technique_name", "")).strip()
+                tid = str(reason.get("technique_id", "")).strip()
+                text = f"{name} ({tid})" if name and tid else name or tid
+            elif route == "ism":
+                text = str(reason.get("ism_id", "")).strip()
+            elif route == "keyword":
+                shared = reason.get("shared")
+                if isinstance(shared, list):
+                    words.update(w for w in shared if isinstance(w, str))
+                continue
+            else:
+                continue
+            if text and text not in links:
+                links.append(text)
+    parts = links[:MAX_MATCHED_WORDS] + sorted(words)[:MAX_MATCHED_WORDS]
+    return sanitise_cell(", ".join(parts)) or "—"
+
+
+def _essentials_principle_rows(entry: dict) -> list[dict]:
+    """Group one finding's matched actions by principle, ordered by phase then principle id."""
+    groups: dict[str, dict] = {}
+    actions = entry.get("actions")
+    for action in actions if isinstance(actions, list) else []:
+        if not isinstance(action, dict) or not isinstance(action.get("principle_id"), str):
+            continue
+        group = groups.setdefault(
+            action["principle_id"],
+            {"id": action["principle_id"], "name": action.get("principle_name"), "actions": []},
+        )
+        group["actions"].append(action)
+    rows = []
+    for group in groups.values():
+        phases = [
+            d["priority_phase"]
+            for a in group["actions"]
+            for d in (a.get("domains") if isinstance(a.get("domains"), list) else [])
+            if isinstance(d, dict)
+            and isinstance(d.get("priority_phase"), int)
+            and not isinstance(d.get("priority_phase"), bool)
+        ]
+        group["phase"] = min(phases) if phases else _NO_PHASE
+        rows.append(group)
+    rows.sort(key=lambda g: (g["phase"], g["id"]))
+    return rows
+
+
+def _principle_names(dataset: dict) -> dict[str, str]:
+    """Map principle ids to names using the dataset's actions."""
+    names: dict[str, str] = {}
+    actions = dataset.get("actions")
+    for action in actions if isinstance(actions, list) else []:
+        principle = action.get("principle") if isinstance(action, dict) else None
+        if (
+            isinstance(principle, dict)
+            and isinstance(principle.get("id"), str)
+            and isinstance(principle.get("name"), str)
+        ):
+            names.setdefault(principle["id"], principle["name"])
+    return names
+
+
+def _render_essentials_pointers(findings: list, finding_actions: list) -> list[str]:
+    """Render the per-finding Essentials pointer table and its summary lines."""
+    by_id = {f["id"]: f for f in findings if isinstance(f, dict) and isinstance(f.get("id"), str)}
+    entries = [
+        e for e in finding_actions if isinstance(e, dict) and isinstance(e.get("id"), str)
+    ]
+    rows: list[dict] = []
+    unmatched: list[str] = []
+    for entry in entries:
+        principle_rows = _essentials_principle_rows(entry)
+        if principle_rows:
+            omitted = entry.get("omitted")
+            rows.append({
+                "id": entry["id"],
+                "principles": principle_rows,
+                "omitted": omitted if isinstance(omitted, int) and not isinstance(omitted, bool) else 0,
+            })
+        else:
+            unmatched.append(entry["id"])
+
+    lines = ["### Findings and related principles", ""]
+    if not rows:
+        lines.extend([
+            f"> No Essentials pointers matched the {len(entries)} findings in this run.",
+            "",
+        ])
+        return lines
+
+    def severity_key(row: dict) -> tuple[int, tuple[str, int, str]]:
+        """Return a sort key of severity rank, then finding-ID order."""
+        severity = str(by_id.get(row["id"], {}).get("severity", ""))
+        return (_SEVERITY_RANK.get(severity, len(_SEVERITY_RANK)), _finding_order_key(row["id"]))
+
+    kept = sorted(rows, key=severity_key)[:MAX_POINTER_ROWS]
+    hidden = len(rows) - len(kept)
+    kept.sort(key=lambda row: _finding_order_key(row["id"]))
+
+    lines.extend([
+        "| Finding | Principle | Actions | Priority phase | Matched on |",
+        "|---------|-----------|---------|----------------|------------|",
+    ])
+    for row in kept:
+        description = " ".join(str(by_id.get(row["id"], {}).get("description", "")).split())
+        finding_cell = sanitise_cell(f"{row['id']} {truncate_words(description, 60)}".strip())
+        last = len(row["principles"]) - 1
+        for index, group in enumerate(row["principles"]):
+            principle_cell = sanitise_cell(f"{group['id']} {group['name'] or ''}".strip())
+            ids = [str(a.get("action_id")) for a in group["actions"] if a.get("action_id") is not None]
+            actions_cell = sanitise_cell(", ".join(ids)) or "—"
+            if index == last and row["omitted"] > 0:
+                noun = "action" if row["omitted"] == 1 else "actions"
+                actions_cell += f" (+{row['omitted']} more {noun} not shown)"
+            phase_cell = "All phases" if group["phase"] == _NO_PHASE else f"Phase {group['phase']}"
+            lines.append(
+                f"| {finding_cell} | {principle_cell} | {actions_cell} | {phase_cell} | "
+                f"{_essentials_matched_on(group['actions'])} |"
+            )
+    lines.append("")
+
+    if hidden:
+        noun = "finding" if hidden == 1 else "findings"
+        lines.extend([f"{hidden} more {noun} with pointers not shown (highest severity first).", ""])
+    if unmatched:
+        unmatched.sort(key=_finding_order_key)
+        lines.extend([f"No pointers for: {', '.join(unmatched)}.", ""])
+    return lines
+
+
+def _render_essentials_ratings(dataset: dict, attestation: Any) -> list[str]:
+    """Render the operator's declared ratings, or a line saying none were declared."""
+    lines = ["### Declared ratings", ""]
+    if not isinstance(attestation, dict) or not attestation:
+        lines.extend(["> No ratings declared. Every principle is Not assessed.", ""])
+        return lines
+    names = _principle_names(dataset)
+    declared = [
+        (pid, entry)
+        for pid, entry in attestation.items()
+        if isinstance(entry, dict)
+        and isinstance(entry.get("status"), str)
+        and entry["status"] != "Not assessed"
+    ]
+    if not declared:
+        lines.extend([
+            f"> No ratings declared. All {len(attestation)} principles are Not assessed.",
+            "",
+        ])
+        return lines
+    lines.extend([
+        "These ratings are your own declarations.",
+        "",
+        "| Principle | Rating | Domains | Reason |",
+        "|-----------|--------|---------|--------|",
+    ])
+    for pid, entry in declared:
+        name = names.get(str(pid))
+        principle_cell = sanitise_cell(f"{pid} {name}" if name else pid)
+        domains = entry.get("domains")
+        domain_list = [d for d in domains if isinstance(d, str)] if isinstance(domains, list) else []
+        domains_cell = sanitise_cell(", ".join(domain_list)) or "—"
+        reason_cell = sanitise_cell(entry.get("reason") or "") or "—"
+        lines.append(
+            f"| {principle_cell} | {sanitise_cell(entry['status'])} | {domains_cell} | {reason_cell} |"
+        )
+    lines.append("")
+    return lines
+
+
+def _render_essentials_section(essentials: Any, findings: list) -> str:
+    """Render the ASD Essentials section as markdown, or "" when there is no usable dataset."""
+    if not isinstance(essentials, dict):
+        return ""
+    dataset = essentials.get("dataset")
+    if not isinstance(dataset, dict) or not dataset:
+        return ""
+    source = _essentials_source(dataset)
+    finding_actions = essentials.get("finding_actions")
+    lines = [
+        "## ASD Essentials for enterprise IT",
+        "",
+        _ESSENTIALS_HOW_TO_READ,
+        "",
+        (
+            f"Source: ASD Essentials for enterprise IT, {source['attribution']}, {source['licence']}. "
+            "Restructured by Ravensight as an unofficial dataset, not produced, endorsed or "
+            "supported by ASD."
+        ),
+        "",
+    ]
+    lines.extend(
+        _render_essentials_pointers(
+            findings if isinstance(findings, list) else [],
+            finding_actions if isinstance(finding_actions, list) else [],
+        )
+    )
+    lines.extend(_render_essentials_ratings(dataset, essentials.get("attestation")))
+    return "\n".join(lines)
+
+
+JSON_SCHEMA_VERSION = 2
 
 _CLUSTER_LIST_KEYS = ("hosts", "flags", "notes", "cves")
 _CLUSTER_SCALAR_KEYS = (
@@ -458,6 +709,23 @@ def _json_finding(finding: Any) -> dict[str, Any] | None:
     return mapped
 
 
+def _json_essentials(essentials: Any) -> dict[str, Any] | None:
+    """Map the Essentials block to its JSON form, or None when there is no usable dataset."""
+    if not isinstance(essentials, dict):
+        return None
+    dataset = essentials.get("dataset")
+    if not isinstance(dataset, dict) or not dataset:
+        return None
+    finding_actions = essentials.get("finding_actions")
+    attestation = essentials.get("attestation")
+    return {
+        **_essentials_source(dataset),
+        "dataset_schema_version": dataset.get("schema_version"),
+        "finding_actions": finding_actions if isinstance(finding_actions, list) else [],
+        "attestation": attestation if isinstance(attestation, dict) else {},
+    }
+
+
 def _build_json_payload(
     data: dict[str, Any],
     generated_at: datetime,
@@ -467,8 +735,12 @@ def _build_json_payload(
     matched_controls: list | None,
     finding_pointers: list | None,
     attestation: dict | None,
+    essentials: dict | None = None,
 ) -> dict[str, Any]:
-    """Build the plain dict written as the JSON report (no summary, MITRE tags or similar incidents)."""
+    """Build the plain dict written as the JSON report (no summary, MITRE tags or similar incidents).
+
+    essentials is the optional Essentials block; the payload's essentials key is None without a usable dataset.
+    """
     findings = [
         mapped
         for mapped in (_json_finding(f) for f in data.get("findings", []))
@@ -483,6 +755,7 @@ def _build_json_payload(
         "e8_status": e8_scores,
         "finding_pointers": finding_pointers,
         "matched_controls": matched_controls,
+        "essentials": _json_essentials(essentials),
     }
     if attestation:
         payload["attestation"] = attestation
@@ -528,6 +801,7 @@ class Reporter:
         finding_pointers: list | None = None,
         attestation: dict | None = None,
         run_params: dict | None = None,
+        essentials: dict | None = None,
     ) -> Path:
         """
         Generate markdown report from analysis data, plus a JSON file beside it.
@@ -541,6 +815,8 @@ class Reporter:
             finding_pointers: Optional per-finding ISM and Essential Eight pointers.
             attestation: Optional operator E8 attestation shown in the Essential Eight table.
             run_params: Optional run window and filters, echoed under "run" in the JSON only.
+            essentials: Optional Essentials block (dataset, finding_actions, attestation);
+                adds the ASD Essentials section to the markdown and an essentials key to the JSON.
 
         Returns:
             Path of the written markdown report file. It is written to a .tmp file first,
@@ -558,6 +834,7 @@ class Reporter:
             matched_controls=matched_controls,
             finding_pointers=finding_pointers,
             attestation=attestation,
+            essentials=essentials,
         )
         now = datetime.now(timezone.utc).astimezone()
         if self._overwrite:
@@ -589,6 +866,7 @@ class Reporter:
                 matched_controls=matched_controls,
                 finding_pointers=finding_pointers,
                 attestation=attestation,
+                essentials=essentials,
             )
         return filename
 
@@ -604,8 +882,9 @@ class Reporter:
         matched_controls: list | None,
         finding_pointers: list | None,
         attestation: dict | None,
+        essentials: dict | None = None,
     ) -> None:
-        """Write the JSON report beside the markdown; log a warning and carry on if it fails."""
+        """Write the JSON report beside the markdown (including any essentials block); log a warning and carry on if it fails."""
         tmp = json_path.with_name(json_path.name + ".tmp")
         try:
             payload = _build_json_payload(
@@ -617,6 +896,7 @@ class Reporter:
                 matched_controls=matched_controls,
                 finding_pointers=finding_pointers,
                 attestation=attestation,
+                essentials=essentials,
             )
             text = json.dumps(payload, ensure_ascii=False, indent=2)
             tmp.write_text(text + "\n", encoding="utf-8")
@@ -636,10 +916,13 @@ class Reporter:
         matched_controls: list | None = None,
         finding_pointers: list | None = None,
         attestation: dict | None = None,
+        essentials: dict | None = None,
     ) -> str:
         """Build the full markdown report body from analysis data, optional trends, and optional ASD framework context.
 
         attestation is the optional operator E8 attestation, passed on to the ASD section.
+
+        essentials is the optional Essentials block; with a usable dataset it adds the ASD Essentials section after the ASD Framework section.
 
         asd_data of None renders no ASD section; an empty dict renders a note that the data file is missing or outdated.
         """
@@ -724,6 +1007,11 @@ class Reporter:
                     attestation=attestation,
                 ),
             ])
+
+        # ASD Essentials section
+        essentials_section = _render_essentials_section(essentials, findings)
+        if essentials_section:
+            lines.extend(["", essentials_section])
 
         # Historical trends — supporting data
         if trends:

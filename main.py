@@ -2,9 +2,11 @@
 main.py — Ravensight Security Log Analyser entry point.
 """
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import openai
 import requests
@@ -15,6 +17,7 @@ from ravensight import (
     baseline,
     config_check,
     e8_scorer,
+    essentials_scorer,
     reporter,
     trending,
     wazuh_client,
@@ -31,6 +34,46 @@ def _similar_incidents_note(embedder: embedder_module.Embedder | None) -> str | 
         return None
     cause = getattr(embedder, "_chroma_failure", None) or "embedding server unreachable"
     return f"Similar Past Incidents: unavailable — {cause}"
+
+
+def _load_technique_names(mitre_path: Any) -> dict[str, str]:
+    """Return a technique id to name map from the MITRE file, or {} if unset or unreadable."""
+    if not isinstance(mitre_path, str) or not mitre_path.strip():
+        return {}
+    try:
+        with Path(mitre_path).open(encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        logger.warning("Could not read MITRE technique names from %s: %s", mitre_path, e)
+        return {}
+    return essentials_scorer.build_technique_names(data)
+
+
+def _build_essentials(
+    config: dict, analysis: dict, mitre_path: Any, finding_pointers: list | None
+) -> dict | None:
+    """Build the Essentials report block, or None when [essentials] is unset or its dataset is unusable."""
+    section = config.get("essentials")
+    if not isinstance(section, dict) or not section:
+        return None
+    path = section.get("path")
+    attestation_path = section.get("attestation_path")
+    dataset = essentials_scorer.load_essentials(path if isinstance(path, str) else None)
+    if not dataset:
+        return None
+    findings = analysis.get("findings")
+    return {
+        "dataset": dataset,
+        "finding_actions": essentials_scorer.map_findings_to_actions(
+            findings if isinstance(findings, list) else [],
+            dataset,
+            _load_technique_names(mitre_path),
+            ism_pointers=finding_pointers,
+        ),
+        "attestation": essentials_scorer.load_essentials_attestation(
+            attestation_path if isinstance(attestation_path, str) else None, dataset
+        ),
+    }
 
 
 def main() -> None:
@@ -195,10 +238,11 @@ def main() -> None:
         finding_pointers = e8_scorer.map_findings_to_controls(analysis.get("findings", []), asd_data, overrides_path=overrides_path) if asd_data else None
         attestation = e8_scorer.load_attestation(attestation_path, asd_data) if asd_data else {}
         run_reporter.stage("E8/ISM scoring", "done")
+        essentials = _build_essentials(config, analysis, mitre_path, finding_pointers)
         analysis["similar_incidents_unavailable_note"] = _similar_incidents_note(embedder)
         rep = reporter.Reporter(config["reports"])
         run_reporter.stage("Report", "active")
-        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers, attestation=attestation, run_params=run_params)
+        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers, attestation=attestation, run_params=run_params, essentials=essentials)
         run_reporter.stage("Report", "done")
 
     run_reporter.finish(analysis, report_path, counter.warnings, counter.errors)

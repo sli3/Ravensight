@@ -64,8 +64,9 @@ def test_json_is_valid_with_expected_keys(tmp_path: Path) -> None:
         "e8_status",
         "finding_pointers",
         "matched_controls",
+        "essentials",
     }
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
 
 
 def test_generated_at_is_converted_to_utc() -> None:
