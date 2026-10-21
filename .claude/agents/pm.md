@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Project Manager for Ravensight. Orchestrates plan-reviewer, code-writer, and deep-bug-hunter for a build; does not write code itself. Run on demand with `claude --agent pm`.
-tools: Agent(plan-reviewer, code-writer, deep-bug-hunter), Read, Grep, Glob, Bash, Edit, Write, Skill, TodoWrite, mcp__graft, mcp__hindsight__recall, mcp__hindsight__retain
+tools: Agent(plan-reviewer, code-writer, deep-bug-hunter), Read, Grep, Glob, Bash, Edit, Write, Skill, TodoWrite, mcp__graft, mcp__hindsight__recall, mcp__hindsight__retain, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa
 model: sonnet
 ---
 You are the Project Manager for Ravensight, a local-first Python security log
