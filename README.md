@@ -556,6 +556,26 @@ Findings are tagged against the **MITRE ATT&CK** framework and Australia's
 - `data/platform_hints.json` is a hand-edited false-positive hint table
 - `data/platform_agents.json` is a hand-edited, git-ignored, optional map of Wazuh agent name → vendor/platform
 
+Ravensight is an independent open-source project. It is not produced, endorsed or supported by ASD. Essential Eight statuses come only from the attestations you provide; otherwise they show as Not assessed.
+
+---
+
+## ASD Essentials for enterprise IT dataset
+
+`data/defaults/essentials_enterprise_it.json` is a structured JSON version of the enterprise IT chapter of ASD's Essentials for enterprise IT. It has 8 domains, 28 principles, 58 actions, 212 domain/action pairs and 529 implementation statements, plus the mapped ISM controls and MITRE ATT&CK technique names. It is reference data for Ravensight's planned Essentials mapping.
+
+**This is an unofficial community dataset.** It is not produced, endorsed or supported by the Australian Signals Directorate (ASD). It contains no ratings or assessments, and nothing here implies any ASD partnership, approval or certification. Please check against ASD's official documents at [cyber.gov.au](https://www.cyber.gov.au/publication/essentials-for-enterprise-it) before relying on it.
+
+**Source and licence.** All content is derived from ASD's official publications, which are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), © Commonwealth of Australia 2026. See [ASD's copyright page](https://www.cyber.gov.au/about-us/copyright). The documents used are:
+
+- ASD Essentials for enterprise IT (the chapter)
+- Assessment evidence guide for enterprise IT
+- Essentials for enterprise IT - Assessment Workbook
+
+**What was changed.** I restructured the content from ASD's PDFs and workbook into JSON and checked it against those three documents. Where they differ, both versions are kept rather than merged (for example `mitre_technique_names` from the evidence guide and `mitre_technique_names_chapter` from the chapter). Technique names are ASD's names, not ATT&CK technique IDs. The `source` block inside the JSON records the same information.
+
+**What is not included.** ASD's publications, logos and the Commonwealth Coat of Arms are not in this repository. They are not covered by the CC BY 4.0 licence.
+
 ---
 
 ## Roadmap
@@ -633,4 +653,4 @@ Prompt calibration harness (needs a running local LLM):
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE)
+Ravensight's code is MIT — see [LICENSE](LICENSE). The ASD Essentials for enterprise IT dataset (`data/defaults/essentials_enterprise_it.json`) is derived from ASD's publications and remains under CC BY 4.0, © Commonwealth of Australia 2026 — see [the section above](#asd-essentials-for-enterprise-it-dataset).
