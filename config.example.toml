@@ -82,6 +82,11 @@ overrides_path = "data/e8_keyword_overrides.json"
 # Entries whose reason still starts with "EXAMPLE:" are skipped, so replace that text.
 attestation_path = "data/e8_attestation.json"
 
+[essentials]
+# ASD Essentials for enterprise IT dataset (CC BY 4.0, © Commonwealth of Australia 2026).
+# Reference data, do not edit. This path is for a host run; Docker handling comes later.
+path = "data/defaults/essentials_enterprise_it.json"
+
 [platform]
 # Path to platform false positive hint table
 # Edit this file directly to add new hints — no code change required
