@@ -100,9 +100,8 @@ not in the setup steps below.
   ChromaDB. Without it, Ravensight only constructs an embedder when the
   `[embeddings]` section is present in the config — the rest of the
   pipeline runs unchanged.
-- In Docker mode, `EMBEDDINGS_ENDPOINT` is currently a required env var in
-  `docker-entrypoint.sh`, so set it (to any reachable URL) when running as
-  a container even if you do not intend to use embeddings.
+- Embeddings are optional in Docker too, and are configured by the
+  `[embeddings]` section of `config.toml`.
 
 ### Python packages
 
@@ -229,41 +228,70 @@ docker build -t ravensight .
 
 ### 2. Configure
 
-Docker reads configuration from environment variables rather than a `config.toml`
-file you edit directly. Copy `.env.example` to `.env` and fill in the values
-below — defaults are documented in `.env.example`.
+Docker uses the same `config.toml` as a host run, mounted read-only into the
+container at `/app/config.toml`.
 
-The container's entrypoint script substitutes these variables into
-`config.template.toml` and writes a real `config.toml` inside the container at
-start-up — you never need to hand-edit a config file when running in Docker.
+1. Copy the example and fill it in. The keys are the same as in the
+   [Local / development setup](#2-configure) table:
 
-| Variable | Required | Description |
-|----------|----------|--------------|
-| `WAZUH_HOST` | ✅ | Wazuh hostname or IP (the default Indexer host) |
-| `WAZUH_INDEXER_HOST` | ✅ | Wazuh Indexer (OpenSearch) IP |
-| `WAZUH_INDEXER_PORT` | | Indexer port (default: `9200`) |
-| `WAZUH_INDEXER_USER` | | Indexer username (default: `admin`) |
-| `WAZUH_INDEXER_PASSWORD` | ✅ | Indexer password |
-| `WAZUH_INDEXER_VERIFY_TLS` | | `true` or `false`, lowercase, no quotes (default: `false`). Sets `wazuh.indexer_verify_tls` |
-| `WAZUH_INDEXER_CA_PATH` | | CA certificate path INSIDE the container, e.g. `/app/data/wazuh-ca.pem` (default: empty). The file must live in the mounted data folder. A set path wins over `WAZUH_INDEXER_VERIFY_TLS=false`. A self-signed certificate must include the indexer host name or IP in its SAN or the request fails with an SSL error (logged as "Failed to connect to Wazuh Indexer"). Sets `wazuh.indexer_ca_path` |
-| `LLM_BASE_URL` | ✅ | llama.cpp server URL (e.g. `http://yubaba:8080/v1`) |
-| `LLM_MODEL` | ✅ | Model ID served by llama.cpp — whatever your server exposes (e.g. `Ornith-1.5-9B`) |
-| `LLM_API_KEY` | | Any string — llama.cpp does not validate (default: `local`) |
-| `LLM_TEMPERATURE` | | (default: `0.3`) |
-| `LLM_MAX_TOKENS` | | (default: `1024`) |
-| `EMBEDDINGS_ENDPOINT` | ✅ | Embedding model server URL (e.g. `http://yubaba:8081/v1`) |
-| `EMBEDDINGS_MODEL` | | (default: `Qwen3-Embedding-0.6B`) |
-| `EMBEDDINGS_TOP_K` | | (default: `5`) |
-| `TRENDING_WINDOW_DAYS` | | (default: `30`) |
-| `TRENDING_MAX_ROWS` | | Maximum rows shown in the trends table (default: `25`) |
-| `RAVENSIGHT_DATA_DIR` | | Path inside the container for data files (default: `/app/data`) |
-| `RAVENSIGHT_REPORTS_DIR` | | Path inside the container for reports (default: `/app/reports`) |
-| `RAVENSIGHT_REPORTS_OVERWRITE` | | `true` or `false`, lowercase, no quotes (default: `false`). See `reports.overwrite` above |
-| `RAVENSIGHT_REPORTS_JSON_OUTPUT` | | `true` or `false`, lowercase, no quotes (default: `true`). See `reports.json_output` above |
+   ```bash
+   cp config.example.toml config.toml
+   ```
 
-Required variables with no value set will cause the container to exit
-immediately with a clear error at start-up, rather than fail later with a
-confusing placeholder value baked into `config.toml`.
+   Wazuh and LLM hosts must be reachable from inside the container, so use real
+   hostnames or IPs, not `localhost`. Leave the relative paths (`data/...`,
+   `reports`) as written: the container runs from `/app`.
+
+2. Copy `.env.example` to `.env` for the Docker-only settings:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   `.env` holds `RAVENSIGHT_PUID`, `RAVENSIGHT_PGID`, `TZ`, the host path
+   variables (`RAVENSIGHT_HOST_DATA_PATH`, `RAVENSIGHT_HOST_REPORTS_PATH`,
+   `RAVENSIGHT_HOST_CONFIG_PATH`, `RAVENSIGHT_HOST_CHROMA_PATH`) and
+   `RAVENSIGHT_CHROMA_PORT`. Defaults are documented in `.env.example`.
+
+The host folders can be changed with `RAVENSIGHT_HOST_DATA_PATH`,
+`RAVENSIGHT_HOST_REPORTS_PATH` and `RAVENSIGHT_HOST_CONFIG_PATH`, but the paths
+inside the container are fixed: `/app/data`, `/app/reports` and
+`/app/config.toml`.
+
+If the host `config.toml` is missing, Docker creates a directory of that name
+and the container then stops with a clear message. Delete the directory and
+create the real file. The host file must be readable by the uid in
+`RAVENSIGHT_PUID`.
+
+**Migrating from the old `.env` settings.** The old Docker variables are no
+longer read. Set the matching key in `config.toml` instead:
+
+| Old variable | `config.toml` key |
+|--------------|-------------------|
+| `WAZUH_HOST` | `wazuh.host` |
+| `WAZUH_INDEXER_HOST` | `wazuh.indexer_host` |
+| `WAZUH_INDEXER_PORT` | `wazuh.indexer_port` |
+| `WAZUH_INDEXER_USER` | `wazuh.indexer_user` |
+| `WAZUH_INDEXER_PASSWORD` | `wazuh.indexer_password` |
+| `WAZUH_INDEXER_VERIFY_TLS` | `wazuh.indexer_verify_tls` |
+| `WAZUH_INDEXER_CA_PATH` | `wazuh.indexer_ca_path` |
+| `LLM_BASE_URL` | `llm.base_url` |
+| `LLM_MODEL` | `llm.model` |
+| `LLM_API_KEY` | `llm.api_key` |
+| `LLM_TEMPERATURE` | `llm.temperature` |
+| `LLM_MAX_TOKENS` | `llm.max_tokens` |
+| `EMBEDDINGS_ENDPOINT` | `embeddings.endpoint` |
+| `EMBEDDINGS_MODEL` | `embeddings.model` |
+| `EMBEDDINGS_TOP_K` | `embeddings.top_k` |
+| `EMBEDDINGS_CHROMA_HOST` | `embeddings.chroma_host` |
+| `EMBEDDINGS_CHROMA_PORT` | `embeddings.chroma_port` |
+| `TRENDING_WINDOW_DAYS` | `trending.window_days` |
+| `TRENDING_MAX_ROWS` | `trending.max_rows` |
+| `RAVENSIGHT_REPORTS_OVERWRITE` | `reports.overwrite` |
+| `RAVENSIGHT_REPORTS_JSON_OUTPUT` | `reports.json_output` |
+
+`RAVENSIGHT_DATA_DIR` and `RAVENSIGHT_REPORTS_DIR` no longer exist: the
+container paths are fixed. A variable left in `.env` is ignored and harmless.
 
 **Time zone (optional).** The container runs in UTC unless you set `TZ` in
 `.env` to your IANA time zone name (e.g. `TZ=Australia/Adelaide`). Set it to
@@ -280,6 +308,7 @@ had both host and container runs before `TZ` was set, Trends may show a stale
 ```bash
 docker run \
   --env-file .env \
+  -v ./config.toml:/app/config.toml:ro \
   -v ./data:/app/data \
   -v ./reports:/app/reports \
   ravensight
@@ -334,7 +363,7 @@ Anything else after the image name overrides the default command, but still
 runs through the same start-up checks:
 
 ```bash
-docker run --env-file .env -v ./data:/app/data -v ./reports:/app/reports ravensight \
+docker run --env-file .env -v ./config.toml:/app/config.toml:ro -v ./data:/app/data -v ./reports:/app/reports ravensight \
   python3 main.py --config /app/config.toml --hours 1 --level 12
 ```
 
@@ -358,15 +387,16 @@ docker compose --profile chroma logs -f chroma
 docker compose --profile chroma down
 ```
 
-To point Ravensight at the bundled server, set in `.env`:
+To point Ravensight at the bundled server, set in `config.toml`'s
+`[embeddings]` section:
 
-```
-EMBEDDINGS_CHROMA_HOST=chroma
+```toml
+chroma_host = "chroma"
+chroma_port = 8000
 ```
 
-Leave `EMBEDDINGS_CHROMA_HOST` empty (the default) to keep the
-single-container embedded mode — the bundled server is a network-mode
-switch, not a default.
+Leave `chroma_host` unset (the default) to keep the single-container
+embedded mode — the bundled server is a network-mode switch, not a default.
 
 ### Hybrid: host app plus Docker-hosted Chroma
 
@@ -475,9 +505,9 @@ primary output: if the JSON cannot be written, Ravensight logs a warning and the
 markdown report is still produced.
 
 To turn the JSON copy off, set `[reports] json_output = false` (default `true`; it
-must be exactly `true` or `false`). With Docker set `RAVENSIGHT_REPORTS_JSON_OUTPUT`
-instead. With `json_output = false` and `overwrite = true`, an older same-day `.json`
-file stays beside the new markdown report and no warning is logged.
+must be exactly `true` or `false`). This applies to Docker too, through the mounted
+`config.toml`. With `json_output = false` and `overwrite = true`, an older same-day
+`.json` file stays beside the new markdown report and no warning is logged.
 
 ---
 
@@ -579,7 +609,6 @@ Ravensight/
 │   └── chroma/embedded/      # Gitignored — vector store
 ├── reports/                  # Gitignored — generated output
 ├── config.example.toml
-├── config.template.toml      # Docker — substituted at container start
 ├── docker-entrypoint.sh
 ├── Dockerfile
 ├── requirements.txt

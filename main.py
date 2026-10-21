@@ -114,7 +114,7 @@ def main() -> None:
             run_reporter.stage("Fetch alerts", "fail")
             logger.critical(
                 f"Wazuh Indexer unreachable ({type(e).__name__}: {e}) — "
-                "check [wazuh] indexer_host and indexer_port in config.toml (or .env with Docker)",
+                "check [wazuh] indexer_host and indexer_port in config.toml",
                 exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
             )
             sys.exit(1)
@@ -124,7 +124,7 @@ def main() -> None:
             if status in (401, 403):
                 msg = (
                     f"Wazuh Indexer rejected the login (HTTP {status}) — "
-                    "check [wazuh] indexer_user and indexer_password in config.toml (or .env with Docker)"
+                    "check [wazuh] indexer_user and indexer_password in config.toml"
                 )
             else:
                 msg = (
@@ -147,7 +147,7 @@ def main() -> None:
         except openai.APIConnectionError as e:
             run_reporter.stage("LLM analysis", "fail")
             logger.critical(
-                f"LLM server unreachable ({type(e).__name__}: {e}) — check [llm] base_url in config.toml (or .env with Docker)",
+                f"LLM server unreachable ({type(e).__name__}: {e}) — check [llm] base_url in config.toml",
                 exc_info=logging.getLogger().isEnabledFor(logging.DEBUG),
             )
             sys.exit(1)

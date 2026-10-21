@@ -62,14 +62,16 @@ def test_placeholder_value_not_printed() -> None:
     assert all("YOUR_WAZUH_MANAGER_IP" not in p for p in problems)
 
 
-def test_placeholder_message_mentions_env() -> None:
-    """The placeholder message points the user at .env for Docker runs."""
+def test_placeholder_message_names_config_toml_only() -> None:
+    """The placeholder message names config.toml and never mentions .env or Docker."""
     config = _valid_config()
     config["wazuh"]["host"] = "YOUR_WAZUH_MANAGER_IP"
 
     problems = config_check.find_problems(config, report_only=False)
 
-    assert any(".env" in p for p in problems)
+    assert problems
+    assert all("config.toml" in p for p in problems)
+    assert all(".env" not in p and "Docker" not in p for p in problems)
 
 
 def test_optional_section_placeholder_reported() -> None:
@@ -261,7 +263,11 @@ def test_fetch_alerts_connection_error_clean_message(
     criticals = [rec for rec in caplog.records if rec.levelno == logging.CRITICAL]
     assert len(criticals) == 1
     assert "Wazuh Indexer unreachable" in criticals[0].message
-    assert "check [wazuh] indexer_host and indexer_port" in criticals[0].message
+    assert criticals[0].message.endswith(
+        "check [wazuh] indexer_host and indexer_port in config.toml"
+    )
+    assert ".env" not in criticals[0].message
+    assert "Docker" not in criticals[0].message
     assert not criticals[0].exc_info
 
 
@@ -287,12 +293,13 @@ def test_fetch_alerts_http_401_rejected_login_message(
         main.main()
 
     assert exc.value.code == 1
+    criticals = [rec for rec in caplog.records if rec.levelno == logging.CRITICAL]
     assert any(
         "rejected the login (HTTP 401)" in rec.message
-        and "indexer_user and indexer_password" in rec.message
-        for rec in caplog.records
-        if rec.levelno == logging.CRITICAL
+        and rec.message.endswith("check [wazuh] indexer_user and indexer_password in config.toml")
+        for rec in criticals
     )
+    assert all(".env" not in rec.message and "Docker" not in rec.message for rec in criticals)
 
 
 def test_fetch_alerts_debug_includes_traceback(
@@ -345,7 +352,9 @@ def test_analyse_api_connection_error_clean_message(
     criticals = [rec for rec in caplog.records if rec.levelno == logging.CRITICAL]
     assert len(criticals) == 1
     assert "LLM server unreachable" in criticals[0].message
-    assert "[llm] base_url" in criticals[0].message
+    assert criticals[0].message.endswith("check [llm] base_url in config.toml")
+    assert ".env" not in criticals[0].message
+    assert "Docker" not in criticals[0].message
     assert not criticals[0].exc_info
 
 

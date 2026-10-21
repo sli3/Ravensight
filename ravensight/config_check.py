@@ -30,8 +30,7 @@ _INT_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 _PLACEHOLDER_HINT = (
-    "set your real value in config.toml (or in .env if you run Ravensight "
-    "with Docker), then run again."
+    "set your real value in config.toml, then run again."
 )
 
 # Sections skipped entirely (placeholders, keys, typing) in report-only mode.

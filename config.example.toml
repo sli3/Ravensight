@@ -1,3 +1,10 @@
+# This one file is used for host runs and is mounted read-only into Docker.
+# For Docker, wazuh and llm hosts must be reachable from inside the container:
+# use real hostnames or IPs, not localhost.
+# Relative paths below (data/..., reports) should stay as written: the container
+# runs from /app and mounts /app/data and /app/reports. For a host run they are
+# relative to where you start Ravensight.
+
 [wazuh]
 # Wazuh host: the default Indexer host when indexer_host is not set
 host = "YOUR_WAZUH_HOST"
@@ -59,6 +66,9 @@ model = "Qwen3-Embedding-0.6B"
 chroma_db_path = "data/chroma/embedded"
 # Optional: set chroma_host to switch to networked/server mode (chromadb.HttpClient).
 # In server mode, chroma_db_path is ignored and no local data/chroma/embedded directory is created.
+# In Docker, chroma_host = "chroma" with chroma_port = 8000 is the value for the bundled
+# Chroma service (start it with the `chroma` profile). Use "localhost" for a host app
+# with Docker-hosted Chroma.
 # chroma_host = "YOUR_CHROMA_SERVER_IP"
 # chroma_port = 8000
 top_k = 5
