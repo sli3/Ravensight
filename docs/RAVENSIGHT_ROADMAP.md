@@ -49,6 +49,7 @@ The base project is complete. All modules are working end-to-end:
 | Wazuh Indexer Connection Mode Log Line (section 18) | ✅ Complete | `Client.__init__` in `ravensight/wazuh_client.py` logs one INFO line with host, port and the configured TLS mode (CA file, bundled public CA list, or encrypted but not verified), never a negotiated protocol and never the user or password; four new caplog tests in `tests/test_wazuh_client.py`; 596 tests pass (commit `381237a`). Seen in a live Docker run: `HTTPS, encrypted but certificate not verified (indexer_verify_tls = false)`. |
 | Structured JSON Report Output (section 17) | ✅ Complete | Session 1 done (commit `e63c70e`): `Reporter.generate()` in `ravensight/reporter.py` writes a `.json` file beside the markdown report (`schema_version` 1, `generated_at`, `run`, `findings`, `trends_markdown`, `e8_status`, `finding_pointers`, `matched_controls`, `attestation` when present) through `_write_json`, which logs a warning and carries on if the write fails; new optional `run_params` argument; README JSON section; 16 new tests in `tests/test_reporter_json.py`; markdown output proved byte-identical; 612 tests pass. Session 2 (commit `2fc9301`): `[reports] json_output` switch (default true, bool else `ValueError`) read by `Reporter.__init__` in `ravensight/reporter.py` and honoured in `generate()`; `RAVENSIGHT_REPORTS_JSON_OUTPUT` in `config.template.toml`, `docker-entrypoint.sh` (default true, exact true or false check) and `.env.example`; bool check in `ravensight/config_check.py` in both normal and report-only mode; `main.py` passes `run_params` (hours, agent, level) in the full run only, so `run` is null in report-only runs; README updated; 15 new tests, 627 tests pass. Seen in a live Docker run: `run` filled in and the `.json` written with the default. The switch off (`false`) and a bad value were not run in a container, and the entrypoint has no tests. Known limitations are listed in section 17. |
 | Unify the Settings Files (section 19) | ✅ Complete | Sessions 2 and 3 built. Session 2 built, Docker run verified, missing-file and sync paths untested (commit `b83cf9a`): `docker-compose.yml` mounts the host `config.toml` read-only at `/app/config.toml`, `docker-entrypoint.sh` checks it exists and is readable by the app user (skipped for `sync` and `init-attestation`) and uses fixed container paths `/app/data` and `/app/reports`, `.env.example` trimmed to Docker-only settings, `config.template.toml` removed; 627 tests pass. Seen in a live Docker run on 21 Oct: config check passed, `Connecting to ChromaDB server at chroma:8000`, report and JSON written. Not run in a container: a missing host file, an unreadable file with a non-zero PUID, `sync` and `init-attestation`. Session 3 (uncommitted at time of update): `ravensight/config_check.py` `_PLACEHOLDER_HINT` and the three Wazuh and LLM error messages in `main.py` now name `config.toml` only, with `tests/test_config_check.py` asserting the full message text; `config.example.toml` has comments only (Docker and host values, `chroma_host = "chroma"`, relative paths); README Docker section rewritten for the single file with an old-variable migration table, config mount in the `docker run` examples, and the stale `config.template.toml` and `EMBEDDINGS_*` text removed; 627 tests pass. The README was reviewed by reading only, and the Docker commands in it were not run. |
+| ASD Essentials Evidence Report (section 20) | 🔶 In progress | Session 0 done (research, no code). Prin's dataset verified on 21 Oct against ASD's evidence guide (58/58 actions, 529/529 IGP), assessment workbook and chapter PDF (37/37 technique rows); chapter technique lists and wording added as separate fields. Session 1 (uncommitted at time of update): tracked `data/defaults/essentials_enterprise_it.json` (Prin's dataset plus `schema_version` 1), new `ravensight/essentials_scorer.py` with `load_essentials()` (empty result and one warning on any read, decode or validation failure, never raises), `[essentials] path` in `config.example.toml`, 57 tests in `tests/test_essentials_scorer.py` including the committed dataset's counts; 684 tests pass, ruff clean. Not yet wired into `main.py` or the report (Sessions 2 to 6). |
 
 ---
 
@@ -1358,8 +1359,12 @@ operator's own declared ratings. It does not rate anything itself.
 - Each action is rated per applicable domain on four levels: not assessed, not
   effective, partially effective, fully effective. The principle rating is the lowest
   action rating. ASD's phases are an implementation order, not a maturity rating
-- Third-party summaries were the source for the rating rules. Session 0 confirms them
-  against ASD's Assessment process guide before any code depends on them
+- Confirmed in Session 0 against ASD's Assessment process guide (pp. 10, 20-24): the
+  four ratings, the weakest-link rule (a principle is partially or fully effective only
+  once all its applicable actions are assessed), and a domain with nothing assessed
+  shown as N/A. The ATT&CK mapping is "a guide rather than a scoring mechanism"; ASD
+  suggests comparing observed techniques with mapped actions to set priorities, without
+  changing any rating
 
 **Design rule:** evidence-only, as in sections 9, 12 and 15. Ravensight reads alerts,
 not configuration, so it cannot derive an effectiveness rating. Findings point at
@@ -1367,8 +1372,8 @@ principles and actions, with the reason. A rating appears only when the operator
 declares it in an attestation file, and the report says so. No pass or fail wording,
 and no domain percentage.
 
-**Sessions: 6. Later phases are added here before they start. Section 19 Session 3
-is built first.**
+**Sessions: 7 (Session 0 done). Later phases are added here before they start.
+Section 19 Session 3 is built first.**
 
 Decisions (agreed with Prin):
 - Enterprise IT chapter only. The OT and cloud chapters are later items
@@ -1382,8 +1387,20 @@ Decisions (agreed with Prin):
   published guidance, and says plainly that a phase is not a rating
 - The report shows the four-level scale only for attested principles. Everything else
   stays "Not assessed"
+- Essentials is added alongside the Essential Eight, not as a replacement. Removing the
+  Essential Eight is a separate decision for later
+- The dataset is Prin's hand-built `essentials_enterprise_it.json` (from ASD's evidence
+  guide PDF and assessment workbook, CC BY 4.0, "© Commonwealth of Australia 2026"),
+  verified on 21 Oct 2026 against the evidence guide, the workbook and the chapter PDF.
+  It is tracked in `data/defaults/` because it is reference data no script can
+  regenerate, and gains a top-level `schema_version`
+- Each technical action keeps two technique lists: `mitre_technique_names` from the
+  evidence guide and `mitre_technique_names_chapter` from the chapter. Matching uses both.
+  Where ASD's documents word an action differently, `action_text_chapter` records the
+  chapter's wording
+- The ASD source files are kept in `docs/asd-essentials-sources/` for re-verification
 
-#### Session 0 — Research and confirm (no code)
+#### Session 0 — Research and confirm (no code), done 21 Oct 2026
 
 In scope:
 - A read-only study of ASD's Essentials for enterprise IT, the Assessment process
@@ -1400,39 +1417,72 @@ Out of scope:
 - Any edit to code, tests, config examples, the entrypoint, the Dockerfile or the README
 - Opening, printing or quoting `config.toml` or `.env`
 
-#### Session 1 — Essentials dataset
+Result: ASD publishes no machine-readable Essentials file (the ISM OSCAL catalogue
+predates the launch). Wazuh alerts carry `rule.mitre.id` (seen in Prin's dashboard), but
+nothing in Ravensight reads it yet. Prin built the dataset instead; see the decisions
+above.
+
+#### Session 1 — Dataset and loader
 
 In scope:
-- `scripts/essentials_sync.py` (new), or an extension of `scripts/asd_sync.py` if
-  Session 0 shows that is simpler: writes `data/essentials_framework.json` with
-  principles, actions, domains, ISM identifiers, MITRE technique names and priority
-  phases
-- `config.example.toml`: an `[essentials]` section with the data path
-- Graceful skip when the file is absent, as for `platform_hints.json`
-- Tests for each change
+- `data/defaults/essentials_enterprise_it.json` (new, tracked): Prin's verified dataset
+  (58 actions, 28 principles, 8 domains, 212 domain/action pairs, 529 IGP statements),
+  with a top-level `schema_version` of 1 added and no other content change
+- `ravensight/essentials_scorer.py` (new): a loader that returns the data, or an empty
+  result with a warning when the file is missing, unreadable, not UTF-8, not JSON or
+  fails validation, never stopping a run (the conventions of `analyser._load_asd_data`).
+  Validation: required keys and types, `schema_version`, action id pattern and
+  uniqueness, every action domain present in `domains`, ISM ids in `ISM-NNNN` form
+- `config.example.toml`: an `[essentials]` section with
+  `path = "data/defaults/essentials_enterprise_it.json"`
+- Tests: each loader failure path, each validation rule, and a test that the committed
+  file loads with the expected counts
 
 Out of scope:
+- `main.py`, `ravensight/reporter.py`, `ravensight/analyser.py` and the LLM prompt
+- Docker and the README (Session 6)
+- Any dataset content change other than adding `schema_version`
 - `data/asd_framework.json` and the Essential Eight data
-- `ravensight/reporter.py`, `main.py` and the LLM prompt
 - `config.toml`
 
-#### Session 2 — Finding pointers
+#### Session 2 — Carry MITRE technique ids onto clusters
 
 In scope:
-- `ravensight/essentials_scorer.py` (new): a per-finding result listing the principles
-  and actions a finding points at, with the reason. MITRE technique matches first if
-  Session 0 shows the alerts carry them, and keyword matching as a fallback, as in
-  `ravensight/e8_scorer.py`
-- No second LLM call, and no dependency on other Ravensight modules beyond the data
-  dict it receives
-- Tests for each change
+- `ravensight/analyser.py` (and `ravensight/evidence.py` if the plan shows it is the
+  better place): collect the `rule.mitre.id` values of a cluster's raw alerts into a new
+  cluster field (for example `mitre_ids`, sorted and without duplicates). Alerts without
+  the field add nothing
+- The field reaches findings through `_parse_analysis`, as other cluster fields do
+- Tests, including that the LLM prompt text is unchanged and that `_fidelity_flags`
+  behaves as before
+
+Out of scope:
+- Any LLM prompt change
+- `ravensight/reporter.py`, the markdown report and the JSON report
+- `cluster_key()`, baseline and embedding text
+- `config.toml`
+
+#### Session 3 — Finding pointers
+
+In scope:
+- `ravensight/essentials_scorer.py`: a per-finding result listing the actions a finding
+  points at (with principle, domains and priority phase), each with its reason:
+  - MITRE: the finding's `mitre_ids` resolved to ATT&CK names through
+    `data/mitre_attack.json`, a sub-technique also counting as its parent, matched
+    case-insensitively against both technique lists
+  - ISM: the finding's ISM pointers (from `e8_scorer.map_findings_to_controls`)
+    matched against each action's `ism_excl_e8` and `e8_ism`
+  - Keyword matching as a last-resort fallback, as in `ravensight/e8_scorer.py`
+- No second LLM call; the module receives its data as arguments
+- Tests for each route
 
 Out of scope:
 - Any change to `ravensight/e8_scorer.py`
-- `ravensight/reporter.py`, `main.py` and the LLM prompt
+- Any rating
+- `main.py`, `ravensight/reporter.py` and the LLM prompt
 - `config.toml`
 
-#### Session 3 — Attestation
+#### Session 4 — Attestation
 
 In scope:
 - `ravensight/essentials_scorer.py`: a loader for `data/essentials_attestation.json`.
@@ -1451,10 +1501,17 @@ Out of scope:
 - `ravensight/reporter.py` and `main.py`
 - `config.toml`
 
-#### Session 4 — Report and JSON
+#### Session 5 — Report and JSON
 
 In scope:
-- `main.py`: read the `[essentials]` section and pass the results to `Reporter.generate`
+- `main.py`: read the `[essentials]` section, load the dataset, build the finding
+  pointers and attestation, and pass the results to `Reporter.generate`
+- The how-to-read note also says that the ATT&CK mapping is a guide for setting
+  priorities, not a rating, and that an attested rating is the operator's own
+  declaration per principle (a simplification of ASD's per-action, per-domain rating),
+  not an ASD assessment
+- The report and the JSON carry the attribution "© Commonwealth of Australia 2026,
+  CC BY 4.0" wherever Essentials data is shown
 - `ravensight/reporter.py`: an "ASD Essentials" section with a "Findings and related
   principles" table, ASD's phase order, and attested ratings with their reasons.
   "Not assessed" stays the default. The how-to-read note says ratings come from the
@@ -1469,14 +1526,16 @@ Out of scope:
 - The LLM prompt
 - `config.toml`
 
-#### Session 5 — Docker and documents
+#### Session 6 — Docker and documents
 
 In scope:
 - `docker-entrypoint.sh`: an `init-essentials-attestation` subcommand (copy if absent,
-  never overwrite, run as the dropped user) and the Essentials data in the `sync`
-  subcommand
-- `README.md` and `.env.example` if a Docker-only setting changes: how to sync, create
-  and edit the attestation file, and a note on the Essential Eight transition timeline
+  never overwrite, run as the dropped user), and how the dataset is found when
+  `RAVENSIGHT_HOST_DATA_PATH` is not the repository's `data/` folder (for example
+  seeding it from `/app/defaults/`, as for `platform_hints.json`)
+- `README.md` and `.env.example` if a Docker-only setting changes: the dataset and its
+  attribution, how to create and edit the attestation file, and a note on the Essential
+  Eight transition timeline
 - The entrypoint has no tests, so its behaviour is checked in review (logged as deferred)
 
 Out of scope:
@@ -1489,6 +1548,7 @@ Out of scope for the whole section:
 - The OT and cloud chapters
 - Computing domain percentages or any rating Ravensight derives itself
 - Any LLM prompt change
+- Changing the dataset content, except a fix verified against the ASD source files
 - A web UI
 - Opening, editing or printing `config.toml` or `.env`
 
