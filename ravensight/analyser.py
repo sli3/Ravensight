@@ -46,6 +46,7 @@ _KNOWN_PROVIDERS = (
 )
 
 _TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+_MITRE_ID_RE = re.compile(r"T\d{4}(?:\.\d{3})?", re.ASCII)
 _ISM_RE = re.compile(r"\bISM-\d{4}\b", re.IGNORECASE)
 _PATH_RE = re.compile(r"(?<![\w/])/(?:[\w.-]+/)+[\w.-]+")
 _PORT_WORD_RE = re.compile(r"\b(?:d?ports?)\s+(\d{1,5})\b")
@@ -493,6 +494,26 @@ def _coerce_level(raw_level: Any) -> int:
         return 0
 
 
+def _mitre_ids(rule: dict[str, Any]) -> list[str]:
+    """Return valid, upper-cased MITRE technique ids from a rule's mitre.id."""
+    mitre = rule.get("mitre")
+    if not isinstance(mitre, dict):
+        return []
+    raw = mitre.get("id")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    found: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = item.strip().upper()
+        if _MITRE_ID_RE.fullmatch(value):
+            found.append(value)
+    return found
+
+
 def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group raw alerts into data-built clusters for analysis.
 
@@ -500,6 +521,8 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
     description) when no package is known; all other alerts group by rule
     description alone, so hosts merge across agents. Counts,
     hosts, severities, timestamps and CVE lists all come from alert data.
+    Each cluster also carries a sorted, de-duplicated "mitre_ids" list taken
+    from the alerts' rule.mitre.id values (empty when none are present).
 
     Args:
         alerts: List of alert dicts from wazuh_client.fetch_alerts().
@@ -563,6 +586,7 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
         cluster["count"] += 1
         if rule_id_str:
             cluster["rule_ids"].add(rule_id_str)
+        cluster["mitre_ids"].update(_mitre_ids(rule))
         cluster["hosts"].add(host)
         cluster["max_level"] = max(cluster["max_level"], level)
         if timestamp:
@@ -604,6 +628,7 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
             "type": cluster["type"],
             "description": cluster["description"],
             "rule_ids": sorted(cluster["rule_ids"]),
+            "mitre_ids": sorted(cluster["mitre_ids"]),
             "hosts": sorted(cluster["hosts"]),
             "count": cluster["count"],
             "max_level": cluster["max_level"],
@@ -733,6 +758,7 @@ def _new_cluster(
         "description": description,
         "package": package,
         "rule_ids": set(),
+        "mitre_ids": set(),
         "hosts": set(),
         "count": 0,
         "max_level": 0,
