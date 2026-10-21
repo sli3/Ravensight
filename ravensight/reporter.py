@@ -470,7 +470,13 @@ def _essentials_matched_on(actions: list[dict]) -> str:
             if route == "mitre":
                 name = str(reason.get("technique_name", "")).strip()
                 tid = str(reason.get("technique_id", "")).strip()
-                text = f"{name} ({tid})" if name and tid else name or tid
+                if name and tid:
+                    if reason.get("via_parent") is True:
+                        text = f"{name} (parent of {tid})"
+                    else:
+                        text = f"{name} ({tid})"
+                else:
+                    text = name or tid
             elif route == "ism":
                 text = str(reason.get("ism_id", "")).strip()
             elif route == "keyword":

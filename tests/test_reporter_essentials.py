@@ -206,6 +206,59 @@ def test_table_row_content() -> None:
     assert "audit, logging" in rows[0]
 
 
+def _mitre_reason(tid: str, name: str, via_parent: bool) -> dict[str, Any]:
+    """Build one MITRE reason."""
+    return {
+        "route": "mitre",
+        "technique_id": tid,
+        "technique_name": name,
+        "via_parent": via_parent,
+        "list": "guide",
+    }
+
+
+def _matched_row(actions: list[dict[str, Any]]) -> str:
+    """Render one finding's actions and return its table row."""
+    section = _section(_essentials([_entry("C1", actions)]), [_cluster(id="C1")])
+    return _rows(section)[0]
+
+
+def test_via_parent_reads_parent_of() -> None:
+    """A parent match names the finding's own technique id as the child."""
+    reason = _mitre_reason("T1070.004", "Indicator Removal", True)
+    row = _matched_row([_action("A1", "P1", reasons=[reason])])
+    assert "Indicator Removal (parent of T1070.004)" in row
+    assert "Indicator Removal (T1070.004)" not in row
+
+
+def test_direct_match_keeps_plain_wording() -> None:
+    """via_parent False still renders Name (Tid)."""
+    reason = _mitre_reason("T1070.004", "Indicator Removal", False)
+    row = _matched_row([_action("A1", "P1", reasons=[reason])])
+    assert "Indicator Removal (T1070.004)" in row
+    assert "parent of" not in row
+
+
+@pytest.mark.parametrize("name,tid", [("Indicator Removal", ""), ("", "T1070.004")])
+def test_via_parent_with_one_value_shows_it_alone(name: str, tid: str) -> None:
+    """With only a name or only an id the value shows alone."""
+    reason = _mitre_reason(tid, name, True)
+    row = _matched_row([_action("A1", "P1", reasons=[reason])])
+    assert (name or tid) in row
+    assert "parent of" not in row
+
+
+def test_direct_and_parent_reasons_are_distinct_entries() -> None:
+    """A direct and a parent reason for one action give two entries, no duplicates."""
+    reasons = [
+        _mitre_reason("T1070.004", "File Deletion", False),
+        _mitre_reason("T1070.004", "Indicator Removal", True),
+    ]
+    row = _matched_row([_action("A1", "P1", reasons=reasons)])
+    assert row.count("File Deletion (T1070.004)") == 1
+    assert row.count("Indicator Removal (parent of T1070.004)") == 1
+
+
 def test_matched_on_is_deduplicated() -> None:
     """The same technique or ISM id across actions is listed once."""
     actions = [_action("A1", "P1"), _action("A2", "P1")]

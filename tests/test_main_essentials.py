@@ -5,6 +5,7 @@ No network, LLM or ChromaDB: fetch_alerts and analyse are monkeypatched and
 Reporter.generate is replaced by a recording fake. Never touches the real config.toml.
 """
 
+import copy
 import json
 import logging
 import sys
@@ -194,6 +195,123 @@ def test_build_essentials_missing_findings_key() -> None:
     result = main._build_essentials(_config(path=str(_DATASET_PATH)), {}, None, None)
     assert result is not None
     assert result["finding_actions"] == []
+
+
+# --- Rule 87702 IPv6 artefact: MITRE ids ignored for matching only ----------------------
+
+
+def _t1110_mitre_file(tmp_path: Path) -> str:
+    """Write a MITRE file whose T1110 maps to a name that matches a dataset action."""
+    path = tmp_path / "mitre_t1110.json"
+    path.write_text(
+        json.dumps({"techniques": [{"id": "T1110", "name": "Disable or Modify Tools"}]}),
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+def _finding(finding_id: str, **extra: Any) -> dict[str, Any]:
+    """Build a finding carrying T1110 plus any extra keys."""
+    return {"id": finding_id, "description": "x", "mitre_ids": ["T1110"], **extra}
+
+
+def _routes(result: dict[str, Any], finding_id: str) -> set[str]:
+    """Return the reason routes recorded for one finding id."""
+    return {
+        r["route"]
+        for entry in result["finding_actions"]
+        if entry["id"] == finding_id
+        for a in entry["actions"]
+        for r in a["reasons"]
+    }
+
+
+def _build(tmp_path: Path, findings: list[Any], pointers: list | None = None) -> dict[str, Any]:
+    """Run _build_essentials over the given findings with the T1110 MITRE file."""
+    result = main._build_essentials(
+        _config(path=str(_DATASET_PATH)), {"findings": findings}, _t1110_mitre_file(tmp_path), pointers
+    )
+    assert result is not None
+    return result
+
+
+def test_build_essentials_ignores_mitre_for_87702_ipv6_cluster(tmp_path: Path) -> None:
+    """A cluster with the IPv6 artefact note gets no MITRE reason."""
+    result = _build(tmp_path, [_finding("C1", notes=[analyser.RULE_87702_IPV6_ARTEFACT_NOTE])])
+    assert "mitre" not in _routes(result, "C1")
+
+
+def test_build_essentials_keeps_mitre_without_artefact_note(tmp_path: Path) -> None:
+    """With empty notes the T1110 finding still gets a MITRE reason."""
+    result = _build(tmp_path, [_finding("C1", notes=[])])
+    assert "mitre" in _routes(result, "C1")
+
+
+def test_build_essentials_keeps_mitre_with_other_notes(tmp_path: Path) -> None:
+    """Unrelated notes do not suppress the MITRE route."""
+    result = _build(tmp_path, [_finding("C1", notes=["something else"])])
+    assert "mitre" in _routes(result, "C1")
+
+
+def test_build_essentials_artefact_does_not_mutate_inputs(tmp_path: Path) -> None:
+    """The analysis is unchanged after the call and keeps its mitre_ids."""
+    analysis = {"findings": [_finding("C1", notes=[analyser.RULE_87702_IPV6_ARTEFACT_NOTE])]}
+    snapshot = copy.deepcopy(analysis)
+    main._build_essentials(
+        _config(path=str(_DATASET_PATH)), analysis, _t1110_mitre_file(tmp_path), None
+    )
+    assert analysis == snapshot
+    assert analysis["findings"][0]["mitre_ids"] == ["T1110"]
+
+
+def test_build_essentials_artefact_keeps_ism_route(tmp_path: Path) -> None:
+    """The ISM route still fires for an artefact cluster."""
+    dataset = json.loads(_DATASET_PATH.read_text(encoding="utf-8"))
+    ism_id = None
+    for action in dataset["actions"]:
+        refs = action.get("references")
+        for field in ("ism_excl_e8", "e8_ism"):
+            ids = refs.get(field) if isinstance(refs, dict) else None
+            if ids:
+                ism_id = ids[0]
+                break
+        if ism_id:
+            break
+    assert ism_id is not None
+    pointers = [{"id": "C1", "ism": [{"id": ism_id}], "e8": []}]
+    result = _build(
+        tmp_path, [_finding("C1", notes=[analyser.RULE_87702_IPV6_ARTEFACT_NOTE])], pointers
+    )
+    routes = _routes(result, "C1")
+    assert "ism" in routes
+    assert "mitre" not in routes
+
+
+def test_build_essentials_mixed_findings(tmp_path: Path) -> None:
+    """Only the non-artefact cluster keeps its MITRE reasons."""
+    result = _build(
+        tmp_path,
+        [
+            _finding("C1", notes=[analyser.RULE_87702_IPV6_ARTEFACT_NOTE]),
+            _finding("C2", notes=[]),
+        ],
+    )
+    assert "mitre" not in _routes(result, "C1")
+    assert "mitre" in _routes(result, "C2")
+
+
+_NOTES_ABSENT = object()  # sentinel: the finding has no "notes" key at all
+_NOTES_STRING_CONTAINING_ARTEFACT = f"x {analyser.RULE_87702_IPV6_ARTEFACT_NOTE} x"
+
+
+@pytest.mark.parametrize(
+    "notes", [_NOTES_STRING_CONTAINING_ARTEFACT, None, _NOTES_ABSENT], ids=["string", "none", "absent"]
+)
+def test_build_essentials_tolerates_odd_notes(tmp_path: Path, notes: Any) -> None:
+    """String, None or absent notes and a non-dict item do not raise; MITRE is kept."""
+    extra = {} if notes is _NOTES_ABSENT else {"notes": notes}
+    result = _build(tmp_path, ["not a dict", _finding("C1", **extra)])
+    assert "mitre" in _routes(result, "C1")
 
 
 # --- Full run ---------------------------------------------------------------------------

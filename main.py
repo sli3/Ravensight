@@ -62,10 +62,20 @@ def _build_essentials(
     if not dataset:
         return None
     findings = analysis.get("findings")
+    # Rule 87702's T1110 tag is wrong for IPv6 filterlog clusters, so the mapper gets
+    # copies with no MITRE ids. The originals (JSON and baseline) are left untouched.
+    mapper_findings = [
+        {**f, "mitre_ids": []}
+        if isinstance(f, dict)
+        and isinstance(f.get("notes"), list)
+        and analyser.RULE_87702_IPV6_ARTEFACT_NOTE in f["notes"]
+        else f
+        for f in (findings if isinstance(findings, list) else [])
+    ]
     return {
         "dataset": dataset,
         "finding_actions": essentials_scorer.map_findings_to_actions(
-            findings if isinstance(findings, list) else [],
+            mapper_findings,
             dataset,
             _load_technique_names(mitre_path),
             ism_pointers=finding_pointers,
