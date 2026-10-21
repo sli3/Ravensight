@@ -1338,6 +1338,160 @@ Out of scope for the whole section:
 - Putting credentials in git or in the Docker image
 - A new dependency, unless Prin agrees it in Session 1
 
+### 20. ASD Essentials Evidence Report
+
+**What it does:**
+On 15 October 2026 ASD launched the ASD Essentials, an evolution of the Essential
+Eight. ASD plans to deprecate the Essential Eight in about 12 months and retire it in
+about 24, and keeps both live on cyber.gov.au during the transition. This section adds
+the Essentials for enterprise IT to the Ravensight report, next to the Essential Eight.
+It shows which Essentials principles and actions each finding points at, and shows the
+operator's own declared ratings. It does not rate anything itself.
+
+**How the Essentials work (from cyber.gov.au, checked 21 October 2026):**
+- Principles are outcomes (ISM-aligned identifiers such as `GOV-01`, `PRO-13`,
+  `DET-01`). Actions are what must be done. Domains are where the work applies
+- Enterprise IT has two capability domains (governance and culture, visibility and
+  response) and six technical domains: boundary services, identity services, critical
+  processes and services, privileged environments, business systems and user devices
+- The technical matrix maps each action to MITRE ATT&CK technique names
+- Each action is rated per applicable domain on four levels: not assessed, not
+  effective, partially effective, fully effective. The principle rating is the lowest
+  action rating. ASD's phases are an implementation order, not a maturity rating
+- Third-party summaries were the source for the rating rules. Session 0 confirms them
+  against ASD's Assessment process guide before any code depends on them
+
+**Design rule:** evidence-only, as in sections 9, 12 and 15. Ravensight reads alerts,
+not configuration, so it cannot derive an effectiveness rating. Findings point at
+principles and actions, with the reason. A rating appears only when the operator
+declares it in an attestation file, and the report says so. No pass or fail wording,
+and no domain percentage.
+
+**Sessions: 6. Later phases are added here before they start. Section 19 Session 3
+is built first.**
+
+Decisions (agreed with Prin):
+- Enterprise IT chapter only. The OT and cloud chapters are later items
+- The Essential Eight section and its data stay as they are until ASD retires it
+- A hand-built dataset is acceptable if ASD publishes no machine-readable file. Session
+  0 checks first. If a dataset is hand-built, it records the source page and the date
+  it was checked
+- Attestation is per principle, with an optional list of domains, not per action per
+  domain (about 30 entries, not hundreds)
+- The report shows ASD's priority phase order for the principles, taken from ASD's
+  published guidance, and says plainly that a phase is not a rating
+- The report shows the four-level scale only for attested principles. Everything else
+  stays "Not assessed"
+
+#### Session 0 — Research and confirm (no code)
+
+In scope:
+- A read-only study of ASD's Essentials for enterprise IT, the Assessment process
+  guide and the Implementation planning guide on cyber.gov.au
+- Whether ASD publishes the principles and actions in a machine-readable form
+  (OSCAL, JSON or a workbook), and whether the ISM catalogue now carries the
+  Essentials principle identifiers
+- Whether the Wazuh alerts Ravensight reads carry MITRE fields (for example
+  `rule.mitre.id`), by reading `ravensight/wazuh_client.py` and the evidence code
+- The exact rating names, rating rules and priority phase names
+- A written proposal to Prin that confirms or changes Sessions 1 to 5 below
+
+Out of scope:
+- Any edit to code, tests, config examples, the entrypoint, the Dockerfile or the README
+- Opening, printing or quoting `config.toml` or `.env`
+
+#### Session 1 — Essentials dataset
+
+In scope:
+- `scripts/essentials_sync.py` (new), or an extension of `scripts/asd_sync.py` if
+  Session 0 shows that is simpler: writes `data/essentials_framework.json` with
+  principles, actions, domains, ISM identifiers, MITRE technique names and priority
+  phases
+- `config.example.toml`: an `[essentials]` section with the data path
+- Graceful skip when the file is absent, as for `platform_hints.json`
+- Tests for each change
+
+Out of scope:
+- `data/asd_framework.json` and the Essential Eight data
+- `ravensight/reporter.py`, `main.py` and the LLM prompt
+- `config.toml`
+
+#### Session 2 — Finding pointers
+
+In scope:
+- `ravensight/essentials_scorer.py` (new): a per-finding result listing the principles
+  and actions a finding points at, with the reason. MITRE technique matches first if
+  Session 0 shows the alerts carry them, and keyword matching as a fallback, as in
+  `ravensight/e8_scorer.py`
+- No second LLM call, and no dependency on other Ravensight modules beyond the data
+  dict it receives
+- Tests for each change
+
+Out of scope:
+- Any change to `ravensight/e8_scorer.py`
+- `ravensight/reporter.py`, `main.py` and the LLM prompt
+- `config.toml`
+
+#### Session 3 — Attestation
+
+In scope:
+- `ravensight/essentials_scorer.py`: a loader for `data/essentials_attestation.json`.
+  Each entry is keyed by principle identifier and is either "Not applicable" or one
+  of the four ratings, with a free-text reason and an optional list of domains
+- Invalid entries, unknown identifiers and a malformed file are skipped with a
+  warning and never stop a run; example placeholder reasons are skipped, as in section 15
+- `data/defaults/essentials_attestation.example.json`: a tracked example with no real
+  claims. The real file is gitignored and created by hand
+- `config.example.toml`: an `attestation_path` key in `[essentials]`
+- Tests for each change
+
+Out of scope:
+- A date field, per-action or per-domain ratings, and any derived rating
+- Seeding the real file automatically
+- `ravensight/reporter.py` and `main.py`
+- `config.toml`
+
+#### Session 4 — Report and JSON
+
+In scope:
+- `main.py`: read the `[essentials]` section and pass the results to `Reporter.generate`
+- `ravensight/reporter.py`: an "ASD Essentials" section with a "Findings and related
+  principles" table, ASD's phase order, and attested ratings with their reasons.
+  "Not assessed" stays the default. The how-to-read note says ratings come from the
+  operator's attestation, not from Wazuh
+- The JSON report gains an Essentials key and a bumped `schema_version`
+- The glossary gains the new terms
+- Tests for each change, including a markdown report that is byte-identical when
+  Essentials data is absent
+
+Out of scope:
+- The Essential Eight section, apart from keeping it in place
+- The LLM prompt
+- `config.toml`
+
+#### Session 5 — Docker and documents
+
+In scope:
+- `docker-entrypoint.sh`: an `init-essentials-attestation` subcommand (copy if absent,
+  never overwrite, run as the dropped user) and the Essentials data in the `sync`
+  subcommand
+- `README.md` and `.env.example` if a Docker-only setting changes: how to sync, create
+  and edit the attestation file, and a note on the Essential Eight transition timeline
+- The entrypoint has no tests, so its behaviour is checked in review (logged as deferred)
+
+Out of scope:
+- Seeding the real attestation file automatically
+- Any change to how findings are matched or shown
+- `config.toml`
+
+Out of scope for the whole section:
+- Retiring or changing the Essential Eight section or data
+- The OT and cloud chapters
+- Computing domain percentages or any rating Ravensight derives itself
+- Any LLM prompt change
+- A web UI
+- Opening, editing or printing `config.toml` or `.env`
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
