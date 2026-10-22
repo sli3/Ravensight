@@ -26,6 +26,7 @@
       "Bash(mkdir -p .session-memos)",
       "Bash(date *)",
       "mcp__graft",
+      "mcp__claude-in-chrome",
       "Edit(/docs/RAVENSIGHT_ROADMAP.md)"
     ],
     "ask": [
@@ -47,13 +48,17 @@
       "Bash(git * --force*)",
       "Bash(git * -f)",
       "Bash(git * -f *)",
-      "Bash(git reset --hard *)"
+      "Bash(git reset --hard *)",
+      "mcp__claude-in-chrome__javascript_tool",
+      "mcp__claude-in-chrome__form_input",
+      "mcp__claude-in-chrome__upload_image",
+      "mcp__claude-in-chrome__shortcuts_execute"
     ]
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent|mcp__claude-in-chrome__.*",
         "hooks": [
           {
             "type": "command",

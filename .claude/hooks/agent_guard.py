@@ -21,6 +21,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 PM = "pm"
 PLAN_REVIEWER = "plan-reviewer"
@@ -101,6 +102,38 @@ CODE_WRITER_BASH_DENY = re.compile(
     r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|\.mcp\.json"
     r"|\.claude/"
 )
+
+# Claude in Chrome (browser) rules. Only pm may use the browser, only on local
+# pages, and only to upload sample data. The hook matcher in settings.json must
+# include mcp__claude-in-chrome__.* or these calls never reach this script.
+BROWSER_PREFIX = "mcp__claude-in-chrome__"
+BROWSER_LOCAL_HOSTS = ("127.0.0.1", "localhost")
+BROWSER_PM_ALLOWED = frozenset({
+    "tabs_context_mcp",
+    "tabs_create_mcp",
+    "tabs_close_mcp",
+    "navigate",
+    "computer",
+    "read_page",
+    "get_page_text",
+    "find",
+    "read_console_messages",
+    "read_network_requests",
+    "resize_window",
+    "file_upload",
+    "browser_batch",
+})
+# Not allowed: javascript_tool, form_input, upload_image, shortcuts_execute,
+# gif_creator, and the browser-switching tools.
+BROWSER_COMPUTER_ACTIONS = frozenset({
+    "screenshot", "zoom", "scroll", "scroll_to", "hover", "wait",
+    "left_click", "double_click", "triple_click", "type", "key",
+})
+# Shortcut chords (ctrl+l can retarget the address bar) and function keys.
+BROWSER_BLOCKED_KEYS = re.compile(r"(?i)\b(ctrl|control|cmd|command|meta|alt|win|windows|super)\b|\+|\bf\d{1,2}\b")
+# Sample data pm may upload into the viewer, relative to the project root.
+# CONFIRM with Prin: set this to where the sample fixture really lives.
+BROWSER_UPLOAD_DIR = "tests/fixtures/"
 
 # Shell constructs that could write files or run hidden commands.
 UNSAFE_SHELL = re.compile(r"[<>`]|\$\(")
@@ -224,6 +257,75 @@ def check_agent(agent: str, tool_input: dict) -> None:
             )
 
 
+def local_url_problem(url: str) -> str | None:
+    """Return a reason to refuse this navigate target, or None if it is allowed."""
+    if url in ("back", "forward"):
+        return None
+    # The extension assumes https:// when no scheme is given, so require one.
+    parts = urlsplit(url.strip())
+    if parts.scheme not in ("http", "https"):
+        return f"navigate needs an explicit http://127.0.0.1:<port>/ or http://localhost:<port>/ URL, not '{url}'"
+    if parts.username or parts.password:
+        return "navigate URLs may not carry credentials"
+    if parts.hostname not in BROWSER_LOCAL_HOSTS:
+        return f"pm may browse only 127.0.0.1 and localhost, not '{parts.hostname}'"
+    return None
+
+
+def browser_call_problem(tool: str, tool_input: dict, project_dir: Path) -> str | None:
+    """Return a reason to refuse one pm browser call, or None if it is allowed."""
+    if tool == "browser_batch":
+        actions = tool_input.get("actions")
+        if not isinstance(actions, list):
+            return "browser_batch needs an actions list"
+        for item in actions:
+            if not isinstance(item, dict):
+                return "browser_batch item is not an object"
+            name = str(item.get("name", "")).removeprefix(BROWSER_PREFIX)
+            if name == "browser_batch":
+                return "browser_batch cannot be nested"
+            reason = browser_call_problem(name, item.get("input") or {}, project_dir)
+            if reason:
+                return reason
+        return None
+
+    if tool not in BROWSER_PM_ALLOWED:
+        return f"pm may not use browser tool '{tool}' (allowed: {', '.join(sorted(BROWSER_PM_ALLOWED))})"
+
+    if tool == "navigate":
+        return local_url_problem(str(tool_input.get("url", "")))
+
+    if tool == "computer":
+        action = tool_input.get("action", "")
+        if action not in BROWSER_COMPUTER_ACTIONS:
+            return f"pm may not use the browser action '{action}'"
+        if tool_input.get("modifiers"):
+            return "pm may not click with modifier keys"
+        if action == "key" and BROWSER_BLOCKED_KEYS.search(str(tool_input.get("text", ""))):
+            return "pm may not press shortcut or function keys in the browser"
+        return None
+
+    if tool == "file_upload":
+        paths = tool_input.get("paths")
+        if not isinstance(paths, list) or not paths:
+            return "file_upload needs a paths list"
+        for raw in paths:
+            rel = project_relative(str(raw), project_dir)
+            if rel is None or not rel.startswith(BROWSER_UPLOAD_DIR):
+                return f"pm may upload only files under {BROWSER_UPLOAD_DIR} (sample data), not '{raw}'"
+    return None
+
+
+def check_browser(agent: str, tool: str, tool_input: dict, project_dir: Path) -> None:
+    """Apply the Claude in Chrome rules: pm only, local pages only, sample data only."""
+    short = tool.removeprefix(BROWSER_PREFIX)
+    if agent != PM:
+        block(f"{agent} may not use the browser; only pm may, and only on local pages")
+    reason = browser_call_problem(short, tool_input, project_dir)
+    if reason:
+        block(reason)
+
+
 def main() -> None:
     """Read the hook input from stdin and apply the rules for its agent."""
     data = json.load(sys.stdin)
@@ -240,6 +342,8 @@ def main() -> None:
         check_bash(agent, tool_input.get("command", ""))
     elif tool == "Agent":
         check_agent(agent, tool_input)
+    elif tool.startswith(BROWSER_PREFIX):
+        check_browser(agent, tool, tool_input, project_dir)
 
 
 if __name__ == "__main__":
