@@ -17,7 +17,7 @@ import pytest
 import requests
 
 import main
-from ravensight import analyser, config_check, reporter, wazuh_client
+from ravensight import analyser, baseline, config_check, reporter, wazuh_client
 
 
 def _valid_config() -> dict[str, Any]:
@@ -499,7 +499,7 @@ def _capture_generate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[s
 def test_full_run_passes_run_params_to_generate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A full run hands hours, agent and level to Reporter.generate as run_params."""
+    """A full run hands hours, agent, level and model to Reporter.generate as run_params."""
     captured = _capture_generate(monkeypatch, tmp_path)
     monkeypatch.setattr(wazuh_client.Client, "fetch_alerts", lambda self, **kwargs: [])
     monkeypatch.setattr(
@@ -514,7 +514,37 @@ def test_full_run_passes_run_params_to_generate(
 
     main.main()
 
-    assert captured["run_params"] == {"hours": 6, "agent": "web01", "level": 9}
+    assert captured["run_params"] == {"hours": 6, "agent": "web01", "level": 9, "model": "any"}
+
+
+def test_full_run_baseline_gets_run_params_without_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The model goes only to the report: the baseline update still gets hours, agent, level."""
+    captured = _capture_generate(monkeypatch, tmp_path)
+    seen: dict[str, Any] = {}
+
+    def fake_update(self: Any, analysis: Any, clusters: Any = None, run_params: Any = None) -> None:
+        """Record the run_params the baseline manager receives."""
+        seen["run_params"] = run_params
+
+    monkeypatch.setattr(baseline.Manager, "update", fake_update)
+    monkeypatch.setattr(wazuh_client.Client, "fetch_alerts", lambda self, **kwargs: [])
+    monkeypatch.setattr(
+        analyser, "analyse", lambda *args, **kwargs: {"summary": "s", "findings": [], "recommendations": []}
+    )
+    monkeypatch.setattr(analyser, "extract_alert_clusters", lambda alerts: [])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["main.py", "--config", str(_write_config(tmp_path)), "--hours", "6", "--agent", "web01", "--level", "9"],
+    )
+
+    main.main()
+
+    assert seen["run_params"] == {"hours": 6, "agent": "web01", "level": 9}
+    assert captured["run_params"]["model"] == "any"
+    assert captured["run_params"] is not seen["run_params"]
 
 
 def test_report_only_does_not_pass_run_params(

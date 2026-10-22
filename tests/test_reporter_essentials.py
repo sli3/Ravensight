@@ -50,6 +50,8 @@ def _dataset() -> dict[str, Any]:
         "source": {
             "attribution": "© Commonwealth of Australia 2026",
             "licence": "CC BY 4.0",
+            "licence_url": "https://example.invalid/licence",
+            "changes": "Test changes note.",
             "notice": "UNOFFICIAL test notice.",
         },
         "actions": [
@@ -492,7 +494,7 @@ def test_json_essentials_null_when_absent(tmp_path: Path) -> None:
         payload = _load(rep.generate(data, essentials=value))
         assert "essentials" in payload
         assert payload["essentials"] is None
-        assert payload["schema_version"] == 2
+        assert payload["schema_version"] == 3
 
 
 def test_json_essentials_filled(tmp_path: Path) -> None:
@@ -509,7 +511,9 @@ def test_json_essentials_filled(tmp_path: Path) -> None:
     assert block["notice"] == "UNOFFICIAL test notice."
     assert block["dataset_schema_version"] == 1
     assert block["finding_actions"] == actions
-    assert block["attestation"] == attestation
+    assert block["attestation"] == {"P1": {**attestation["P1"], "name": "First principle"}}
+    assert block["licence_url"] == "https://example.invalid/licence"
+    assert block["changes"] == "Test changes note."
     assert "attestation" not in _load(path)
     assert _SECTION_HEADING in path.read_text(encoding="utf-8")
 
@@ -545,6 +549,8 @@ def test_constants_match_committed_dataset() -> None:
     assert reporter.ESSENTIALS_ATTRIBUTION == source["attribution"]
     assert reporter.ESSENTIALS_LICENCE == source["licence"]
     assert reporter.ESSENTIALS_NOTICE == source["notice"]
+    assert reporter.ESSENTIALS_LICENCE_URL == source["licence_url"]
+    assert reporter.ESSENTIALS_CHANGES == source["changes"]
 
 
 @pytest.mark.parametrize(
@@ -575,6 +581,125 @@ def test_essentials_source_uses_dataset_values() -> None:
         "licence": "L",
         "notice": "N",
     }
+
+
+@pytest.mark.parametrize(
+    "dataset",
+    [
+        {},
+        {"source": None},
+        {"source": {}},
+        {"source": {"licence_url": 5, "changes": ["x"]}},
+        {"source": {"licence_url": None, "changes": "  "}},
+        {"source": "not a dict"},
+        None,
+    ],
+)
+def test_json_licence_extras_fall_back_to_constants(dataset: Any) -> None:
+    """Missing, None, non-str or blank licence_url and changes use the constants."""
+    assert reporter._json_essentials_licence_extras(dataset) == {
+        "licence_url": reporter.ESSENTIALS_LICENCE_URL,
+        "changes": reporter.ESSENTIALS_CHANGES,
+    }
+
+
+def test_json_licence_extras_use_dataset_values() -> None:
+    """Valid str values in the source block win over the constants."""
+    dataset = {"source": {"licence_url": "U", "changes": "C"}}
+    assert reporter._json_essentials_licence_extras(dataset) == {"licence_url": "U", "changes": "C"}
+
+
+def test_json_essentials_attestation_gets_names() -> None:
+    """Every dict attestation entry gains a name; unknown ids give an empty string."""
+    attestation = {
+        "P1": {"status": "Attested", "reason": "r", "domains": ["Dom"]},
+        "P9": {"status": "Not assessed", "reason": "", "domains": []},
+    }
+    block = reporter._json_essentials({"dataset": _dataset(), "attestation": attestation})
+    assert block is not None
+    assert block["attestation"]["P1"] == {**attestation["P1"], "name": "First principle"}
+    assert block["attestation"]["P9"]["name"] == ""
+    for key in ("status", "reason", "domains"):
+        assert block["attestation"]["P1"][key] == attestation["P1"][key]
+
+
+def test_json_essentials_attestation_non_dict_entry_kept() -> None:
+    """A non-dict attestation entry does not raise and is left as it is."""
+    block = reporter._json_essentials({"dataset": _dataset(), "attestation": {"P1": "odd"}})
+    assert block is not None
+    assert block["attestation"] == {"P1": "odd"}
+
+
+def test_json_essentials_does_not_mutate_attestation() -> None:
+    """The input attestation dict, which the markdown renderer reads, is not changed."""
+    attestation = {"P1": {"status": "Attested", "reason": "r", "domains": ["Dom"]}}
+    essentials = _essentials(attestation=attestation)
+    before = json.loads(json.dumps(essentials["attestation"]))
+    reporter._json_essentials(essentials)
+    assert essentials["attestation"] == before
+    assert "name" not in essentials["attestation"]["P1"]
+
+
+def test_json_essentials_older_keys_and_order_unchanged() -> None:
+    """The older essentials keys keep their values and relative order."""
+    actions = [_entry("C1", [_action("A1", "P1")])]
+    block = reporter._json_essentials(_essentials(actions))
+    assert block is not None
+    older = [
+        k
+        for k in block
+        if k
+        in ("attribution", "licence", "notice", "dataset_schema_version", "finding_actions", "attestation")
+    ]
+    assert older == [
+        "attribution",
+        "licence",
+        "notice",
+        "dataset_schema_version",
+        "finding_actions",
+        "attestation",
+    ]
+    assert block["attribution"] == "© Commonwealth of Australia 2026"
+    assert block["licence"] == "CC BY 4.0"
+    assert block["notice"] == "UNOFFICIAL test notice."
+    assert block["dataset_schema_version"] == 1
+    assert block["finding_actions"] == actions
+
+
+def test_json_run_keys_still_echoed(tmp_path: Path) -> None:
+    """The run keys hours, agent and level are still echoed beside model."""
+    params = {"hours": 6, "agent": "web01", "level": 9, "model": "any"}
+    run = _load(_reporter(tmp_path).generate({"summary": "s", "findings": []}, run_params=params))[
+        "run"
+    ]
+    assert {k: run[k] for k in ("hours", "agent", "level")} == {
+        "hours": 6,
+        "agent": "web01",
+        "level": 9,
+    }
+
+
+def test_markdown_identical_with_and_without_new_fields(tmp_path: Path) -> None:
+    """licence_url, changes and model in the inputs do not change the markdown text."""
+    plain = _dataset()
+    del plain["source"]["licence_url"]
+    del plain["source"]["changes"]
+    findings = [_cluster(id="C1")]
+    actions = [_entry("C1", [_action("A1", "P1")])]
+    attestation = {"P1": {"status": "Attested", "reason": "r", "domains": ["Dom"]}}
+    with_dir = tmp_path / "with"
+    without_dir = tmp_path / "without"
+    with_path = _reporter(with_dir).generate(
+        {"summary": "s", "findings": findings},
+        essentials={"dataset": _dataset(), "finding_actions": actions, "attestation": attestation},
+        run_params={"hours": 24, "agent": None, "level": 7, "model": "any"},
+    )
+    without_path = _reporter(without_dir).generate(
+        {"summary": "s", "findings": findings},
+        essentials={"dataset": plain, "finding_actions": actions, "attestation": attestation},
+        run_params={"hours": 24, "agent": None, "level": 7},
+    )
+    assert with_path.read_text(encoding="utf-8") == without_path.read_text(encoding="utf-8")
 
 
 # --- End to end with the committed dataset ----------------------------------------------

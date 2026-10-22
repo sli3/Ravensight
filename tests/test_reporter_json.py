@@ -66,7 +66,7 @@ def test_json_is_valid_with_expected_keys(tmp_path: Path) -> None:
         "matched_controls",
         "essentials",
     }
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
 
 
 def test_generated_at_is_converted_to_utc() -> None:
@@ -107,7 +107,7 @@ def test_run_null_by_default_and_echoed(tmp_path: Path) -> None:
     rep = _make_reporter(tmp_path, overwrite=True)
     data = {"summary": "s", "findings": []}
     assert _load(rep.generate(data))["run"] is None
-    params = {"hours": 24, "level": 7}
+    params = {"hours": 24, "agent": None, "level": 7, "model": "any"}
     assert _load(rep.generate(data, run_params=params))["run"] == params
 
 
@@ -329,3 +329,88 @@ def test_json_circular_reference_logs_warning(
         r.levelno == logging.WARNING and "JSON report not written" in r.getMessage()
         for r in caplog.records
     )
+
+
+# Paths (as built by _assert_same_shape) whose dict keys are identifiers, not field names.
+_IDENTIFIER_KEYED = frozenset(
+    {
+        "$.e8_status",
+        "$.attestation",
+        "$.essentials.attestation",
+        "$.findings[].evidence",
+    }
+)
+
+
+def _assert_same_shape(got: Any, want: Any, path: str = "$") -> None:
+    """Compare dict key sets at every level, descending into the first element of lists.
+
+    Dicts whose keys are identifiers (strategies, principle ids, evidence shapes) are
+    compared through one representative value instead of through their keys.
+    """
+    if isinstance(want, dict):
+        assert isinstance(got, dict), f"{path}: expected an object, got {type(got).__name__}"
+        if path in _IDENTIFIER_KEYED:
+            assert got and want, f"{path}: needs at least one representative entry"
+            _assert_same_shape(next(iter(got.values())), next(iter(want.values())), f"{path}.*")
+            return
+        assert set(got) == set(want), (
+            f"{path}: missing {sorted(set(want) - set(got))}, extra {sorted(set(got) - set(want))}"
+        )
+        for key in want:
+            _assert_same_shape(got[key], want[key], f"{path}.{key}")
+    elif isinstance(want, list) and want and isinstance(want[0], dict):
+        assert isinstance(got, list) and got, f"{path}: expected a non-empty list"
+        _assert_same_shape(got[0], want[0], f"{path}[]")
+
+
+def test_payload_key_sets_match_schema3_fixture(tmp_path: Path) -> None:
+    """The generated JSON has the same recursive key sets as the committed schema 3 sample."""
+    from tests.test_reporter_essentials import _action, _entry, _essentials
+
+    sample = json.loads(
+        (Path(__file__).parent / "fixtures" / "report-schema3-sample.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    reasons = [
+        {
+            "route": "mitre",
+            "technique_id": "T0000.001",
+            "technique_name": "Example technique",
+            "via_parent": True,
+            "list": "guide",
+        }
+    ]
+    essentials = _essentials(
+        [_entry("C1", [_action("A1", "P1", reasons=reasons)])],
+        {"P1": {"status": "Partially effective", "reason": "r", "domains": ["Dom"]}},
+    )
+    e8_scores = {
+        "Patch applications": {
+            "status": "Not assessed",
+            "related_findings": ["C1"],
+            "related_controls": [{"id": "ISM-0000", "levels": [1, 2]}],
+        }
+    }
+    pointers = [
+        {
+            "id": "C1",
+            "ism": [{"id": "ISM-0000", "category": "Example category", "shared": ["patch"]}],
+            "e8": [{"strategy": "Patch applications", "shared": ["patch"]}],
+        }
+    ]
+    controls = [{"id": "ISM-0000", "category": "Example category", "description": "Placeholder."}]
+    evidence = {"syscheck": {"events": ["deleted"], "paths": ["/example/path"]}}
+    path = _make_reporter(tmp_path).generate(
+        {"summary": "s", "findings": [_cluster(id="C1", evidence=evidence)]},
+        trends="## Historical Trends\n",
+        e8_scores=e8_scores,
+        matched_controls=controls,
+        finding_pointers=pointers,
+        attestation={"Patch applications": _att("Not assessed")},
+        run_params={"hours": 24, "agent": None, "level": 7, "model": "any"},
+        essentials=essentials,
+    )
+
+    _assert_same_shape(_load(path), sample)

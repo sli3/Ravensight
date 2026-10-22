@@ -505,12 +505,12 @@ Each run also writes a machine-readable JSON file with the same name as the
 markdown report and a `.json` suffix, for example
 `reports/<YYYY-MM-DD>/security_report_<HH-MM-SS>.json`, or
 `reports/<YYYY-MM-DD>_security_report.json` with `overwrite = true`. It is UTF-8
-and carries `"schema_version": 2`. Top-level keys:
+and carries `"schema_version": 3`. Top-level keys:
 
-- `schema_version` — integer, currently `2`
+- `schema_version` — integer, currently `3`
 - `generated_at` — generation time in UTC (ISO 8601)
-- `run` — run window and filters: `hours`, `agent` and `level` in a full run, and
-  `null` in a `--report-only` run
+- `run` — run window, filters and model: `hours`, `agent`, `level` and `model` in a
+  full run, and `null` in a `--report-only` run
 - `findings` — a list; each item has a `type`. Clusters and vulnerabilities carry
   `id`, `severity`, `description`, `count`, `hosts`, `first_seen`, `last_seen`,
   `narrative`, `flags`, `evidence`, `notes`, `cves` and `recommendation`. LLM notes
@@ -525,12 +525,12 @@ and carries `"schema_version": 2`. Top-level keys:
 - `matched_controls` — matched ISM controls, or `null`
 - `attestation` — your Essential Eight attestation; the key is omitted when there is none
 - `essentials` — always present; `null` when there is no Essentials data. When
-  present its keys are `attribution`, `licence`, `notice`,
+  present its keys are `attribution`, `licence`, `licence_url`, `changes`, `notice`,
   `dataset_schema_version` (the dataset file's own version, currently `1`, not the
   report's `schema_version`), `finding_actions` (a list) and `attestation` (an
-  object keyed by principle id, each entry with `status`, `reason` and
-  `domains`). `essentials.attestation` is separate from the top-level Essential
-  Eight `attestation` key
+  object keyed by principle id, each entry with `status`, `reason`, `domains` and
+  `name`, the principle's name). `essentials.attestation` is separate from the
+  top-level Essential Eight `attestation` key
 
 `severity` and `recommendation` hold what the markdown shows. The summary, MITRE
 ATT&CK tags and similar past incidents are not in the JSON. The markdown is the

@@ -425,6 +425,11 @@ def _render_asd_section(
 
 ESSENTIALS_ATTRIBUTION = "© Commonwealth of Australia 2026"
 ESSENTIALS_LICENCE = "CC BY 4.0"
+ESSENTIALS_LICENCE_URL = "https://creativecommons.org/licenses/by/4.0/"
+ESSENTIALS_CHANGES = (
+    "Restructured from ASD's PDF and XLSX publications into JSON and checked against the "
+    "three documents listed above. Where those documents differ, both versions are kept."
+)
 ESSENTIALS_NOTICE = (
     "UNOFFICIAL community dataset. Not produced, endorsed or supported by ASD. "
     "Check against ASD's official documents at cyber.gov.au before relying on it."
@@ -678,7 +683,7 @@ def _render_essentials_section(essentials: Any, findings: list) -> str:
     return "\n".join(lines)
 
 
-JSON_SCHEMA_VERSION = 2
+JSON_SCHEMA_VERSION = 3
 
 _CLUSTER_LIST_KEYS = ("hosts", "flags", "notes", "cves")
 _CLUSTER_SCALAR_KEYS = (
@@ -719,6 +724,18 @@ def _json_finding(finding: Any) -> dict[str, Any] | None:
     return mapped
 
 
+def _json_essentials_licence_extras(dataset: Any) -> dict[str, str]:
+    """Return the licence URL and changes note from the dataset's source block, else the constants."""
+    source = dataset.get("source") if isinstance(dataset, dict) else None
+    source = source if isinstance(source, dict) else {}
+    defaults = {"licence_url": ESSENTIALS_LICENCE_URL, "changes": ESSENTIALS_CHANGES}
+    result: dict[str, str] = {}
+    for key, fallback in defaults.items():
+        value = source.get(key)
+        result[key] = value if isinstance(value, str) and value.strip() else fallback
+    return result
+
+
 def _json_essentials(essentials: Any) -> dict[str, Any] | None:
     """Map the Essentials block to its JSON form, or None when there is no usable dataset."""
     if not isinstance(essentials, dict):
@@ -728,11 +745,19 @@ def _json_essentials(essentials: Any) -> dict[str, Any] | None:
         return None
     finding_actions = essentials.get("finding_actions")
     attestation = essentials.get("attestation")
+    names = _principle_names(dataset)
+    named_attestation: dict[Any, Any] = {}
+    if isinstance(attestation, dict):
+        for pid, entry in attestation.items():
+            named_attestation[pid] = (
+                {**entry, "name": names.get(pid, "")} if isinstance(entry, dict) else entry
+            )
     return {
         **_essentials_source(dataset),
         "dataset_schema_version": dataset.get("schema_version"),
         "finding_actions": finding_actions if isinstance(finding_actions, list) else [],
-        "attestation": attestation if isinstance(attestation, dict) else {},
+        "attestation": named_attestation,
+        **_json_essentials_licence_extras(dataset),
     }
 
 
