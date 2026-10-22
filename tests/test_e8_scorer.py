@@ -420,6 +420,37 @@ def test_match_ism_controls_ignores_generic_words() -> None:
     assert [c["id"] for c in match_ism_controls([two_specific], asd_data)] == ["ISM-LOG"]
 
 
+def test_match_ism_controls_there_is_not_a_matching_word() -> None:
+    """Sharing only "external" and "there" no longer reaches MIN_ISM_MATCH_SCORE."""
+    asd_data: dict[str, Any] = {
+        "ism": [
+            {
+                "id": "ISM-EXT",
+                "category": "Networking",
+                "description": "External connections apply when there is a need",
+            },
+        ],
+    }
+    weak = _finding(description="external listener where there is none", recommendation="")
+    strong = _finding(description="external connections apply", recommendation="")
+    assert match_ism_controls([weak], asd_data) == []
+    assert [c["id"] for c in match_ism_controls([strong], asd_data)] == ["ISM-EXT"]
+
+
+def test_there_is_generic_and_one_other_shared_word_does_not_relate() -> None:
+    """"there" is a generic stem, so it plus one other shared word gives no ISM pointer."""
+    assert _stem("there") in _GENERIC_STEMS
+    asd_data = _ism_asd(
+        {
+            "id": "ISM-EXT",
+            "category": "Networking",
+            "description": "External connections apply when there is a need",
+        }
+    )
+    finding = _finding(description="external listener where there is none", recommendation="")
+    assert map_findings_to_controls([finding], asd_data)[0]["ism"] == []
+
+
 def test_match_ism_controls_ignores_narrative() -> None:
     """Only description and recommendation are matched; the LLM narrative is not."""
     asd_data: dict[str, Any] = {

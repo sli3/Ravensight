@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from ravensight import essentials_scorer, reporter
-from ravensight.reporter import Reporter
+from ravensight.reporter import MAX_FINDING_LABEL_CHARS, Reporter
 from tests.test_reporter_findings import _cluster
 
 _FIXED_NOW = datetime(2026, 10, 15, 9, 30, 15, tzinfo=timezone.utc)
@@ -204,6 +204,35 @@ def test_table_row_content() -> None:
     assert "Disable or Modify Tools (T1562.001)" in rows[0]
     assert "ISM-0001" in rows[0]
     assert "audit, logging" in rows[0]
+
+
+def test_table_shows_typical_rule_description_whole() -> None:
+    """A 68-character Wazuh rule description is not cut in the Finding cell."""
+    title = "Listened ports status (netstat) changed (new port opened or closed)."
+    assert len(title) == 68
+    section = _section(
+        _essentials([_entry("C1", [_action("A1", "P1")])]),
+        [_cluster(id="C1", description=title)],
+    )
+    rows = _rows(section)
+    assert len(rows) == 1
+    assert rows[0].startswith(f"| C1 {title} |")
+    assert "…" not in rows[0]
+
+
+def test_table_long_title_cut_at_word_boundary() -> None:
+    """A title over the limit is cut at a word boundary within the limit."""
+    title = "word " * (MAX_FINDING_LABEL_CHARS // 2)
+    section = _section(
+        _essentials([_entry("C1", [_action("A1", "P1")])]),
+        [_cluster(id="C1", description=title)],
+    )
+    rows = _rows(section)
+    assert len(rows) == 1
+    cell = rows[0].split("|")[1].strip()
+    assert cell.endswith("word…")
+    assert len(cell.removeprefix("C1 ")) <= MAX_FINDING_LABEL_CHARS
+    assert len(cell.removeprefix("C1 ")) > 60
 
 
 def _mitre_reason(tid: str, name: str, via_parent: bool) -> dict[str, Any]:

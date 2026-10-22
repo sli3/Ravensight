@@ -97,6 +97,8 @@ def _format_finding(finding: str | dict) -> list[str]:
 
 MAX_POINTER_ROWS = 15
 MAX_MATCHED_WORDS = 8
+# A typical Wazuh rule description is shown whole in the Finding cell
+MAX_FINDING_LABEL_CHARS = 100
 _SEVERITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
 
 _HOW_TO_READ_PREFIX = (
@@ -224,7 +226,8 @@ def _render_finding_pointers(findings: list, finding_pointers: list[dict]) -> li
     ])
     for row in kept:
         description = " ".join(str(by_id.get(row["id"], {}).get("description", "")).split())
-        finding_cell = sanitise_cell(f"{row['id']} {truncate_words(description, 60)}".strip())
+        label = truncate_words(description, MAX_FINDING_LABEL_CHARS)
+        finding_cell = sanitise_cell(f"{row['id']} {label}".strip())
         e8_cell = sanitise_cell(", ".join(e["strategy"] for e in row["e8"])) if row["e8"] else "—"
         ism_cell = sanitise_cell(_group_ism_controls(row["ism"])) if row["ism"] else "—"
         words = sorted({w for p in (*row["e8"], *row["ism"]) for w in p.get("shared", [])})
@@ -578,7 +581,8 @@ def _render_essentials_pointers(findings: list, finding_actions: list) -> list[s
     ])
     for row in kept:
         description = " ".join(str(by_id.get(row["id"], {}).get("description", "")).split())
-        finding_cell = sanitise_cell(f"{row['id']} {truncate_words(description, 60)}".strip())
+        label = truncate_words(description, MAX_FINDING_LABEL_CHARS)
+        finding_cell = sanitise_cell(f"{row['id']} {label}".strip())
         last = len(row["principles"]) - 1
         for index, group in enumerate(row["principles"]):
             principle_cell = sanitise_cell(f"{group['id']} {group['name'] or ''}".strip())

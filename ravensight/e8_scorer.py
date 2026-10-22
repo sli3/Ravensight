@@ -58,6 +58,8 @@ E8_GENERIC_WORDS = {
     "action", "confirm", "multiple", "expected",
     # Boilerplate from the recommendation template "No action / Monitor / Investigate: the evidence shows ..."
     "evidence", "investigate", "monitor", "shows",
+    # Filler in rule descriptions such as "... if there is no ..."
+    "there",
 }
 
 # Endings removed by _stem, longest first. A stem keeps at least this many letters.

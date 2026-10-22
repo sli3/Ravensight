@@ -12,7 +12,7 @@ import pytest
 
 from ravensight import reporter
 from ravensight.evidence import truncate_words
-from ravensight.reporter import REPORT_MAX_CVES, Reporter
+from ravensight.reporter import MAX_FINDING_LABEL_CHARS, REPORT_MAX_CVES, Reporter
 
 
 def _cluster(**overrides: Any) -> dict[str, Any]:
@@ -666,6 +666,31 @@ def test_pointer_table_shows_finding_controls_and_matched_words() -> None:
         "| C1 Firewall blocks | Patch operating systems | "
         "ISM-0634 (Gateway event logging) | dpkg, firewall, logged, patch |"
     ) in section
+
+
+def test_pointer_table_shows_typical_rule_description_whole() -> None:
+    """A 68-character Wazuh rule description is not cut in the Finding cell."""
+    title = "Listened ports status (netstat) changed (new port opened or closed)."
+    assert len(title) == 68
+    section = _pointer_section(
+        [_cluster(id="C1", description=title)], [_pointer("C1", ism=[_GATEWAY])]
+    )
+    row = next(line for line in section.splitlines() if line.startswith("| C1 "))
+    assert f"| C1 {title} |" in row
+    assert "…" not in row
+
+
+def test_pointer_table_long_title_cut_at_word_boundary() -> None:
+    """A title over the limit is cut at a word boundary within the limit."""
+    title = "word " * (MAX_FINDING_LABEL_CHARS // 2)
+    section = _pointer_section(
+        [_cluster(id="C1", description=title)], [_pointer("C1", ism=[_GATEWAY])]
+    )
+    row = next(line for line in section.splitlines() if line.startswith("| C1 "))
+    cell = row.split("|")[1].strip()
+    assert cell.endswith("word…")
+    assert len(cell.removeprefix("C1 ")) <= MAX_FINDING_LABEL_CHARS
+    assert len(cell.removeprefix("C1 ")) > 60
 
 
 def test_pointer_rows_in_natural_finding_id_order() -> None:
