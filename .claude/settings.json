@@ -58,7 +58,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent|mcp__claude-in-chrome__.*",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent|Artifact|mcp__claude-in-chrome__.*",
         "hooks": [
           {
             "type": "command",

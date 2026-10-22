@@ -135,6 +135,11 @@ BROWSER_BLOCKED_KEYS = re.compile(r"(?i)\b(ctrl|control|cmd|command|meta|alt|win
 # CONFIRM with Prin: set this to where the sample fixture really lives.
 BROWSER_UPLOAD_DIR = "tests/fixtures/"
 
+# Design reference: pm may read two files of Prin's own Claude Design artifact
+# with the Artifact tool, and nothing else. Add "Artifact" to the hook matcher.
+ARTIFACT_URL = "https://claude.ai/artifact/RmvHREuYhRdM7FcBufRJ5J"
+ARTIFACT_PM_PATHS = ("project/Viewer.dc.html", "project/canvas.json")
+
 # Shell constructs that could write files or run hidden commands.
 UNSAFE_SHELL = re.compile(r"[<>`]|\$\(")
 HARMLESS_REDIRECTS = re.compile(r"\s2>&1|\s2>/dev/null")
@@ -326,6 +331,28 @@ def check_browser(agent: str, tool: str, tool_input: dict, project_dir: Path) ->
         block(reason)
 
 
+def check_artifact(agent: str, tool_input: dict) -> None:
+    """Let pm read only the design reference files; block every other Artifact use."""
+    if agent != PM:
+        block(f"{agent} may not use the Artifact tool; only pm may, to read the design reference")
+    if tool_input.get("action") != "read":
+        block("pm may only read artifacts (action 'read'), never publish, list or delete")
+    if str(tool_input.get("url", "")).rstrip("/") != ARTIFACT_URL:
+        block(f"pm may read only the design reference artifact {ARTIFACT_URL}")
+    path = tool_input.get("path")
+    paths = tool_input.get("paths")
+    if paths or path not in ARTIFACT_PM_PATHS:
+        block(f"pm may read only {' and '.join(ARTIFACT_PM_PATHS)} from the artifact")
+    if tool_input.get("out_dir"):
+        block("pm may not choose where an artifact file is saved; omit out_dir")
+    # A validated design-reference read is approved here, so it needs no prompt.
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "permissionDecisionReason": "pm reads the design reference artifact (read-only)",
+    }}))
+
+
 def main() -> None:
     """Read the hook input from stdin and apply the rules for its agent."""
     data = json.load(sys.stdin)
@@ -342,6 +369,8 @@ def main() -> None:
         check_bash(agent, tool_input.get("command", ""))
     elif tool == "Agent":
         check_agent(agent, tool_input)
+    elif tool == "Artifact":
+        check_artifact(agent, tool_input)
     elif tool.startswith(BROWSER_PREFIX):
         check_browser(agent, tool, tool_input, project_dir)
 
