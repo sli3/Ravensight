@@ -209,6 +209,7 @@ a { color: var(--link); }
 .tl-tick-last { transform: translateX(-100%); }
 .tl-lines { position: absolute; left: 168px; right: 0; top: 20px; bottom: 0; pointer-events: none; }
 .tl-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
+.tl-line:last-child { transform: translateX(-100%); }
 .lane {
   display: flex;
   align-items: stretch;
@@ -223,7 +224,7 @@ a { color: var(--link); }
   text-align: left;
   position: relative;
 }
-.lane[aria-pressed="true"] { background: var(--row-sel); }
+.lane[aria-pressed="true"] { background: var(--row-sel); border-color: var(--grid); }
 .lane-label {
   flex: 0 0 168px;
   box-sizing: border-box;
@@ -241,7 +242,7 @@ a { color: var(--link); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.lane-track { flex: 1; position: relative; display: block; min-width: 0; }
+.lane-track { flex: 1; position: relative; display: block; min-width: 0; overflow: hidden; }
 .lane-bar {
   position: absolute;
   top: 22px;
@@ -422,7 +423,7 @@ a { color: var(--link); }
 
 /* Pointer map */
 .map-scroll { overflow-x: auto; }
-.map { border-collapse: collapse; min-width: 560px; width: 100%; }
+.map { border-collapse: collapse; table-layout: fixed; width: 100%; }
 .map-caption {
   position: absolute;
   width: 1px;
@@ -433,7 +434,7 @@ a { color: var(--link); }
 }
 .map th, .map td { border-bottom: 1px solid var(--grid); padding: 0; text-align: center; }
 .map thead th { border-bottom-color: var(--baseline); }
-.map-row { text-align: left; padding: 8px 12px 8px 0; font-weight: 400; min-width: 200px; }
+.map th.map-row { text-align: left; padding: 8px 12px 8px 0; font-weight: 400; width: 232px; }
 .map-name { display: block; font-size: 14px; font-weight: 500; }
 .map-kind { display: block; font-size: 12px; color: var(--text-secondary); }
 .map-head, .map-cell {
@@ -453,6 +454,8 @@ a { color: var(--link); }
 .map-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--series-1); display: block; }
 .table-view { font-size: 14px; color: var(--text-secondary); }
 .table-view summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.table-view summary::before { content: "\25B8"; display: inline-block; margin-right: 8px; }
+.table-view[open] summary::before { transform: rotate(90deg); }
 .tv-row { display: flex; flex-wrap: wrap; gap: 2px 16px; border-bottom: 1px solid var(--grid); padding: 6px 0; }
 .tv-name { flex: 0 0 232px; font-weight: 600; color: var(--text-primary); }
 .tv-text { flex: 1 1 240px; overflow-wrap: anywhere; }
@@ -1975,7 +1978,15 @@ function buildPointerMap(model) {
     tbody.appendChild(mapDomainRow(domain, entries, hitsBy));
   }
   table.appendChild(tbody);
-  add(box, [add(el("div", "", "map-scroll"), [table]), buildTableView(entries, hitsBy)]);
+  table.style.minWidth = String(232 + entries.length * 56) + "px";
+  add(box, [add(el("div", "", "map-scroll"), [table])]);
+  const anyDot = ASD_DOMAINS.some(function (d) {
+    return hitsBy.some(function (m) { return m.has(d.name); });
+  });
+  if (!anyDot) {
+    box.appendChild(el("p", "No finding has a pointer in these domains.", "note"));
+  }
+  box.appendChild(buildTableView(entries, hitsBy));
   return box;
 }
 

@@ -366,6 +366,22 @@ def test_asd_domains_match_the_dataset_in_order() -> None:
     assert [entry["kind"] for entry in domains] == ["capability"] * 2 + ["technical"] * 6
 
 
+def test_sample_domain_names_are_asd_domains() -> None:
+    """Every domain name in the sample is an ASD_DOMAINS name, so the map shows a dot."""
+    known = {entry["name"] for entry in _extract_array("ASD_DOMAINS", _text())}
+    ess = _load_json(FIXTURE)["essentials"]
+    names = [
+        domain["name"]
+        for finding in ess["finding_actions"]
+        for action in finding["actions"]
+        for domain in action["domains"]
+    ]
+    for entry in ess["attestation"].values():
+        names.extend(entry["domains"])
+    assert names, "the sample holds no domain names"
+    assert set(names) <= known
+
+
 # ---------------------------------------------------------------------------
 # (c) No network, no external references
 # ---------------------------------------------------------------------------
@@ -574,6 +590,7 @@ REQUIRED_PHRASES = [
     "The model wrote no commentary for this cluster.",
     "Ravensight reads alerts, not system settings, so it never rates or assesses.",
     "Kept alongside the Essentials while ASD transitions",
+    "No finding has a pointer in these domains.",
 ]
 
 
