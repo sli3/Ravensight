@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Report viewer v2</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.viz-root{color-scheme:light;--page:#f9f9f7;--surface-1:#fcfcfb;--text-primary:#0b0b0b;--text-secondary:#52514e;--muted:#6f6d67;--grid:#e1e0d9;--baseline:#c3c2b7;--border:rgba(11,11,11,0.10);--series-1:#2a78d6;--row-sel:#eef4fc;--chip:#f0efec;--link:#1c5cab;--sev-high:#b42318;--sev-medium:#93370d;--sev-low:#175cd3}
+@media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .viz-root{color-scheme:dark;--page:#0d0d0d;--surface-1:#1a1a19;--text-primary:#f0efec;--text-secondary:#c3c2b7;--muted:#a09e96;--grid:#2c2c2a;--baseline:#383835;--border:rgba(255,255,255,0.10);--series-1:#3987e5;--row-sel:#222a35;--chip:#262624;--link:#79b8ff;--sev-high:#ff7b72;--sev-medium:#f2b84b;--sev-low:#79b8ff}}
+:root[data-theme="dark"] .viz-root{color-scheme:dark;--page:#0d0d0d;--surface-1:#1a1a19;--text-primary:#f0efec;--text-secondary:#c3c2b7;--muted:#a09e96;--grid:#2c2c2a;--baseline:#383835;--border:rgba(255,255,255,0.10);--series-1:#3987e5;--row-sel:#222a35;--chip:#262624;--link:#79b8ff;--sev-high:#ff7b72;--sev-medium:#f2b84b;--sev-low:#79b8ff}
+.pick,.cell,.navlink{font:inherit;color:inherit}
+.pick:focus-visible,.cell:focus-visible,.navlink:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--series-1);outline-offset:2px}
+.cell .tip{display:none}
+.cell:hover .tip,.cell:focus-visible .tip{display:block}
+a{color:var(--link)}
+</style>
+</helmet>
+<div class="viz-root" style="min-height:4400px;box-sizing:border-box;background:var(--page);color:var(--text-primary);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.5;padding:32px 24px 72px">
+<div style="max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:28px">
+
+  <header style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px">
+    <div style="display:flex;align-items:baseline;gap:4px 16px;flex-wrap:wrap">
+      <h1 style="margin:0;font-size:22px;font-weight:700">Ravensight</h1>
+      <span style="color:var(--text-secondary)">Daily report · 21 Oct 2026 · generated 22 Oct, 06:02 UTC</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span style="padding:4px 12px;background:var(--chip);border-radius:999px;font-size:13px;color:var(--text-secondary)">Read-only</span>
+      <span style="padding:4px 12px;background:var(--chip);border-radius:999px;font-size:13px;color:var(--text-secondary)">Report schema 3</span>
+      <span style="padding:4px 12px;background:var(--chip);border-radius:999px;font-size:13px;color:var(--text-secondary)">Example model name</span>
+      <span style="padding:4px 12px;background:var(--chip);border-radius:999px;font-size:13px;color:var(--text-secondary)">Sample data</span>
+    </div>
+  </header>
+
+  <nav aria-label="Report sections" style="display:flex;flex-wrap:wrap;gap:8px">
+    <a class="navlink" href="#overview" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:0 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface-1);text-decoration:none;color:var(--text-primary)">Overview</a>
+    <a class="navlink" href="#findings" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:0 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface-1);text-decoration:none;color:var(--text-primary)">Findings</a>
+    <a class="navlink" href="#essentials" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:0 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface-1);text-decoration:none;color:var(--text-primary)">ASD Essentials</a>
+    <a class="navlink" href="#e8" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:0 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface-1);text-decoration:none;color:var(--text-primary)">Essential Eight</a>
+    <a class="navlink" href="#trends" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:0 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface-1);text-decoration:none;color:var(--text-primary)">Trends</a>
+  </nav>
+
+  <section id="overview" aria-label="Run summary" style="display:flex;flex-wrap:wrap;gap:16px">
+    <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+      <div style="flex:1 1 200px;background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px 20px">
+        <div style="font-size:13px;color:var(--text-secondary)">{{ k.label }}</div>
+        <div style="font-size:32px;font-weight:600;line-height:1.2">{{ k.value }}</div>
+        <div style="font-size:13px;color:var(--text-secondary)">{{ k.sub }}</div>
+      </div>
+    </sc-for>
+  </section>
+
+  <section aria-labelledby="tl-h" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px 28px;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div>
+        <h2 id="tl-h" style="margin:0;font-size:18px;font-weight:600">When findings occurred</h2>
+        <p style="margin:2px 0 0;font-size:14px;color:var(--text-secondary)">21 Oct, UTC. Each dot is an alert time inside the cluster. The line spans first to last. Select a row to open the finding.</p>
+      </div>
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)"><span style="width:10px;height:10px;border-radius:50%;background:var(--series-1);display:inline-block"></span>Alert time</span>
+    </div>
+    <div style="position:relative">
+      <div style="display:flex;height:20px">
+        <div style="flex:0 0 168px"></div>
+        <div style="flex:1;position:relative">
+          <sc-for list="{{ ticks }}" as="t" hint-placeholder-count="9">
+            <span style="position:absolute;top:0;left:{{t.left}}%;transform:translateX(-50%);font-size:12px;color:var(--muted)">{{ t.label }}</span>
+          </sc-for>
+        </div>
+      </div>
+      <div style="position:absolute;left:168px;right:0;top:20px;bottom:0;pointer-events:none">
+        <sc-for list="{{ ticks }}" as="t" hint-placeholder-count="9">
+          <span style="position:absolute;top:0;bottom:0;left:{{t.left}}%;width:1px;background:var(--grid)"></span>
+        </sc-for>
+      </div>
+      <sc-for list="{{ lanes }}" as="l" hint-placeholder-count="5">
+        <button type="button" class="pick" onClick="{{ l.pick }}" aria-pressed="{{ l.pressed }}" aria-label="{{ l.aria }}" style="display:flex;align-items:stretch;width:100%;height:48px;padding:0;border:0;border-top:1px solid var(--grid);background:transparent;cursor:pointer;text-align:left;position:relative">
+          <span style="flex:0 0 168px;box-sizing:border-box;padding-right:12px;display:flex;flex-direction:column;justify-content:center;min-width:0">
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:{{l.fw}}"><span style="width:10px;height:10px;background:{{l.sevColor}};display:inline-block;flex:none"></span>{{ l.id }} · {{ l.sevLabel }}</span>
+            <span style="font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.host }}</span>
+          </span>
+          <span style="flex:1;position:relative;display:block">
+            <span style="position:absolute;top:23px;height:2px;left:{{l.left}}%;width:{{l.width}}%;background:var(--series-1);opacity:{{l.op}};display:block"></span>
+            <sc-for list="{{ l.dots }}" as="d" hint-placeholder-count="3">
+              <span style="position:absolute;top:19px;left:{{d.left}}%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--series-1);opacity:{{l.op}};box-shadow:0 0 0 2px var(--surface-1);display:block"></span>
+            </sc-for>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+  </section>
+
+  <div id="findings" style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+
+    <section aria-labelledby="fl-h" style="flex:1 1 340px;max-width:440px;min-width:0;display:flex;flex-direction:column;gap:12px">
+      <h2 id="fl-h" style="margin:0;font-size:16px;font-weight:600">Findings</h2>
+      <sc-for list="{{ items }}" as="f" hint-placeholder-count="5">
+        <button type="button" class="pick" onClick="{{ f.pick }}" aria-pressed="{{ f.pressed }}" style="width:100%;min-height:76px;box-sizing:border-box;text-align:left;cursor:pointer;padding:12px 16px;border-radius:12px;border:1px solid {{f.bd}};background:{{f.bg}};display:flex;flex-direction:column;gap:6px">
+          <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:{{f.sevColor}}"><span style="width:10px;height:10px;background:{{f.sevColor}};display:inline-block"></span>{{ f.id }} · {{ f.sevLabel }}<span style="font-weight:400;color:var(--text-secondary)">· {{ f.host }} · from {{ f.first }}</span></span>
+          <span style="font-weight:500">{{ f.label }}</span>
+          <sc-if value="{{ f.hasTags }}" hint-placeholder-val="{{ false }}">
+            <span style="display:flex;flex-wrap:wrap;gap:6px">
+              <sc-if value="{{ f.noText }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:12px;border:1px dashed var(--muted);color:var(--text-secondary);border-radius:4px;padding:0 8px;line-height:20px">No commentary</span>
+              </sc-if>
+              <sc-if value="{{ f.hasCheck }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:12px;font-weight:600;border:1px solid var(--sev-medium);color:var(--sev-medium);border-radius:4px;padding:0 8px;line-height:20px">Check</span>
+              </sc-if>
+            </span>
+          </sc-if>
+        </button>
+      </sc-for>
+    </section>
+
+    <article aria-labelledby="fd-h" style="flex:999 1 560px;min-width:0;background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:{{sel.sevColor}}"><span style="width:10px;height:10px;background:{{sel.sevColor}};display:inline-block"></span>Cluster {{ sel.id }} · {{ sel.sevLabel }}</span>
+        <h2 id="fd-h" style="margin:0;font-size:24px;line-height:1.3;font-weight:700">{{ sel.label }}</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 20px;font-size:13px;color:var(--text-secondary)">
+          <span>Host {{ sel.host }}</span><span>First {{ sel.first }}</span><span>Last {{ sel.last }}</span>
+        </div>
+      </div>
+
+      <sc-if value="{{ sel.hasCheck }}" hint-placeholder-val="{{ false }}">
+        <div role="note" style="display:flex;gap:12px;align-items:flex-start;border:1px solid var(--border);background:var(--page);border-radius:8px;padding:12px 16px">
+          <span style="flex:none;font-size:12px;font-weight:700;border:1px solid var(--sev-medium);color:var(--sev-medium);border-radius:4px;padding:0 8px;line-height:20px">Check</span>
+          <span>{{ sel.check }}</span>
+        </div>
+      </sc-if>
+
+      <div>
+        <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:var(--text-secondary)">What the model found</h3>
+        <sc-if value="{{ sel.hasNarrative }}" hint-placeholder-val="{{ true }}">
+          <p style="margin:0;max-width:68ch;font-size:17px">{{ sel.narrative }}</p>
+        </sc-if>
+        <sc-if value="{{ sel.noNarrative }}" hint-placeholder-val="{{ false }}">
+          <p style="margin:0;max-width:68ch;color:var(--text-secondary);border:1px dashed var(--muted);border-radius:8px;padding:12px 16px">The model wrote no commentary for this cluster. The evidence below is the original alert data.</p>
+        </sc-if>
+      </div>
+
+      <div>
+        <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:var(--text-secondary)">Recommendation</h3>
+        <sc-if value="{{ sel.hasRec }}" hint-placeholder-val="{{ true }}">
+          <p style="margin:0;max-width:68ch">{{ sel.rec }}</p>
+        </sc-if>
+        <sc-if value="{{ sel.noRec }}" hint-placeholder-val="{{ false }}">
+          <p style="margin:0;max-width:68ch;color:var(--text-secondary)">No recommendation was generated.</p>
+        </sc-if>
+      </div>
+
+      <div>
+        <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:var(--text-secondary)">Evidence</h3>
+        <div style="background:var(--page);border:1px solid var(--border);border-radius:8px;padding:12px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.7;overflow-x:auto">
+          <sc-for list="{{ sel.evidence }}" as="e" hint-placeholder-count="3">
+            <div style="white-space:nowrap">{{ e.line }}</div>
+          </sc-for>
+        </div>
+      </div>
+
+      <sc-if value="{{ sel.hasNotes }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:var(--text-secondary)">Notes</h3>
+          <sc-for list="{{ sel.notes }}" as="n" hint-placeholder-count="1">
+            <p style="margin:0 0 4px;max-width:68ch;font-size:14px;color:var(--text-secondary)">{{ n.text }}</p>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sel.hasCves }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <h3 style="margin:0 0 6px;font-size:13px;font-weight:600;color:var(--text-secondary)">CVEs</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ sel.cves }}" as="c" hint-placeholder-count="1">
+              <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;border:1px solid var(--border);border-radius:4px;padding:0 8px;line-height:24px">{{ c.id }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sel.hasE8 }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <h3 style="margin:0 0 6px;font-size:13px;font-weight:600;color:var(--text-secondary)">Related Essential Eight strategies</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ sel.e8 }}" as="s" hint-placeholder-count="1">
+              <span style="font-size:14px;border:1px solid var(--border);border-radius:4px;padding:0 10px;line-height:26px">{{ s.name }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasEss }}" hint-placeholder-val="{{ true }}">
+        <div style="border-top:1px solid var(--grid);padding-top:20px;display:flex;flex-direction:column;gap:12px">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:600">Related ASD Essentials principles</h3>
+            <p style="margin:2px 0 0;font-size:14px;color:var(--text-secondary);max-width:68ch">Pointers drawn from this cluster's alert content. They are a guide for setting priorities and are not ratings. Phase is ASD's implementation order. The status chip is the operator's own declaration.</p>
+          </div>
+          <sc-if value="{{ sel.noActions }}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0;color:var(--text-secondary)">No principles were pointed at for this cluster.</p>
+          </sc-if>
+          <sc-for list="{{ sel.actions }}" as="a" hint-placeholder-count="3">
+            <div style="border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px">
+                <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700">{{ a.principleId }}</span>
+                <span style="font-weight:600">{{ a.principleName }}</span>
+                <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)">{{ a.actionId }}</span>
+                <span style="margin-left:auto;font-size:12px;border:1px {{a.statusBorder}} var(--muted);color:var(--text-secondary);border-radius:4px;padding:0 8px;line-height:22px">Operator: {{ a.status }}</span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <sc-for list="{{ a.domains }}" as="d" hint-placeholder-count="2">
+                  <span style="font-size:12px;background:var(--chip);color:var(--text-secondary);border-radius:4px;padding:0 8px;line-height:22px">{{ d.name }} · {{ d.phase }}</span>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ a.reasons }}" as="r" hint-placeholder-count="2">
+                  <div style="font-size:13px;color:var(--text-secondary)"><strong style="font-weight:600;color:var(--text-primary)">{{ r.route }}</strong> · {{ r.text }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ sel.hasOmitted }}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0;font-size:14px;color:var(--text-secondary)">{{ sel.omitted }} more pointers are not shown. Each finding lists at most 5.</p>
+          </sc-if>
+          <p style="margin:0;font-size:12px;color:var(--text-secondary)">© Commonwealth of Australia 2026 · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> · Modified, unofficial dataset. Not endorsed by ASD.</p>
+        </div>
+      </sc-if>
+    </article>
+  </div>
+
+  <section id="essentials" aria-labelledby="ess-h" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div>
+        <h2 id="ess-h" style="margin:0;font-size:20px;font-weight:700">ASD Essentials for enterprise IT</h2>
+        <p style="margin:4px 0 0;max-width:72ch;color:var(--text-secondary)">Ravensight reads alerts, not system settings, so it never rates or assesses. Findings are pointed at principles, and ratings appear only where the operator has declared them.</p>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <span style="font-size:12px;background:var(--chip);color:var(--text-secondary);border-radius:4px;padding:0 8px;line-height:22px">Unofficial dataset</span>
+        <span style="font-size:12px;background:var(--chip);color:var(--text-secondary);border-radius:4px;padding:0 8px;line-height:22px">28 principles · 58 actions · 8 domains</span>
+      </div>
+    </div>
+
+    <sc-if value="{{ noEss }}" hint-placeholder-val="{{ false }}">
+      <p style="margin:0;border:1px dashed var(--muted);border-radius:8px;padding:16px 20px;color:var(--text-secondary)">This report has no ASD Essentials data. Report-only runs do not include it.</p>
+    </sc-if>
+
+    <sc-if value="{{ hasEss }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:24px">
+
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:600">Pointer map</h3>
+            <p style="margin:2px 0 0;font-size:14px;color:var(--text-secondary)">Which domains each finding is pointed at, based on the pointers shown per finding. A dot means at least one pointer, not a gap or a score.</p>
+          </div>
+          <div style="overflow-x:auto;padding-bottom:64px;margin-bottom:-56px">
+            <div style="min-width:560px;display:flex;flex-direction:column">
+              <div style="display:flex;border-bottom:1px solid var(--baseline)">
+                <div style="flex:0 0 232px"></div>
+                <sc-for list="{{ colHeads }}" as="h" hint-placeholder-count="5">
+                  <button type="button" class="pick" onClick="{{ h.pick }}" style="flex:1;min-width:56px;min-height:44px;border:0;background:transparent;cursor:pointer;font-size:13px;font-weight:{{h.fw}}">{{ h.id }}</button>
+                </sc-for>
+              </div>
+              <sc-for list="{{ matrix }}" as="r" hint-placeholder-count="8">
+                <div style="display:flex;border-bottom:1px solid var(--grid)">
+                  <div style="flex:0 0 232px;box-sizing:border-box;padding:8px 12px 8px 0;display:flex;flex-direction:column;justify-content:center">
+                    <span style="font-size:14px;font-weight:500">{{ r.name }}</span>
+                    <span style="font-size:12px;color:var(--text-secondary)">{{ r.kind }}</span>
+                  </div>
+                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="5">
+                    <button type="button" class="cell" onClick="{{ c.pick }}" aria-label="{{ c.aria }}" style="flex:1;min-width:56px;min-height:52px;position:relative;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center">
+                      <sc-if value="{{ c.has }}" hint-placeholder-val="{{ false }}">
+                        <span style="width:14px;height:14px;border-radius:50%;background:var(--series-1);display:block"></span>
+                        <span class="tip" style="position:absolute;top:calc(100% - 8px);{{c.tipPos}};z-index:5;background:var(--text-primary);color:var(--surface-1);border-radius:6px;padding:6px 10px;text-align:left;white-space:nowrap;font-size:12px;line-height:1.4;pointer-events:none">
+                          <span style="display:block;font-size:13px;font-weight:600">{{ c.tipTitle }}</span>
+                          <span style="display:block;opacity:0.85">{{ c.tipBody }}</span>
+                        </span>
+                      </sc-if>
+                    </button>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <details style="font-size:14px;color:var(--text-secondary)">
+            <summary style="cursor:pointer;min-height:44px;display:flex;align-items:center">Table view</summary>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ tableView }}" as="t" hint-placeholder-count="8">
+                <div style="display:flex;flex-wrap:wrap;gap:2px 16px;border-bottom:1px solid var(--grid);padding:6px 0"><strong style="flex:0 0 232px;font-weight:600;color:var(--text-primary)">{{ t.name }}</strong><span style="flex:1 1 240px">{{ t.text }}</span></div>
+              </sc-for>
+            </div>
+          </details>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:600">Declared ratings</h3>
+            <p style="margin:2px 0 0;font-size:14px;color:var(--text-secondary)">Written by the operator in essentials_attestation.json. Ravensight does not compute or change them.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;border-top:1px solid var(--baseline)">
+            <sc-for list="{{ ratings }}" as="r" hint-placeholder-count="4">
+              <div style="display:flex;flex-wrap:wrap;gap:8px 24px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--grid)">
+                <div style="flex:1 1 240px;min-width:0">
+                  <div><span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700">{{ r.id }}</span> <span style="font-weight:600">{{ r.name }}</span></div>
+                  <div style="font-size:13px;color:var(--text-secondary)">{{ r.domains }}</div>
+                </div>
+                <div style="flex:0 0 164px"><span style="display:inline-block;font-size:13px;font-weight:600;border:1px {{r.border}} var(--muted);border-radius:4px;padding:0 10px;line-height:24px">{{ r.status }}</span></div>
+                <div style="flex:2 1 260px;min-width:0;font-size:14px;color:var(--text-secondary)">{{ r.reason }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <p style="margin:0;font-size:14px;color:var(--text-secondary)">{{ otherCount }} other principles: Not assessed.</p>
+        </div>
+
+        <div style="border:1px solid var(--border);border-radius:8px;padding:16px 20px;display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--text-secondary)">
+          <strong style="color:var(--text-primary)">Attribution and licence</strong>
+          <span>© Commonwealth of Australia 2026</span>
+          <span>Licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</span>
+          <span>This dataset has been modified: it was restructured by hand from ASD's publications.</span>
+          <span>Unofficial dataset. Not endorsed by, or affiliated with, ASD.</span>
+        </div>
+      </div>
+    </sc-if>
+  </section>
+
+  <section id="e8" aria-labelledby="e8-h" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px 28px;display:flex;flex-direction:column;gap:16px">
+    <div>
+      <h2 id="e8-h" style="margin:0;font-size:18px;font-weight:600">Essential Eight</h2>
+      <p style="margin:2px 0 0;max-width:72ch;font-size:14px;color:var(--text-secondary)">Kept alongside the Essentials while ASD transitions: it has said it plans to deprecate the Essential Eight in about 12 months and retire it in about 24. Ratings come only from the operator's e8_attestation.json.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px">
+      <sc-for list="{{ e8rows }}" as="s" hint-placeholder-count="8">
+        <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-height:104px;box-sizing:border-box;justify-content:space-between">
+          <span style="font-weight:600;line-height:1.3">{{ s.name }}</span>
+          <span style="display:flex;flex-direction:column;gap:4px">
+            <span style="align-self:flex-start;font-size:12px;font-weight:600;border:1px {{s.border}} var(--muted);color:var(--text-secondary);border-radius:4px;padding:0 8px;line-height:20px">{{ s.status }}</span>
+            <span style="font-size:13px;color:var(--text-secondary)">{{ s.related }}</span>
+          </span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section id="trends" aria-labelledby="tr-h" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:24px 28px;display:flex;flex-direction:column;gap:12px">
+    <h2 id="tr-h" style="margin:0;font-size:18px;font-weight:600">Trends</h2>
+    <div style="max-width:72ch;display:flex;flex-direction:column;gap:8px">
+      <sc-for list="{{ trends }}" as="p" hint-placeholder-count="3">
+        <p style="margin:0">{{ p.text }}</p>
+      </sc-for>
+    </div>
+  </section>
+
+  <footer style="font-size:13px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px">
+    <span>Read-only view of the JSON report.</span>
+  </footer>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dataState":{"editor":"enum","default":"full","options":["full","report-only"]},"$preview":{"width":1280,"height":4400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const hasEss = (this.props.dataState || 'full') !== 'report-only';
+    const SEV = {
+      high: { label: 'High', color: 'var(--sev-high)' },
+      medium: { label: 'Medium', color: 'var(--sev-medium)' },
+      low: { label: 'Low', color: 'var(--sev-low)' }
+    };
+    const pad = (n) => (n < 10 ? '0' : '') + n;
+    const toH = (t) => { const p = t.split(':'); return Number(p[0]) + Number(p[1]) / 60; };
+
+    const DOMAINS = [
+      ['Governance and culture', 'Capability domain'],
+      ['Visibility and response', 'Capability domain'],
+      ['Boundary services', 'Technical domain'],
+      ['Identity services', 'Technical domain'],
+      ['Privileged environments', 'Technical domain'],
+      ['Critical processes and services', 'Technical domain'],
+      ['Business systems', 'Technical domain'],
+      ['User devices', 'Technical domain']
+    ];
+    const PRIN = {
+      'DET-01': { name: 'Sample principle A', domains: [['Visibility and response', 'All phases'], ['Boundary services', 'Phase 1']] },
+      'DET-02': { name: 'Sample principle B', domains: [['Visibility and response', 'All phases']] },
+      'PRO-03': { name: 'Sample principle C', domains: [['Business systems', 'Phase 2'], ['Critical processes and services', 'Phase 3']] },
+      'PRO-09': { name: 'Sample principle D', domains: [['Identity services', 'Phase 1'], ['Privileged environments', 'Phase 2']] },
+      'PRO-12': { name: 'Sample principle E', domains: [['User devices', 'Phase 3']] }
+    };
+    const ATT = {
+      'DET-01': { status: 'Partially effective', reason: 'Sample declaration: part of the estate is covered.' },
+      'DET-02': { status: 'Fully effective', reason: 'Sample declaration: reviewed on a regular schedule.' },
+      'PRO-09': { status: 'Not effective', reason: 'Sample declaration: this principle needs work.' },
+      'PRO-12': { status: 'Not applicable', reason: 'Sample declaration: this principle does not apply here.' }
+    };
+    const E8NAMES = ['Application control', 'Patch applications', 'Configure Microsoft Office macro settings', 'User application hardening', 'Restrict administrative privileges', 'Patch operating systems', 'Multi-factor authentication', 'Regular backups'];
+    const E8ATT = { 'Multi-factor authentication': 'Attested at ML1', 'Configure Microsoft Office macro settings': 'Not applicable' };
+
+    const statusOf = (pid) => (ATT[pid] ? ATT[pid].status : 'Not assessed');
+    const borderOf = (s) => (s === 'Not assessed' ? 'dashed' : 'solid');
+    const reasonOf = (r) => {
+      if (r[0] === 'mitre') return { route: 'MITRE ATT&CK', text: r[3] ? r[1] + ' (parent of ' + r[2] + ')' : r[1] + ' (' + r[2] + ')' };
+      if (r[0] === 'ism') return { route: 'ISM control', text: r[1] + ' in ' + r[2] };
+      return { route: 'Shared keywords, weak match', text: r[1].join(', ') };
+    };
+
+    const F = [
+      { id: 'C1', sev: 'high', host: 'host-a', times: ['02:14', '02:41', '03:02'],
+        label: 'SSH brute force against host-a: 412 failed logins from three external addresses, none succeeded',
+        narrative: 'Three external addresses made 412 failed SSH logins, mostly as root and admin. No successful login followed. Typical volume for this host is about 38 failures a day.',
+        rec: 'Turn off SSH password authentication, or limit the port to the LAN and VPN.',
+        check: '',
+        evidence: ['02:14:07 sshd[1842]: Failed password for root from 203.0.113.24 port 51844', '02:14:09 sshd[1842]: Failed password for root from 203.0.113.24 port 51844', '02:14:31 sshd[1850]: Failed password for invalid user admin from 198.51.100.7'],
+        cves: [], notes: [], e8: ['Multi-factor authentication'], omitted: 3,
+        acts: [
+          ['DET-01-A1', [['mitre', 'Brute Force', 'T1110', false], ['ism', 'ISM-1234', 'recommendation']]],
+          ['PRO-09-A2', [['mitre', 'Brute Force', 'T1110', false]]],
+          ['PRO-09-A3', [['ism', 'ISM-1235', 'recommendation']]],
+          ['DET-02-A1', [['ism', 'ISM-1235', 'narrative']]],
+          ['PRO-12-A1', [['mitre', 'Brute Force', 'T1110', false]]]
+        ] },
+      { id: 'C2', sev: 'medium', host: 'host-a', times: ['11:36'],
+        label: 'Crontab on host-a changed outside the maintenance window',
+        narrative: 'The system crontab changed at 11:36. A new entry was also added under /etc/cron.d. The checksum alert carries no diff, so the change itself is unknown.',
+        rec: 'Compare the file with the last known good copy and confirm the change was planned.',
+        check: 'The commentary mentions /etc/cron.d, which does not appear in the evidence.',
+        evidence: ['11:36:02 syscheck: Integrity checksum changed: /etc/crontab', '11:36:02 syscheck: Size changed from 722 to 801', '11:36:02 syscheck: Modified by uid 0'],
+        cves: [], notes: [], e8: ['Restrict administrative privileges'], omitted: 0,
+        acts: [
+          ['PRO-03-A1', [['mitre', 'Scheduled Task/Job', 'T1053.003', true]]],
+          ['DET-01-A2', [['mitre', 'Scheduled Task/Job', 'T1053.003', true], ['ism', 'ISM-1237', 'narrative']]]
+        ] },
+      { id: 'C3', sev: 'medium', host: 'firewall-1', times: ['00:12', '06:05', '13:48', '19:30'],
+        label: 'Repeated blocked IPv6 traffic on the firewall WAN interface, Wazuh rule 87702',
+        narrative: 'The firewall blocked repeated inbound IPv6 connections to common service ports from two source prefixes. Every attempt was dropped by the default deny rule.',
+        rec: 'Watch for a repeat from the same prefixes. No change is needed now.',
+        check: '',
+        evidence: ['00:12:03 filterlog: block,in,wan,ipv6 2001:db8:a::17 > 2001:db8:b::2 tcp :445', '06:05:41 filterlog: block,in,wan,ipv6 2001:db8:a::17 > 2001:db8:b::2 tcp :22', '13:48:19 filterlog: block,in,wan,ipv6 2001:db8:c::9 > 2001:db8:b::2 udp :5060'],
+        cves: [], notes: ["Wazuh rule 87702 carries an IPv6 artefact. MITRE-based pointers are withheld because the rule's T1110 tag does not apply to IPv6 filterlog."], e8: [], omitted: 0,
+        acts: [
+          ['DET-02-A2', [['kw', ['blocked', 'ipv6', 'inbound']]]]
+        ] },
+      { id: 'C4', sev: 'low', host: 'host-a', times: ['00:30', '12:30', '23:30'],
+        label: 'Rootcheck reports a hidden port that matches a known local service',
+        narrative: 'Rootcheck reported a hidden port that matches a known local service. Probably a false positive; a platform hint will suppress it in later runs.',
+        rec: 'Add the port to the platform hints file if you agree.',
+        check: '',
+        evidence: ['Rootcheck: Port 9090 (tcp) hidden', 'Matches platform hint: local container service'],
+        cves: ['CVE-0000-00000'], notes: [], e8: [], omitted: 0,
+        acts: [
+          ['DET-01-A3', [['ism', 'ISM-1236', 'recommendation']]]
+        ] },
+      { id: 'C5', sev: 'low', host: 'host-a', times: ['09:12'],
+        label: 'Administrator SSH session from a LAN workstation already in the baseline',
+        narrative: '', rec: '', check: '',
+        evidence: ['09:12:44 sshd[2210]: Accepted publickey for admin from 192.0.2.21', '09:12:44 sshd[2210]: pam_unix(sshd:session): session opened for user admin'],
+        cves: [], notes: [], e8: ['Restrict administrative privileges'], omitted: 0,
+        acts: [
+          ['PRO-09-A1', [['mitre', 'Valid Accounts', 'T1078', false]]]
+        ] }
+    ];
+
+    const selId = (this.state && this.state.sel) || 'C1';
+    const cur = F.find((f) => f.id === selId) || F[0];
+    const pick = (id) => () => this.setState({ sel: id });
+    const firstOf = (f) => f.times[0];
+    const lastOf = (f) => f.times[f.times.length - 1];
+
+    const mkAct = (pair) => {
+      const aid = pair[0];
+      const pid = aid.slice(0, aid.lastIndexOf('-'));
+      const pr = PRIN[pid];
+      const st = statusOf(pid);
+      return {
+        actionId: aid, principleId: pid, principleName: pr.name, status: st, statusBorder: borderOf(st),
+        domains: pr.domains.map((d) => ({ name: d[0], phase: d[1] })),
+        reasons: pair[1].map(reasonOf)
+      };
+    };
+
+    const bySev = { high: 0, medium: 0, low: 0 };
+    F.forEach((f) => { bySev[f.sev] += 1; });
+    const hosts = F.map((f) => f.host).filter((h, i, a) => a.indexOf(h) === i);
+    const silent = F.filter((f) => !f.narrative);
+    const kpis = [
+      { label: 'Alerts analysed', value: '1,184', sub: 'From the Wazuh Indexer' },
+      { label: 'Findings', value: String(F.length), sub: bySev.high + ' high · ' + bySev.medium + ' medium · ' + bySev.low + ' low' },
+      { label: 'Hosts involved', value: String(hosts.length), sub: hosts.join(', ') },
+      { label: 'Without commentary', value: String(silent.length), sub: silent.length ? 'Cluster ' + silent.map((f) => f.id).join(', ') : 'None' }
+    ];
+
+    const ticks = [0, 3, 6, 9, 12, 15, 18, 21, 24].map((h) => ({ label: pad(h), left: (h / 24) * 100 }));
+    const lanes = F.map((f) => {
+      const hs = f.times.map(toH);
+      const mn = Math.min.apply(null, hs), mx = Math.max.apply(null, hs);
+      const on = f.id === selId;
+      return {
+        id: f.id, sevLabel: SEV[f.sev].label, sevColor: SEV[f.sev].color, host: f.host,
+        fw: on ? 700 : 500, op: on ? 1 : 0.75, pressed: on,
+        left: ((mn / 24) * 100).toFixed(2), width: (((mx - mn) / 24) * 100).toFixed(2),
+        dots: hs.map((h) => ({ left: ((h / 24) * 100).toFixed(2) })),
+        aria: 'Cluster ' + f.id + ', ' + SEV[f.sev].label + ', ' + f.host + ', ' + firstOf(f) + ' to ' + lastOf(f),
+        pick: pick(f.id)
+      };
+    });
+
+    const items = F.map((f) => {
+      const noText = !f.narrative && !f.rec;
+      const hasCheck = !!f.check;
+      const on = f.id === selId;
+      return {
+        id: f.id, label: f.label, host: f.host, first: firstOf(f),
+        sevLabel: SEV[f.sev].label, sevColor: SEV[f.sev].color,
+        noText, hasCheck, hasTags: noText || hasCheck,
+        pressed: on,
+        bg: on ? 'var(--row-sel)' : 'var(--surface-1)',
+        bd: on ? 'var(--series-1)' : 'var(--border)',
+        pick: pick(f.id)
+      };
+    });
+
+    const shown = cur.acts.map(mkAct);
+    const sel = {
+      id: cur.id, label: cur.label, host: cur.host, first: firstOf(cur), last: lastOf(cur),
+      sevLabel: SEV[cur.sev].label, sevColor: SEV[cur.sev].color,
+      narrative: cur.narrative, hasNarrative: !!cur.narrative, noNarrative: !cur.narrative,
+      rec: cur.rec, hasRec: !!cur.rec, noRec: !cur.rec,
+      check: cur.check, hasCheck: !!cur.check,
+      evidence: cur.evidence.map((l) => ({ line: l })),
+      notes: cur.notes.map((t) => ({ text: t })), hasNotes: cur.notes.length > 0,
+      cves: cur.cves.map((c) => ({ id: c })), hasCves: cur.cves.length > 0,
+      e8: cur.e8.map((n) => ({ name: n })), hasE8: cur.e8.length > 0,
+      actions: shown, noActions: shown.length === 0,
+      omitted: cur.omitted, hasOmitted: cur.omitted > 0
+    };
+
+    const colHeads = F.map((f) => ({ id: f.id, fw: f.id === selId ? 700 : 500, pick: pick(f.id) }));
+    const matrix = DOMAINS.map((d) => {
+      const cells = F.map((f, fi) => {
+        const hits = f.acts.map((a) => a[0]).filter((aid) => {
+          const pid = aid.slice(0, aid.lastIndexOf('-'));
+          return PRIN[pid].domains.some((x) => x[0] === d[0]);
+        });
+        return {
+          has: hits.length > 0,
+          aria: f.id + ', ' + d[0] + ', ' + (hits.length ? hits.length + ' pointer' + (hits.length > 1 ? 's' : '') + ': ' + hits.join(', ') : 'no pointers'),
+          tipTitle: f.id + ' · ' + hits.length + (hits.length > 1 ? ' actions' : ' action'),
+          tipBody: hits.join(', '),
+          tipPos: fi < 2 ? 'left:0' : (fi > F.length - 3 ? 'right:0' : 'left:50%;transform:translateX(-50%)'),
+          pick: pick(f.id)
+        };
+      });
+      return { name: d[0], kind: d[1], cells };
+    });
+    const tableView = DOMAINS.map((d) => {
+      const parts = [];
+      F.forEach((f) => {
+        const hits = f.acts.map((a) => a[0]).filter((aid) => PRIN[aid.slice(0, aid.lastIndexOf('-'))].domains.some((x) => x[0] === d[0]));
+        if (hits.length) parts.push(f.id + ' (' + hits.join(', ') + ')');
+      });
+      return { name: d[0], text: parts.length ? parts.join('; ') : 'No pointers' };
+    });
+
+    const ratings = Object.keys(ATT).sort().map((pid) => ({
+      id: pid, name: PRIN[pid] ? PRIN[pid].name : '', status: ATT[pid].status, border: borderOf(ATT[pid].status),
+      domains: PRIN[pid] ? PRIN[pid].domains.map((d) => d[0]).join(', ') : '',
+      reason: ATT[pid].reason || 'No reason given.'
+    }));
+    const otherCount = 28 - ratings.length;
+
+    const e8rows = E8NAMES.map((n) => {
+      const st = E8ATT[n] || 'Not assessed';
+      const rel = F.filter((f) => f.e8.indexOf(n) >= 0).map((f) => f.id);
+      return { name: n, status: st, border: borderOf(st), related: rel.length ? 'Related findings: ' + rel.join(', ') : 'No related findings' };
+    });
+
+    const trends = [
+      { text: 'Alert volume was well above the 7-day average, driven by cluster C1.' },
+      { text: 'Rule 550 on host-a fired for the first time in 12 days.' },
+      { text: 'The LAN administrator session in C5 has appeared on 9 consecutive days.' }
+    ];
+
+    return { hasEss, noEss: !hasEss, kpis, ticks, lanes, items, sel, colHeads, matrix, tableView, ratings, otherCount, e8rows, trends };
+  }
+}
+</script>
+</body>
+</html>
