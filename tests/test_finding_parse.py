@@ -139,6 +139,105 @@ def test_prompt_template_has_no_finding_one() -> None:
     assert "Finding 1" not in prompt
 
 
+def test_prompt_asks_for_every_cluster() -> None:
+    """The output instruction asks for a line for every cluster, short lines allowed."""
+    prompt = _build_prompt([_alert("A rule", 3)], {}, clusters=_two_clusters())
+    flat = " ".join(prompt.split())
+    assert "EVERY cluster id listed above" in flat
+    assert "No action: normal dpkg upgrade sequence" in flat
+    assert "- [C1] <narrative for cluster C1>" in prompt
+    assert "- [C2] <narrative for cluster C2>" in prompt
+    assert "Finding 1" not in prompt
+
+
+def _coverage_warnings(caplog: Any) -> list[str]:
+    """Return the coverage warning messages captured so far."""
+    return [
+        r.getMessage() for r in caplog.records
+        if r.levelname == "WARNING" and r.getMessage().startswith("LLM gave no")
+    ]
+
+
+def test_warning_names_cluster_with_no_lines(caplog: Any) -> None:
+    """A cluster with no narrative and no recommendation is named in the warning."""
+    text = (
+        "<findings>\n- [C1] Narrative one\n</findings>\n"
+        "<recommendations>\n- [C1] Monitor: reason\n</recommendations>"
+    )
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        _parse_analysis(text, clusters=_two_clusters())
+    messages = _coverage_warnings(caplog)
+    assert len(messages) == 2
+    assert all("C2" in m and "C1" not in m for m in messages)
+
+
+def test_warning_names_cluster_missing_recommendation_only(caplog: Any) -> None:
+    """A cluster with a narrative but no recommendation is named once."""
+    text = (
+        "<findings>\n- [C1] Narrative one\n- [C2] Narrative two\n</findings>\n"
+        "<recommendations>\n- [C2] Monitor: reason\n</recommendations>"
+    )
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        _parse_analysis(text, clusters=_two_clusters())
+    messages = _coverage_warnings(caplog)
+    assert len(messages) == 1
+    assert "recommendation" in messages[0]
+    assert "C1" in messages[0] and "C2" not in messages[0]
+
+
+def test_no_warning_when_every_cluster_covered(caplog: Any) -> None:
+    """No coverage warning is logged when every cluster has both lines."""
+    text = (
+        "<findings>\n- [C1] One\n- [C2] Two\n</findings>\n"
+        "<recommendations>\n- [C1] Monitor: a\n- [C2] No action: b\n</recommendations>"
+    )
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        _parse_analysis(text, clusters=_two_clusters())
+    assert _coverage_warnings(caplog) == []
+
+
+def test_findings_unchanged_by_missing_warning() -> None:
+    """Findings keep their shape and empty strings when lines are missing."""
+    result = _parse_analysis("<findings>\n- [C1] One\n</findings>", clusters=_two_clusters())
+    assert len(result["findings"]) == 2
+    assert result["findings"][0]["narrative"] == "One"
+    assert result["findings"][0]["recommendation"] == ""
+    assert result["findings"][1]["narrative"] == ""
+    assert result["findings"][1]["recommendation"] == ""
+    assert result["recommendations"] == []
+
+
+def test_legacy_parse_logs_no_coverage_warning(caplog: Any) -> None:
+    """The clusters=None legacy path logs no coverage warning."""
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        _parse_analysis("<findings>\n- Legacy\n</findings>")
+    assert _coverage_warnings(caplog) == []
+
+
+def test_coverage_warning_ignores_clusters_beyond_prompt_cap(caplog: Any) -> None:
+    """Clusters past MAX_PROMPT_CLUSTERS were never shown, so are never named."""
+    alerts = [
+        {
+            "_source": {
+                "agent": {"name": "host-1"},
+                "rule": {"id": str(2000 + i), "description": f"Rule {i}", "level": 5},
+                "@timestamp": "2026-09-24T10:00:00.000Z",
+            }
+        }
+        for i in range(analyser.MAX_PROMPT_CLUSTERS + 3)
+    ]
+    clusters = extract_alert_clusters(alerts)
+    assert len(clusters) > analyser.MAX_PROMPT_CLUSTERS
+    beyond = [c["id"] for c in clusters[analyser.MAX_PROMPT_CLUSTERS:]]
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        _parse_analysis("", clusters=clusters)
+    messages = _coverage_warnings(caplog)
+    assert len(messages) == 2
+    named = {tok.strip() for m in messages for tok in m.split(": ", 1)[1].split(",")}
+    assert named == {c["id"] for c in clusters[: analyser.MAX_PROMPT_CLUSTERS]}
+    assert not named & set(beyond)
+
+
 def test_parse_analysis_ignores_stray_mitre_tags_block() -> None:
     """A stray <mitre_tags> block is silently ignored — no tags, no findings."""
     clusters = _two_clusters()

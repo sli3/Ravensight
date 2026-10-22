@@ -1300,6 +1300,20 @@ def _fidelity_flags(
     return flagged
 
 
+def _cut_on_value(text: str, room: int) -> str:
+    """Cut text to at most room characters on a value boundary, ending with an ellipsis."""
+    if len(text) <= room:
+        return text
+    if room < 2:
+        return "…"[:room]
+    pos = max(text.rfind(", ", 0, room + 1), text.rfind("; ", 0, room + 1))
+    if pos > 0:
+        kept = text[:pos].rstrip(",; ")
+        if kept:
+            return kept + "…"
+    return text[: room - 1] + "…"
+
+
 def _build_prompt(
     alerts: list[dict[str, Any]],
     baseline: dict[str, Any],
@@ -1348,10 +1362,10 @@ def _build_prompt(
                     if host_part and combined and budget > 1:
                         # Keep the per-host part whole; cut only the combined part.
                         rendered_evidence = (
-                            combined[: budget - 1] + "…; " + host_part
+                            _cut_on_value(combined, budget) + "; " + host_part
                         )
                     else:
-                        rendered_evidence = rendered_evidence[: limit - 1] + "…"
+                        rendered_evidence = _cut_on_value(rendered_evidence, limit)
                 line += f" — evidence: {rendered_evidence}"
         if cluster.get("notes"):
             line += " — notes: " + "; ".join(cluster["notes"])
@@ -1398,8 +1412,10 @@ Rules:
 {mitre_reference}
 {asd_block}
 
-Provide your analysis in this format — one narrative line per cluster you comment on,
-each prefixed with its cluster id, plus at most one recommendation line per cluster:
+Provide your analysis in this format — exactly one narrative line and one recommendation
+line for EVERY cluster id listed above, each prefixed with its cluster id. This includes a
+cluster whose note already explains it: a short line such as "No action: normal dpkg
+upgrade sequence" is fine:
 <findings>
 - [C1] <narrative for cluster C1>
 - [C2] <narrative for cluster C2>
@@ -1483,6 +1499,15 @@ def _parse_analysis(
                 unattached.append(_unattached_finding("", recommendation=rest))
 
     if clusters is not None:
+        shown_ids = [c["id"] for c in clusters[:MAX_PROMPT_CLUSTERS]]
+        no_narrative = [i for i in shown_ids if not by_id[i]["narrative"]]
+        no_recommendation = [i for i in shown_ids if not by_id[i]["recommendation"]]
+        if no_narrative:
+            logger.warning("LLM gave no narrative for clusters: %s", ", ".join(no_narrative))
+        if no_recommendation:
+            logger.warning(
+                "LLM gave no recommendation for clusters: %s", ", ".join(no_recommendation)
+            )
         findings.extend(unattached)
         recommendations = [
             f["recommendation"] for f in findings if f.get("recommendation")

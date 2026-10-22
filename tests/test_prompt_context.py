@@ -9,6 +9,7 @@ Tests that confirm:
 These tests do not touch the network, ChromaDB or the LLM. The OpenAI client
 is monkeypatched via the ``captured_prompt`` fixture.
 """
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -357,7 +358,7 @@ def test_cluster_line_without_evidence_has_no_segment() -> None:
 
 
 def test_prompt_evidence_segment_truncated_at_max_line_chars() -> None:
-    """An over-long rendered evidence segment truncates to 400 chars + '…'."""
+    """An over-long evidence segment is cut on a value boundary, at most 400 chars, ending '…'."""
     long_paths = [f"/etc/{'p' * 90}{i}" for i in range(5)]
     cluster = {
         "id": "C1",
@@ -377,7 +378,7 @@ def test_prompt_evidence_segment_truncated_at_max_line_chars() -> None:
         "evidence": {
             "syscheck": {
                 "paths": long_paths,
-                "events": ["e" * MAX_EVIDENCE_LINE_CHARS],
+                "events": ["added"],
             }
         },
     }
@@ -386,8 +387,10 @@ def test_prompt_evidence_segment_truncated_at_max_line_chars() -> None:
         line for line in prompt_text.splitlines() if line.startswith("[C1]")
     )
     segment = cluster_line.split(" — evidence: ", 1)[1]
-    assert len(segment) == MAX_EVIDENCE_LINE_CHARS
+    assert len(segment) <= MAX_EVIDENCE_LINE_CHARS
     assert segment.endswith("…")
+    # The cut falls on a whole value, never mid-path.
+    assert re.search(r"p{90}\d$", segment[:-1])
 
 
 def test_unknown_severity_not_rendered(captured_prompt: dict[str, Any]) -> None:
@@ -436,5 +439,84 @@ def test_prompt_per_host_segment_survives_long_combined_line() -> None:
         line for line in prompt_text.splitlines() if line.startswith("[C1]")
     )
     segment = cluster_line.split(" — evidence: ", 1)[1]
-    assert len(segment) == MAX_EVIDENCE_LINE_CHARS
-    assert segment.endswith("per host [h1: paths /etc/one]")
+    assert len(segment) <= MAX_EVIDENCE_LINE_CHARS
+    assert segment.endswith("…; per host [h1: paths /etc/one]")
+    combined = segment.split("…; ", 1)[0]
+    assert re.search(r"p{90}\d$", combined)
+
+
+def _long_cluster(evidence_data: dict[str, Any]) -> dict[str, Any]:
+    """Build a cluster with the given evidence for the cut tests."""
+    return {
+        "id": "C1",
+        "type": "rule",
+        "description": "Integrity checksum changed.",
+        "rule_ids": ["550"],
+        "hosts": ["OPNsense", "kamaji"],
+        "count": 5,
+        "max_level": 7,
+        "severity": "Medium",
+        "first_seen": "2026-09-24T08:15:00.000Z",
+        "last_seen": "2026-09-24T10:30:00.000Z",
+        "cves": [],
+        "package": None,
+        "narrative": "",
+        "recommendation": "",
+        "evidence": evidence_data,
+    }
+
+
+def _evidence_segment(cluster: dict[str, Any]) -> str:
+    """Return the evidence segment of the C1 line in the built prompt."""
+    prompt_text = _build_prompt([], {}, clusters=[cluster])
+    line = next(ln for ln in prompt_text.splitlines() if ln.startswith("[C1]"))
+    return line.split(" — evidence: ", 1)[1]
+
+
+def test_prompt_long_per_host_cluster_cut_on_value_boundary() -> None:
+    """A long per-host cluster is cut between paths and keeps its per-host tail."""
+    paths = [
+        "/etc/ca-certificates.conf",
+        "/etc/hosts",
+        "/etc/resolv.conf",
+        "/etc/ssh/ssh_config.d/99-netbird.conf",
+        "/usr/sbin/update-ca-certificates",
+    ]
+    per_host = {
+        "OPNsense": {"syscheck": {"paths": paths[:3]}},
+        "kamaji": {"syscheck": {"paths": paths[3:]}},
+    }
+    # Pad with extra long paths so the combined part exceeds the cap.
+    extra = [f"/var/lib/{'x' * 60}{i}" for i in range(6)]
+    cluster = _long_cluster(
+        {"syscheck": {"paths": extra + paths}, "per_host": per_host}
+    )
+    segment = _evidence_segment(cluster)
+    assert "ssh_c…" not in segment
+    assert len(segment) <= MAX_EVIDENCE_LINE_CHARS
+    assert "…; per host [" in segment
+    tail = segment.split("…; ", 1)[1]
+    assert tail.startswith("per host [OPNsense: paths /etc/ca-certificates.conf")
+    assert "kamaji: paths /etc/ssh/ssh_config.d/99-netbird.conf" in tail
+    combined = segment.split("…; ", 1)[0]
+    shown = combined.removeprefix("paths ").split(", ")
+    assert shown
+    assert all(value in extra + paths for value in shown)
+
+
+def test_prompt_single_long_value_hard_cut() -> None:
+    """A single value longer than the budget with no separator is hard cut."""
+    cluster = _long_cluster({"syscheck": {"paths": ["/etc/" + "q" * 600]}})
+    segment = _evidence_segment(cluster)
+    assert segment
+    assert len(segment) <= MAX_EVIDENCE_LINE_CHARS
+    assert segment.endswith("…")
+
+
+def test_prompt_short_evidence_segment_unchanged() -> None:
+    """A segment under the cap is passed through untouched."""
+    cluster = _long_cluster({"syscheck": {"paths": ["/etc/hosts", "/etc/resolv.conf"]}})
+    segment = _evidence_segment(cluster)
+    assert "…" not in segment
+    assert "/etc/hosts" in segment
+    assert "/etc/resolv.conf" in segment
