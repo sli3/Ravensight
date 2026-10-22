@@ -65,7 +65,10 @@ BASH_ALLOW = {
         "git log",
         "git --no-pager log",
         "git add",
-        "git commit",  # still prompts: "ask" rule in settings.json
+        "git commit",
+        "git switch",
+        "git checkout -b",
+        "git branch",  # branch -D still prompts: "ask" rule in settings.json
         "mkdir -p .session-memos",
         "date",
     ),

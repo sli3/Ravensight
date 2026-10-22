@@ -19,14 +19,19 @@
       "Bash(git log *)",
       "Bash(git --no-pager log *)",
       "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git checkout -b *)",
+      "Bash(git branch *)",
       "Bash(mkdir -p .session-memos)",
       "Bash(date *)",
       "mcp__graft",
       "Edit(/docs/RAVENSIGHT_ROADMAP.md)"
     ],
     "ask": [
-      "Bash(git commit *)",
-      "Bash(uv run python -c *)"
+      "Bash(uv run python -c *)",
+      "Bash(git branch -D *)",
+      "Bash(git switch --discard-changes *)"
     ],
     "deny": [
       "Read(config.toml)",

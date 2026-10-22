@@ -141,7 +141,7 @@ Retain (end of a `/build` run only, after the session memo is written):
 3. `retain` asks for approval. If it is declined or fails, do not retry or
    work around it; say so in one line.
 4. Outside this end-of-build digest, retain only when Prin asks. Never call
-   Hindsight's destructive tools; `.claude/settings.json` denies them.
+   Hindsight's destructive tools (anything that deletes or clears memories).
 
 ## GRAFT (repo context graph)
 
@@ -267,18 +267,22 @@ part of that judgement: if the task changes any source, test or config file,
   as part of a `/build` run. `/build` produces code and leaves it uncommitted;
   committing it is a separate, Prin-initiated step. To commit: show
   `git --no-pager diff` (or `--cached`) and `git status`, stage only the files Prin
-  named or the build touched, then run `git commit`. Prin's approval of the
-  `git commit` prompt is the OK on the diff. The message uses a category prefix and
+  named or the build touched, then run `git commit` straight away: Prin's request
+  to commit is the OK, so do not wait for a further approval. If anything unexpected
+  is staged, stop and ask instead. The message uses a category prefix and
   a short description (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`),
   with any body in a further `-m` argument. Never add a `Co-Authored-By` trailer, a
   "Generated with" line or any other attribution, and keep the message free of `;`,
   `&`, `|`, `<`, `>`, backticks and `$(`, which `agent_guard.py` rejects. `git push`
   is denied in `.claude/settings.json`, so Prin runs the push by hand.
+- Create or switch branches only when Prin asks, with `git switch` or
+  `git checkout -b`. Never delete a branch or discard uncommitted changes; those
+  commands prompt Prin or are denied.
 - `docs/RAVENSIGHT_ROADMAP.md`: only as ROADMAP UPDATES allows. Outside a
   `/build` run, only the change Prin asks for; during one, the Feature Status
   table only.
 - Your Bash access is limited by `agent_guard.py` to these commands (graft read commands, `uv run pytest`/`ruff check`/
-  `py_compile`, read-only git, `git add`, `git commit`, `ls -t`, `head`, `cat`,
+  `py_compile`, read-only git, `git add`, `git commit`, `git switch`, `git checkout -b`, `git branch`, `ls -t`, `head`, `cat`,
   `mkdir -p .session-memos`, `date`). Redirection and command substitution are
   rejected. If a rule blocks legitimate work, stop and report the exact command
   and rule to Prin.
