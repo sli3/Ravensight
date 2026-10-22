@@ -1661,6 +1661,125 @@ Out of scope:
   exactly)
 - `config.toml` and `config.example.toml`
 
+### 23. Web UI Report Viewer
+
+**What it does:**
+A read-only viewer for the JSON report, so a run can be read as a page instead of a long
+markdown file. It shows the run header and totals, the findings with their commentary and
+evidence, a range bar per finding for when it was seen, the Essential Eight table, the
+ASD Essentials pointers and the operator's declared ratings, and the trends text. It is
+the future viewer that section 17 prepared the JSON for. It is built on the
+`web-ui-report` branch.
+
+**Design rule:** the viewer reads the JSON report only and never the markdown. It shows
+only what the JSON holds. It never works out a rating, a score or a percentage, and it
+keeps every ASD notice that the report shows (see AGENTS.md "ASD Material and Claims").
+
+**Sessions: 3. Later sessions are added here before they start.**
+
+Decisions (agreed with Prin):
+- The layout and style spec is artboard E of the "Ravensight report UI" design (canvas
+  markup, placeholder data only). Prin saves it as `docs/web-ui/Viewer.dc.html` before
+  Session 2. Artboards A to D are earlier directions and are ignored. Field names come from
+  the real JSON, never from the design
+- JSON additions (Session 1): the licence link and the "modified" note in the `essentials`
+  block, a name on every attestation entry, and the model name in `run`
+- Derived in the viewer, not added to the JSON: the alert total, the severity totals and the
+  time window (`generated_at` minus `run.hours`)
+- Left out of version 1: similar past incidents, the summary line, MITRE tags, the glossary
+  and structured trends. Trends stay the `trends_markdown` text, shown as plain paragraphs,
+  with no chart
+- The timeline is one range bar per finding, drawn from `first_seen` and `last_seen`
+- The "Check" line under a finding is built in the viewer from the `flags` words, and shown
+  only when `flags` is not empty
+- Proposed, for Prin to confirm before Session 2: delivery is a single self-contained HTML
+  file that opens from disk and loads one report JSON through a file picker. There is no
+  Ravensight server, no new service and no new Python dependency
+
+#### Session 1 — JSON schema version 3
+
+In scope:
+- `ravensight/reporter.py`: `JSON_SCHEMA_VERSION` becomes 3. In the `essentials` block, add
+  `licence_url` and `changes` (the "modified" note) from the dataset's `source` block, with
+  constant fallbacks like the existing `attribution`, `licence` and `notice`. Every entry
+  in `essentials.attestation` gains a `name` (the principle's name from the dataset, empty
+  when unknown). `run` gains `model`
+- `main.py`: pass the configured model name into the run parameters. `run` stays `null` in
+  report-only runs
+- `README.md`: the JSON section describes schema version 3 and the new keys
+- Tests for each change, including that the markdown report is byte-identical, that
+  `run`, `essentials` and `attestation` keep their older keys, and a sample report JSON
+  kept as a test fixture whose keys match schema 3
+
+Out of scope:
+- Any other change to the JSON shape (findings, `e8_status`, `finding_pointers`,
+  `matched_controls`, `trends_markdown`)
+- Structured trends, similar incidents, the summary line, MITRE tags and the glossary
+- Any change to the markdown report, the LLM prompt or analysis logic
+- `config.toml` and `config.example.toml`
+
+#### Session 2 — The viewer
+
+In scope:
+- A new folder `web/` with one self-contained HTML file (inline CSS and JavaScript) that
+  loads one report JSON from disk through a file picker and shows, following artboard E:
+  - the run header: generated time, window, hours, level, model, alert total, severity
+    totals
+  - the findings: id, severity, description, hosts, count, a range bar from `first_seen`
+    to `last_seen` (UTC when the time ends in `Z`), narrative, recommendation, evidence
+    drawn by shape (firewall, syscheck, dpkg and the others the JSON holds, with the
+    "+N more" counts), CVEs, notes and the "Check" line. An empty narrative or
+    recommendation shows a plain "No commentary" text
+  - the Essential Eight table from `e8_status` and `finding_pointers`
+  - the ASD Essentials pointers from `essentials.finding_actions` (principle, actions,
+    priority phase, the reasons with "parent of" for a parent technique) and the declared
+    ratings from `essentials.attestation`, with every undeclared principle shown as
+    "Not assessed"
+  - the trends text as plain paragraphs
+- Safety: all text from the JSON is inserted as text and never as HTML. The page loads no
+  script, font, image or style from the network, makes no network request and has no
+  credentials in it
+- It checks `schema_version` and shows a clear message for a version it does not know. It
+  handles a missing `essentials` (null), a missing `attestation` and finding types other
+  than `rule`
+- Wherever Essentials data is shown, the page shows the attribution, the licence with its
+  link, the "modified" note and the unofficial/not-endorsed notice from the JSON. It says
+  that phases are an implementation order and that ratings are the operator's own
+  declaration
+- `README.md`: how to open the viewer and what it reads
+- Tests: a pytest check that every JSON key the viewer reads exists in the schema 3 sample
+  fixture. The look is checked by Prin in a browser against artboard E
+
+Out of scope:
+- Any Python server, route, API, port or background service, and Docker serving
+- Authentication, accounts, sharing or uploading a report anywhere
+- Writing to any file, editing the attestation files in the page, or any form that changes
+  data
+- Charts other than the range bar, structured trends, comparing or listing several reports
+- Any rating, score, percentage, pass or fail wording, or colour that implies one
+- ASD or ACSC logos, the Commonwealth Coat of Arms, ASD PDFs or screenshots of ASD
+  documents, in the page or in the design file
+- Any change to the JSON shape (Session 1 owns it), the markdown report or the LLM prompt
+- `config.toml` and `config.example.toml`
+
+#### Session 3 — Check against real reports and tidy
+
+In scope:
+- Run the viewer against real reports from live runs (a full run, a run with no Essentials
+  data, a run with empty commentary and a run with `flags`), and fix only defects in
+  `web/` and its tests
+- Update `README.md` and this section's Feature Status row
+
+Out of scope:
+- New screens or data, and any item left out of version 1
+- Everything listed as out of scope for Session 2
+
+Out of scope for the whole section:
+- A web server, authentication, charts and structured trends (later items)
+- Retiring or changing the Essential Eight section
+- Any change to how findings are matched or analysed
+- Opening, editing or printing `config.toml` or `.env`
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
