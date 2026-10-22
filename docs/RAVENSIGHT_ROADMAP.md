@@ -1582,6 +1582,38 @@ Out of scope for the whole section:
 - A web UI
 - Opening, editing or printing `config.toml` or `.env`
 
+### 21. Report Table Tidy-up
+
+**What it does:**
+A live report on 22 Oct 2026 showed two small defects in the finding pointer tables.
+The Finding cell cuts a long finding title at 60 characters, so one title ended in the
+middle of a bracket ("Listened ports status (netstat) changed (new port opened…").
+The word "there" counted as a shared keyword, so a finding was linked to two ISM
+controls on the words "external" and "there". This section fixes those two only.
+
+**Sessions: 1**
+
+#### Session 1 — Finding label length and one generic word
+
+In scope:
+- `ravensight/reporter.py`: the Finding cell in `_render_finding_pointers` (the ASD
+  Framework table) and in `_render_essentials_pointers` (the Essentials table) trims
+  the finding description at a longer limit, held in one named constant used by both
+  (about 100 characters, still cut at a word boundary), so a typical Wazuh rule
+  description is shown whole. No other cell is changed
+- `ravensight/e8_scorer.py`: add "there" to `E8_GENERIC_WORDS`. The Essentials
+  keyword route imports the same stems, so it gets the change too
+- Tests for each change, including that a title of about 70 characters is shown whole
+  and that "there" alone no longer counts as a shared word
+
+Out of scope:
+- Negation handling ("no external source" still matches on "external")
+- Any other change to the word lists, stemming or matching thresholds
+- Any change to `ravensight/essentials_scorer.py`, the markdown layout apart from the
+  Finding cell, the JSON report or `JSON_SCHEMA_VERSION`
+- The glossary, the how-to-read notes and the LLM prompt
+- `config.toml` and `config.example.toml`
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
