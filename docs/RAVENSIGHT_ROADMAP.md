@@ -1692,9 +1692,16 @@ Decisions (agreed with Prin):
 - The timeline is one range bar per finding, drawn from `first_seen` and `last_seen`
 - The "Check" line under a finding is built in the viewer from the `flags` words, and shown
   only when `flags` is not empty
-- Proposed, for Prin to confirm before Session 2: delivery is a single self-contained HTML
-  file that opens from disk and loads one report JSON through a file picker. There is no
-  Ravensight server, no new service and no new Python dependency
+- Delivery (confirmed by Prin on 22 Oct 2026): a single self-contained HTML file,
+  `web/index.html`, that opens from disk and loads one report JSON through a file picker.
+  There is no Ravensight server, no new service and no new Python dependency
+- The design spec is committed as `docs/web-ui/Viewer.dc.html` (commit `d4506d2`, placeholder
+  data only). It is a React-based preview and is not reused as code: the viewer is plain
+  HTML, CSS and JavaScript written from its layout and style, and the design's `vendor/`
+  and `support.js` files are not copied into the repo. Where the design and the real JSON
+  differ, the JSON wins (see the Session 2 scope)
+- The pointer map shows the 8 ASD domain names as fixed rows, kept in one constant in the
+  viewer (Prin's decision), so a domain with no pointers still shows an empty row
 
 #### Session 1 — JSON schema version 3
 
@@ -1721,21 +1728,44 @@ Out of scope:
 #### Session 2 — The viewer
 
 In scope:
-- A new folder `web/` with one self-contained HTML file (inline CSS and JavaScript) that
-  loads one report JSON from disk through a file picker and shows, following artboard E:
-  - the run header: generated time, window, hours, level, model, alert total, severity
-    totals
-  - the findings: id, severity, description, hosts, count, a range bar from `first_seen`
-    to `last_seen` (UTC when the time ends in `Z`), narrative, recommendation, evidence
-    drawn by shape (firewall, syscheck, dpkg and the others the JSON holds, with the
-    "+N more" counts), CVEs, notes and the "Check" line. An empty narrative or
-    recommendation shows a plain "No commentary" text
-  - the Essential Eight table from `e8_status` and `finding_pointers`
-  - the ASD Essentials pointers from `essentials.finding_actions` (principle, actions,
-    priority phase, the reasons with "parent of" for a parent technique) and the declared
-    ratings from `essentials.attestation`, with every undeclared principle shown as
-    "Not assessed"
-  - the trends text as plain paragraphs
+- A new folder `web/` with one self-contained HTML file, `web/index.html` (inline CSS and
+  JavaScript, no framework or library), that loads one report JSON from disk through a
+  file picker and shows, following the layout and style of artboard E. Field names come
+  from the real JSON, not from the design:
+  - the run header: the generated time in UTC (`generated_at`), the window (`generated_at`
+    minus `run.hours`, only when `run` is not null), `run.level`, `run.model` when present,
+    the schema version, the alert total (the sum of `count` over the cluster findings),
+    the severity totals, the hosts involved and the number of findings with no commentary
+  - the findings list and a timeline of one range bar per finding from `first_seen` to
+    `last_seen`, labelled UTC, with no per-alert dots (the design's dots are dropped)
+  - the finding detail: `description` as the title (shortened by the display only), `hosts`,
+    first and last seen, `count`, `narrative`, `recommendation`, CVEs and notes. Evidence is
+    drawn from the structured `evidence` object by shape (firewall, syscheck, dpkg, netstat,
+    docker, vulnerability and generic, with any unknown shape listed generically), with the
+    "+N more" counts from `more`. A finding whose `flags` list is not empty gets the "Check"
+    line, built in the viewer as "The commentary mentions <the flag words>, which are not in
+    this cluster's evidence." An empty narrative or recommendation shows plain "No
+    commentary" or "No recommendation was generated" text. A finding of another type than
+    `rule`, or a legacy string, shows its description or text without failing
+  - the Essential Eight section from `e8_status` (status, related findings) and
+    `finding_pointers`, with the attested level ("Attested at ML{n}") taken from the
+    top-level `attestation` key when it is present, and the "Unmapped" row labelled as not
+    one of the Essential Eight, as the markdown does
+  - the ASD Essentials pointers from `essentials.finding_actions`: for each action the
+    principle id and name, the action id, the domains with their phase (a null phase shown as
+    "All phases"), the reasons (MITRE with "parent of" when `via_parent` is true, ISM showing
+    the ISM id and the dataset field it was listed under, and keywords shown as a weak
+    match), the `omitted` count, and the operator's declared status for the principle from
+    `essentials.attestation`
+  - a pointer map with the 8 fixed domain rows against the findings, where a dot means at
+    least one pointer and never a gap or a score, plus a table view of the same data
+  - the declared ratings from `essentials.attestation`: the entries whose status is not
+    "Not assessed", each with its `name`, its declared domains, status and reason, and the
+    count of the other principles shown as "Not assessed" (the principle total is the
+    number of attestation entries)
+  - the trends text: `trends_markdown` shown as preformatted text without parsing it, or a
+    short "No trend data" line when it is null
+  - a neutral footer that says only that this is a read-only view of the JSON report
 - Safety: all text from the JSON is inserted as text and never as HTML. The page loads no
   script, font, image or style from the network, makes no network request and has no
   credentials in it
@@ -1743,12 +1773,19 @@ In scope:
   handles a missing `essentials` (null), a missing `attestation` and finding types other
   than `rule`
 - Wherever Essentials data is shown, the page shows the attribution, the licence with its
-  link, the "modified" note and the unofficial/not-endorsed notice from the JSON. It says
-  that phases are an implementation order and that ratings are the operator's own
-  declaration
+  link (`licence_url`), the "modified" note (`changes`) and the unofficial/not-endorsed
+  notice (`notice`), using the JSON's own text and never a paraphrase. It says that phases
+  are an implementation order and that ratings are the operator's own declaration. A
+  report with no Essentials data (`essentials` null, as in report-only runs) shows a plain
+  "no Essentials data" line, and the viewer states nothing it cannot read from the JSON
+  (no model location, no claim about where data went, no dataset counts the JSON lacks)
 - `README.md`: how to open the viewer and what it reads
-- Tests: a pytest check that every JSON key the viewer reads exists in the schema 3 sample
-  fixture. The look is checked by Prin in a browser against artboard E
+- Tests: pytest checks that every JSON key the viewer reads exists in the schema 3 sample
+  fixture (`tests/fixtures/report-schema3-sample.json`), that the viewer's 8 fixed domain
+  names equal the domain names in `data/defaults/essentials_enterprise_it.json`, that the
+  file has no external URL in a script, style, image or font reference (the licence and
+  copyright links are plain anchors), and that no text from the JSON is inserted as HTML.
+  The look is checked by Prin in a browser against artboard E
 
 Out of scope:
 - Any Python server, route, API, port or background service, and Docker serving
@@ -1757,6 +1794,11 @@ Out of scope:
   data
 - Charts other than the range bar, structured trends, comparing or listing several reports
 - Any rating, score, percentage, pass or fail wording, or colour that implies one
+- React or any other framework, library, build step or package, and copying the design's
+  `vendor/` or `support.js` files
+- Per-alert dots on the timeline, a parsed table or chart of the trends, and any figure the
+  JSON does not hold (the model's location, the dataset's action and domain counts, a
+  report date other than `generated_at`)
 - ASD or ACSC logos, the Commonwealth Coat of Arms, ASD PDFs or screenshots of ASD
   documents, in the page or in the design file
 - Any change to the JSON shape (Session 1 owns it), the markdown report or the LLM prompt
