@@ -1615,6 +1615,51 @@ Out of scope:
 - The glossary, the how-to-read notes and the LLM prompt
 - `config.toml` and `config.example.toml`
 
+### 22. Analysis Coverage and Prompt Evidence Cut
+
+**What it does:**
+Two live runs on 22 Oct 2026 (10:38 and 14:09) returned no narrative and no
+recommendation for two clusters, with no warning. Both carried the note "normal dpkg
+upgrade sequence ... (see Cn)". The prompt asks for "one narrative line per cluster you
+comment on" and "at most one" recommendation line, so the model may skip a cluster
+that its note already explains, and `_parse_analysis` keeps empty text without a
+warning. The same runs showed a path cut as "/etc/ssh/ssh_c…" in a narrative: the
+prompt's evidence line is cut by a plain character slice that can land inside a word,
+and the model copied the broken path. Root cause analysis by `deep-bug-hunter` is in the
+22 Oct 2026 Debug session. This section fixes the coverage gap and the cut, and nothing
+else.
+
+**Sessions: 1**
+
+#### Session 1 — Cover every cluster, warn on gaps, cut evidence on a value boundary
+
+In scope:
+- `ravensight/analyser.py` `_build_prompt`: the output instruction asks for one
+  narrative line and one recommendation line for every listed cluster id, including a
+  cluster whose note already explains it (a short line such as "No action: normal dpkg
+  upgrade sequence" is acceptable). The other rules in the prompt are not reworded
+- `ravensight/analyser.py` `_parse_analysis`: when clusters were given and some cluster
+  ids end with no narrative, or no recommendation, log one warning naming those ids.
+  Nothing else changes, the findings are returned as before
+- `ravensight/analyser.py` `_build_prompt`: the two character slices that shorten a
+  cluster's evidence in the prompt (the per-host line and the plain line) cut at the
+  last value separator (", " or "; ") before the budget, drop trailing separators and
+  add the ellipsis, as `evidence.py` already does for per-host text. A cut never lands
+  inside a value
+- Tests for each change, including updating the two existing tests that assert the
+  evidence segment is exactly 400 characters so that they assert "at most 400, cut on a
+  boundary", and a test that the C3-style example no longer ends a path as "ssh_c…"
+
+Out of scope:
+- Logging the stream `finish_reason`
+- Showing a fixed fallback line in the report for a cluster with no commentary, and any
+  change to `ravensight/reporter.py` or the JSON report
+- Any change to `ravensight/evidence.py`, the regex that reads cluster ids, the dpkg
+  note text, the temperature, `max_tokens` or any other LLM setting
+- Rewording the other prompt rules ("notes are facts", "if unsure, say less", copy paths
+  exactly)
+- `config.toml` and `config.example.toml`
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
