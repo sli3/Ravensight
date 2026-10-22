@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>Ravensight report viewer</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #6f6d67;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6;
+  --row-sel: #eef4fc;
+  --chip: #f0efec;
+  --link: #1c5cab;
+  --sev-high: #b42318;
+  --sev-medium: #93370d;
+  --sev-low: #175cd3;
+  --sev-unknown: #6f6d67;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --muted: #a09e96;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --row-sel: #222a35;
+    --chip: #262624;
+    --link: #79b8ff;
+    --sev-high: #ff7b72;
+    --sev-medium: #f2b84b;
+    --sev-low: #79b8ff;
+    --sev-unknown: #a09e96;
+  }
+}
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.wrap {
+  box-sizing: border-box;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+.top-title { display: flex; align-items: baseline; gap: 4px 16px; flex-wrap: wrap; }
+.top-title h1 { margin: 0; font-size: 22px; font-weight: 700; }
+.subtle { color: var(--text-secondary); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  padding: 4px 12px;
+  background: var(--chip);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.picker { display: flex; flex-direction: column; gap: 6px; }
+.picker label { font-weight: 600; }
+.picker input[type="file"] {
+  min-height: 44px;
+  max-width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: inherit;
+}
+.picker input[type="file"]::file-selector-button {
+  min-height: 44px;
+  padding: 0 16px;
+  margin-right: 12px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.message {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--text-secondary);
+}
+.message.error {
+  color: var(--text-primary);
+  border: 1px solid var(--sev-high);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.pick, .navlink { font: inherit; color: inherit; min-height: 44px; }
+.pick:focus-visible,
+.navlink:focus-visible,
+input:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+.pick[aria-pressed="true"] { background: var(--row-sel); border-color: var(--series-1); }
+a { color: var(--link); }
+.panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.panel h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.kpis { display: flex; flex-wrap: wrap; gap: 16px; }
+.kpi {
+  flex: 1 1 200px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+.kpi-label { font-size: 13px; color: var(--text-secondary); }
+.kpi-value { font-size: 32px; font-weight: 600; line-height: 1.2; }
+.kpi-sub { font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 20px;
+  margin: 0;
+  font-size: 14px;
+}
+.facts dt { color: var(--text-secondary); }
+.facts dd { margin: 0; }
+.sev-high { color: var(--sev-high); }
+.sev-medium { color: var(--sev-medium); }
+.sev-low { color: var(--sev-low); }
+.sev-unknown { color: var(--sev-unknown); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="top-title">
+      <h1>Ravensight</h1>
+      <span class="subtle">Report viewer</span>
+    </div>
+    <div class="chips">
+      <span class="chip">Read-only</span>
+    </div>
+  </header>
+
+  <div class="picker">
+    <label for="report-file">Choose a report JSON</label>
+    <input id="report-file" type="file" accept=".json,application/json">
+  </div>
+
+  <p id="message" class="message" role="status" aria-live="polite">Choose a report JSON file to begin.</p>
+
+  <main id="report" class="wrap-main" style="display:flex;flex-direction:column;gap:28px">
+
+    <section id="overview" aria-labelledby="overview-h" class="panel" hidden>
+      <h2 id="overview-h">Run summary</h2>
+      <div id="overview-body"></div>
+    </section>
+
+    <section id="timeline" aria-labelledby="timeline-h" class="panel" hidden>
+      <h2 id="timeline-h">When findings occurred</h2>
+      <div id="timeline-body"></div>
+    </section>
+
+    <section id="findings" aria-labelledby="findings-h" class="panel" hidden>
+      <h2 id="findings-h">Findings</h2>
+      <div id="findings-body"></div>
+    </section>
+
+    <section id="essentials" aria-labelledby="essentials-h" class="panel" hidden>
+      <h2 id="essentials-h">ASD Essentials for enterprise IT</h2>
+      <div id="essentials-body"></div>
+    </section>
+
+    <section id="e8" aria-labelledby="e8-h" class="panel" hidden>
+      <h2 id="e8-h">Essential Eight</h2>
+      <div id="e8-body"></div>
+    </section>
+
+    <section id="trends" aria-labelledby="trends-h" class="panel" hidden>
+      <h2 id="trends-h">Trends</h2>
+      <div id="trends-body"></div>
+    </section>
+
+  </main>
+
+</div>
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const SUPPORTED_SCHEMA = 3;
+const SAFE_LINK_PREFIX = "https://";
+const MIN_BAR_PERCENT = 1.5;
+const FLAT_AXIS_PAD_MS = 30 * 60 * 1000;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const CLUSTER_TYPES = ["rule", "cluster"];
+const E8_UNMAPPED = "Unmapped";
+const SECTION_IDS = ["overview", "timeline", "findings", "essentials", "e8", "trends"];
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+const MAX_VALUE_DEPTH = 3;
+const PAIR_ARROW = " → ";
+const CUT_MARK = "…";
+const NO_ID_LABEL = "(no id)";
+
+// Every JSON path the viewer reads. "[]" is any list item, "*" is any key of a map.
+// The test in tests/test_web_viewer.py checks this list against the sample report.
+const READS = [
+  "schema_version",
+  "generated_at",
+  "run.hours",
+  "run.level",
+  "run.model",
+  "findings",
+  "findings[].type",
+  "findings[].id",
+  "findings[].severity",
+  "findings[].description",
+  "findings[].text",
+  "findings[].count",
+  "findings[].first_seen",
+  "findings[].last_seen",
+  "findings[].hosts",
+  "findings[].narrative",
+  "findings[].recommendation",
+  "findings[].flags",
+  "findings[].cves",
+  "findings[].notes",
+  "findings[].evidence.*",
+  "findings[].evidence.*.*",
+  "findings[].evidence.*.*.*",
+  "findings[].evidence.*.more.*",
+  "findings[].evidence.per_host.*",
+  "findings[].evidence.per_host.*.*",
+  "findings[].evidence.per_host.*.*.*",
+  "findings[].evidence.per_host.*.*.*.*",
+  "findings[].evidence.per_host.*.*.more.*",
+  "trends_markdown",
+  "e8_status",
+  "e8_status.*.status",
+  "e8_status.*.related_findings",
+  "e8_status.*.related_controls",
+  "e8_status.*.related_controls[].id",
+  "e8_status.*.related_controls[].levels",
+  "finding_pointers",
+  "finding_pointers[].id",
+  "finding_pointers[].e8",
+  "finding_pointers[].e8[].strategy",
+  "attestation",
+  "attestation.*.status",
+  "attestation.*.level",
+  "attestation.*.reason",
+  "essentials",
+  "essentials.attribution",
+  "essentials.licence",
+  "essentials.licence_url",
+  "essentials.changes",
+  "essentials.notice",
+  "essentials.dataset_schema_version",
+  "essentials.finding_actions",
+  "essentials.finding_actions[].id",
+  "essentials.finding_actions[].omitted",
+  "essentials.finding_actions[].actions",
+  "essentials.finding_actions[].actions[].action_id",
+  "essentials.finding_actions[].actions[].principle_id",
+  "essentials.finding_actions[].actions[].principle_name",
+  "essentials.finding_actions[].actions[].domains",
+  "essentials.finding_actions[].actions[].domains[].name",
+  "essentials.finding_actions[].actions[].domains[].priority_phase",
+  "essentials.finding_actions[].actions[].reasons",
+  "essentials.finding_actions[].actions[].reasons[].route",
+  "essentials.finding_actions[].actions[].reasons[].technique_id",
+  "essentials.finding_actions[].actions[].reasons[].technique_name",
+  "essentials.finding_actions[].actions[].reasons[].via_parent",
+  "essentials.finding_actions[].actions[].reasons[].ism_id",
+  "essentials.finding_actions[].actions[].reasons[].field",
+  "essentials.finding_actions[].actions[].reasons[].shared",
+  "essentials.attestation",
+  "essentials.attestation.*.status",
+  "essentials.attestation.*.reason",
+  "essentials.attestation.*.domains",
+  "essentials.attestation.*.name"
+];
+
+// The 8 ASD domains, in the order of data/defaults/essentials_enterprise_it.json.
+const ASD_DOMAINS = [
+  {"name": "Governance and culture", "kind": "capability"},
+  {"name": "Visibility and response", "kind": "capability"},
+  {"name": "Boundary services", "kind": "technical"},
+  {"name": "Identity services", "kind": "technical"},
+  {"name": "Privileged environments", "kind": "technical"},
+  {"name": "Critical processes and services", "kind": "technical"},
+  {"name": "Business systems", "kind": "technical"},
+  {"name": "User devices", "kind": "technical"}
+];
+
+// Severity comes from this fixed table only, never from data into a class name.
+const SEVERITY = {
+  high: {label: "High", cls: "sev-high"},
+  medium: {label: "Medium", cls: "sev-medium"},
+  low: {label: "Low", cls: "sev-low"}
+};
+const SEVERITY_ORDER = ["high", "medium", "low"];
+const SEVERITY_UNKNOWN = {label: "Unknown", cls: "sev-unknown"};
+
+// ---------------------------------------------------------------------------
+// Safe reading of JSON data
+// ---------------------------------------------------------------------------
+
+function isObj(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNum(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+// The only way JSON-derived data is read. path is a dotted string or an array of keys
+// (use the array form for keys that come from the data). "[]" and "*" mark list items
+// and map keys: they are skipped, so the call returns the container at that point.
+function rd(obj, path, fallback) {
+  const literal = typeof path === "string";
+  const parts = literal ? path.split(".") : path;
+  let cur = obj;
+  for (const raw of parts) {
+    const seg = literal ? String(raw).replace(/\[\]$/, "") : String(raw);
+    if (literal && seg === "*") {
+      continue;
+    }
+    if (!isObj(cur) || !Object.prototype.hasOwnProperty.call(cur, seg)) {
+      return fallback;
+    }
+    cur = cur[seg];
+  }
+  return cur === undefined || cur === null ? fallback : cur;
+}
+
+function keysOf(value) {
+  return isObj(value) ? Object.keys(value) : [];
+}
+
+function asList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asText(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch (err) {
+    return "";
+  }
+}
+
+function strList(value) {
+  return asList(value).map(asText).filter(function (s) { return s.trim() !== ""; });
+}
+
+function finiteOrNull(value) {
+  return isNum(value) ? value : null;
+}
+
+// A count is a whole number of zero or more; anything else is ignored.
+function countOrNull(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function isScalar(value) {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+function notBlank(text) {
+  return text.trim() !== "";
+}
+
+// One value as a single line of text, built from its shape and never as raw JSON.
+// A pair reads "a -> b", a list "a, b", a map "key: value; key: value". Nesting
+// deeper than MAX_VALUE_DEPTH is cut with a mark.
+function inlineText(value, depth) {
+  if (isScalar(value)) {
+    return String(value);
+  }
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (depth >= MAX_VALUE_DEPTH) {
+    return CUT_MARK;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 2 && value.every(isScalar)) {
+      return value.map(String).join(PAIR_ARROW);
+    }
+    return value.map(function (item) { return inlineText(item, depth + 1); })
+      .filter(notBlank).join(", ");
+  }
+  if (isObj(value)) {
+    return keysOf(value).map(function (key) {
+      const inner = inlineText(rd(value, [key]), depth + 1);
+      return inner === "" ? key : key + ": " + inner;
+    }).join("; ");
+  }
+  return "";
+}
+
+// The display lines of one evidence field: a list gives one line per item, a map one
+// line per key, and a scalar a single line.
+function fieldLines(value) {
+  if (Array.isArray(value)) {
+    return value.map(function (item) { return inlineText(item, 1); }).filter(notBlank);
+  }
+  if (isObj(value)) {
+    return keysOf(value).map(function (key) {
+      const inner = inlineText(rd(value, [key]), 1);
+      return inner === "" ? key : key + ": " + inner;
+    });
+  }
+  return [inlineText(value, 0)].filter(notBlank);
+}
+
+// What a non-number schema_version held, described without printing raw JSON.
+function describeFound(value) {
+  if (Array.isArray(value)) {
+    return "a list";
+  }
+  if (isObj(value)) {
+    return "an object";
+  }
+  if (typeof value === "string") {
+    return "the text \"" + (value.length > 40 ? value.slice(0, 40) + CUT_MARK : value) + "\"";
+  }
+  return String(value);
+}
+
+// ---------------------------------------------------------------------------
+// Safe DOM building (text only, never markup)
+// ---------------------------------------------------------------------------
+
+function el(tag, text, cls) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null && text !== "") {
+    node.textContent = String(text);
+  }
+  if (cls) {
+    node.className = cls;
+  }
+  return node;
+}
+
+function add(parent, children) {
+  for (const child of children) {
+    parent.appendChild(child);
+  }
+  return parent;
+}
+
+function clear(node) {
+  while (node.firstChild) {
+    node.removeChild(node.firstChild);
+  }
+}
+
+// An external link is made only for an https address; anything else is plain text.
+function safeLink(href, label) {
+  const target = typeof href === "string" ? href.trim() : "";
+  const secure = target.toLowerCase().startsWith(SAFE_LINK_PREFIX) && !/\s/.test(target);
+  if (!secure) {
+    return el("span", target);
+  }
+  const anchor = el("a", label || target);
+  anchor.href = target;
+  anchor.rel = "noopener noreferrer";
+  return anchor;
+}
+
+// ---------------------------------------------------------------------------
+// Severity and time helpers (pure)
+// ---------------------------------------------------------------------------
+
+function severityInfo(value) {
+  const key = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return Object.prototype.hasOwnProperty.call(SEVERITY, key) ? SEVERITY[key] : SEVERITY_UNKNOWN;
+}
+
+const TIME_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+
+// Returns milliseconds since the epoch, or NaN for anything that is not an ISO time.
+function parseTime(value) {
+  if (typeof value !== "string") {
+    return NaN;
+  }
+  const text = value.trim();
+  return TIME_SHAPE.test(text) ? Date.parse(text) : NaN;
+}
+
+const UTC_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
+});
+
+function formatUtc(ms) {
+  if (!Number.isFinite(ms)) {
+    return "-";
+  }
+  try {
+    return UTC_FORMAT.format(new Date(ms)) + " UTC";
+  } catch (err) {
+    return "-";
+  }
+}
+
+// The run window: generated_at minus run.hours. Null when either value is unusable.
+function windowOf(generatedMs, hours) {
+  if (!Number.isFinite(generatedMs) || !isNum(hours) || hours <= 0) {
+    return null;
+  }
+  return {startMs: generatedMs - hours * MS_PER_HOUR, endMs: generatedMs};
+}
+
+// The timeline axis: the earliest to the latest valid time across all findings.
+// Null when no finding has a valid time. A flat span is padded so the axis has width.
+function timelineAxis(findings) {
+  const times = [];
+  for (const f of findings) {
+    for (const ms of [f.firstMs, f.lastMs]) {
+      if (Number.isFinite(ms)) {
+        times.push(ms);
+      }
+    }
+  }
+  if (times.length === 0) {
+    return null;
+  }
+  const lo = Math.min.apply(null, times);
+  const hi = Math.max.apply(null, times);
+  if (hi - lo < 1) {
+    return {startMs: lo - FLAT_AXIS_PAD_MS, endMs: hi + FLAT_AXIS_PAD_MS};
+  }
+  return {startMs: lo, endMs: hi};
+}
+
+function clampPercent(value) {
+  return Math.min(100, Math.max(0, value));
+}
+
+// Position of one range bar on an axis, as percentages. Null when a time is invalid.
+// Equal times get a minimum visible width, and a last_seen before first_seen is swapped.
+function barPosition(firstMs, lastMs, axisStartMs, axisEndMs) {
+  const all = [firstMs, lastMs, axisStartMs, axisEndMs];
+  if (!all.every(Number.isFinite) || axisEndMs <= axisStartMs) {
+    return null;
+  }
+  const span = axisEndMs - axisStartMs;
+  const early = Math.min(firstMs, lastMs);
+  const late = Math.max(firstMs, lastMs);
+  let left = clampPercent(((early - axisStartMs) / span) * 100);
+  const right = clampPercent(((late - axisStartMs) / span) * 100);
+  const width = Math.max(right - left, MIN_BAR_PERCENT);
+  if (left + width > 100) {
+    left = 100 - width;
+  }
+  return {left: left, width: width, reversed: lastMs < firstMs};
+}
+
+// ---------------------------------------------------------------------------
+// Model: every read of the report happens here, so rendering never touches raw JSON
+// ---------------------------------------------------------------------------
+
+// Each evidence shape becomes a list of fields. A field has a name, values that are
+// already display text (one string per line) and more, the "+N more" text or "".
+function buildShape(name, shape) {
+  if (!isObj(shape)) {
+    return {name: name, fields: [{name: "value", values: fieldLines(shape), more: ""}]};
+  }
+  const moreMap = rd(shape, "more.*", {});
+  const fields = [];
+  for (const key of keysOf(rd(shape, "*", {}))) {
+    if (key === "more") {
+      continue;
+    }
+    const overflow = countOrNull(rd(moreMap, [key]));
+    fields.push({
+      name: key,
+      values: fieldLines(rd(shape, [key])),
+      more: overflow ? "+" + overflow + " more" : ""
+    });
+  }
+  return {name: name, fields: fields};
+}
+
+function buildEvidence(finding) {
+  const evidence = rd(finding, "evidence.*", {});
+  const shapes = [];
+  for (const name of keysOf(evidence)) {
+    if (name !== "per_host") {
+      shapes.push(buildShape(name, rd(evidence, [name])));
+    }
+  }
+  const perHost = [];
+  const hostMap = rd(evidence, "per_host.*", {});
+  for (const host of keysOf(hostMap)) {
+    const byShape = rd(hostMap, [host], {});
+    const hostShapes = keysOf(rd(byShape, "*", {})).map(function (name) {
+      return buildShape(name, rd(byShape, [name]));
+    });
+    perHost.push({host: host, shapes: hostShapes});
+  }
+  return {shapes: shapes, perHost: perHost};
+}
+
+function buildFinding(item) {
+  const f = typeof item === "string" ? {type: "legacy", text: item} : item;
+  if (!isObj(f)) {
+    return null;
+  }
+  const type = asText(rd(f, "type")) || "cluster";
+  const firstSeen = rd(f, "first_seen");
+  const lastSeen = rd(f, "last_seen");
+  return {
+    type: type,
+    isCluster: CLUSTER_TYPES.indexOf(type) >= 0,
+    id: asText(rd(f, "id")),
+    severity: severityInfo(rd(f, "severity")),
+    description: asText(rd(f, "description")),
+    text: asText(rd(f, "text")),
+    count: countOrNull(rd(f, "count")),
+    firstSeen: asText(firstSeen),
+    lastSeen: asText(lastSeen),
+    firstMs: parseTime(firstSeen),
+    lastMs: parseTime(lastSeen),
+    hosts: strList(rd(f, "hosts")),
+    narrative: asText(rd(f, "narrative")),
+    recommendation: asText(rd(f, "recommendation")),
+    flags: strList(rd(f, "flags")),
+    cves: strList(rd(f, "cves")),
+    notes: strList(rd(f, "notes")),
+    evidence: buildEvidence(f)
+  };
+}
+
+function buildE8(report) {
+  const statusMap = rd(report, "e8_status", {});
+  const declaredMap = rd(report, "attestation", {});
+  const rows = [];
+  for (const name of keysOf(statusMap)) {
+    const entry = rd(statusMap, [name], {});
+    const controls = asList(rd(entry, "related_controls")).map(function (c) {
+      return {id: asText(rd(c, "id")), levels: asList(rd(c, "levels")).filter(isNum)};
+    });
+    const declared = rd(declaredMap, [name]);
+    rows.push({
+      name: name,
+      isUnmapped: name === E8_UNMAPPED,
+      status: asText(rd(entry, "status")),
+      relatedFindings: strList(rd(entry, "related_findings")),
+      controls: controls,
+      declaredStatus: asText(rd(declared, "status")),
+      declaredLevel: finiteOrNull(rd(declared, "level")),
+      declaredReason: asText(rd(declared, "reason"))
+    });
+  }
+  const pointers = asList(rd(report, "finding_pointers")).map(function (p) {
+    const strategies = asList(rd(p, "e8")).map(function (e) {
+      return asText(rd(e, "strategy"));
+    });
+    return {id: asText(rd(p, "id")), strategies: strategies.filter(Boolean)};
+  });
+  return {rows: rows, pointers: pointers};
+}
+
+function buildReason(reason) {
+  return {
+    route: asText(rd(reason, "route")),
+    techniqueId: asText(rd(reason, "technique_id")),
+    techniqueName: asText(rd(reason, "technique_name")),
+    viaParent: rd(reason, "via_parent") === true,
+    ismId: asText(rd(reason, "ism_id")),
+    field: asText(rd(reason, "field")),
+    shared: strList(rd(reason, "shared"))
+  };
+}
+
+function buildAction(action) {
+  const domains = asList(rd(action, "domains")).map(function (d) {
+    return {name: asText(rd(d, "name")), phase: finiteOrNull(rd(d, "priority_phase"))};
+  });
+  return {
+    actionId: asText(rd(action, "action_id")),
+    principleId: asText(rd(action, "principle_id")),
+    principleName: asText(rd(action, "principle_name")),
+    domains: domains,
+    reasons: uniqueReasons(asList(rd(action, "reasons")).map(buildReason))
+  };
+}
+
+// Drops reasons that would display identically (they may differ only by guide or chapter).
+function uniqueReasons(reasons) {
+  const seen = [];
+  const kept = [];
+  for (const r of reasons) {
+    const key = [r.route, r.techniqueId, r.techniqueName, String(r.viaParent), r.ismId,
+      r.field, r.shared.slice().sort().join("\u0001")].join("\u0000");
+    if (seen.indexOf(key) < 0) {
+      seen.push(key);
+      kept.push(r);
+    }
+  }
+  return kept;
+}
+
+// Returns null when the report has no Essentials block (report-only runs).
+function buildEssentials(report) {
+  const ess = rd(report, "essentials");
+  if (!isObj(ess)) {
+    return null;
+  }
+  const byFinding = asList(rd(ess, "finding_actions")).map(function (fa) {
+    return {
+      id: asText(rd(fa, "id")),
+      omitted: finiteOrNull(rd(fa, "omitted")) || 0,
+      actions: asList(rd(fa, "actions")).map(buildAction)
+    };
+  });
+  const declaredMap = rd(ess, "attestation", {});
+  const declared = keysOf(declaredMap).map(function (id) {
+    const entry = rd(declaredMap, [id], {});
+    return {
+      id: id,
+      name: asText(rd(entry, "name")),
+      status: asText(rd(entry, "status")),
+      reason: asText(rd(entry, "reason")),
+      domains: strList(rd(entry, "domains"))
+    };
+  });
+  return {
+    attribution: asText(rd(ess, "attribution")),
+    licence: asText(rd(ess, "licence")),
+    licenceUrl: asText(rd(ess, "licence_url")),
+    changes: asText(rd(ess, "changes")),
+    notice: asText(rd(ess, "notice")),
+    datasetSchemaVersion: finiteOrNull(rd(ess, "dataset_schema_version")),
+    byFinding: byFinding,
+    declared: declared
+  };
+}
+
+function isBlank(text) {
+  return text.trim() === "";
+}
+
+// The header values, worked out once from the cluster findings.
+function summarise(report, findings) {
+  const clusters = findings.filter(function (f) { return f.isCluster; });
+  const generatedMs = parseTime(rd(report, "generated_at"));
+  const win = windowOf(generatedMs, rd(report, "run.hours"));
+  const level = rd(report, "run.level");
+  const bySeverity = {};
+  const hosts = [];
+  let alertTotal = 0;
+  let noCommentary = 0;
+  const noCommentaryIds = [];
+  for (const f of clusters) {
+    alertTotal += f.count === null ? 0 : f.count;
+    bySeverity[f.severity.label] = (bySeverity[f.severity.label] || 0) + 1;
+    for (const host of f.hosts) {
+      if (hosts.indexOf(host) < 0) {
+        hosts.push(host);
+      }
+    }
+    if (isBlank(f.narrative) && isBlank(f.recommendation)) {
+      noCommentary += 1;
+      noCommentaryIds.push(f.id || NO_ID_LABEL);
+    }
+  }
+  const parts = SEVERITY_ORDER.map(function (key) {
+    return (bySeverity[SEVERITY[key].label] || 0) + " " + key;
+  });
+  if (bySeverity[SEVERITY_UNKNOWN.label]) {
+    parts.push(bySeverity[SEVERITY_UNKNOWN.label] + " unknown");
+  }
+  return {
+    schemaVersion: asText(rd(report, "schema_version")),
+    generatedMs: generatedMs,
+    generatedText: formatUtc(generatedMs),
+    window: win,
+    windowText: win ? formatUtc(win.startMs) + " to " + formatUtc(win.endMs) : "",
+    level: isNum(level) ? String(level) : asText(level),
+    model: asText(rd(report, "run.model")),
+    clusterCount: clusters.length,
+    alertTotal: alertTotal,
+    severityText: parts.join(", "),
+    hosts: hosts,
+    noCommentary: noCommentary,
+    noCommentaryIds: noCommentaryIds
+  };
+}
+
+function buildModel(report) {
+  const findings = asList(rd(report, "findings")).map(buildFinding).filter(Boolean);
+  const trends = rd(report, "trends_markdown");
+  return {
+    summary: summarise(report, findings),
+    findings: findings,
+    e8: buildE8(report),
+    essentials: buildEssentials(report),
+    trends: typeof trends === "string" && trends.trim() !== "" ? trends : null
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rendering (overview only for now; the other sections are filled in later)
+// ---------------------------------------------------------------------------
+
+function showSection(id) {
+  const section = document.getElementById(id);
+  if (section) {
+    section.hidden = false;
+  }
+}
+
+function resetView() {
+  for (const id of SECTION_IDS) {
+    const section = document.getElementById(id);
+    const body = document.getElementById(id + "-body");
+    if (section) {
+      section.hidden = true;
+    }
+    if (body) {
+      clear(body);
+    }
+  }
+}
+
+function showMessage(text, isError) {
+  const box = document.getElementById("message");
+  box.textContent = text;
+  box.className = isError ? "message error" : "message";
+}
+
+function kpiCard(label, value, sub) {
+  return add(el("div", "", "kpi"), [
+    el("div", label, "kpi-label"),
+    el("div", value, "kpi-value"),
+    el("div", sub || "", "kpi-sub")
+  ]);
+}
+
+function factRows(summary) {
+  const rows = [
+    ["Generated (UTC)", summary.generatedText],
+    ["Window (UTC)", summary.windowText || "-"]
+  ];
+  if (summary.level !== "") {
+    rows.push(["Alert level", summary.level]);
+  }
+  if (summary.model !== "") {
+    rows.push(["Model", summary.model]);
+  }
+  rows.push(["Report schema version", summary.schemaVersion || "-"]);
+  return rows;
+}
+
+function renderOverview(model) {
+  const summary = model.summary;
+  const body = document.getElementById("overview-body");
+  clear(body);
+  const cards = add(el("div", "", "kpis"), [
+    kpiCard("Alerts in findings", String(summary.alertTotal), "Sum of the count of each cluster"),
+    kpiCard("Findings", String(summary.clusterCount), summary.severityText),
+    kpiCard("Hosts involved", String(summary.hosts.length), summary.hosts.join(", ") || "-"),
+    kpiCard(
+      "Findings with no commentary",
+      String(summary.noCommentary),
+      summary.noCommentaryIds.length ? "Cluster " + summary.noCommentaryIds.join(", ") : "None"
+    )
+  ]);
+  const facts = el("dl", "", "facts");
+  for (const row of factRows(summary)) {
+    add(facts, [el("dt", row[0]), el("dd", row[1])]);
+  }
+  add(body, [cards, facts]);
+  showSection("overview");
+}
+
+function renderReport(model) {
+  renderOverview(model);
+}
+
+// ---------------------------------------------------------------------------
+// Loading a file
+// ---------------------------------------------------------------------------
+
+function loadReport(text) {
+  resetView();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    showMessage("This file is not valid JSON, so it cannot be shown.", true);
+    return;
+  }
+  if (!isObj(data)) {
+    showMessage("This file is JSON, but it is not a Ravensight report.", true);
+    return;
+  }
+  const version = rd(data, "schema_version");
+  if (version !== SUPPORTED_SCHEMA) {
+    let seen;
+    if (version === undefined) {
+      seen = "This report has no schema version.";
+    } else if (isNum(version)) {
+      seen = "This report is schema version " + String(version) + ".";
+    } else {
+      seen = "The schema_version in this report must be a number, but it is " +
+        describeFound(version) + ".";
+    }
+    showMessage("This viewer reads schema version " + SUPPORTED_SCHEMA + ". " + seen, true);
+    return;
+  }
+  try {
+    renderReport(buildModel(data));
+    showMessage("Report loaded.", false);
+  } catch (err) {
+    resetView();
+    showMessage("The report could not be shown. The file may be damaged.", true);
+  }
+}
+
+function readFileText(file) {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+  return new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.addEventListener("load", function () { resolve(String(reader.result)); });
+    reader.addEventListener("error", function () { reject(new Error("read")); });
+    reader.readAsText(file);
+  });
+}
+
+// Counts file picks, so a slow read from an earlier pick is ignored once a newer one starts.
+let latestPick = 0;
+
+function onFileChosen(event) {
+  const input = event.target;
+  const file = input.files && input.files.length ? input.files[0] : null;
+  if (!file) {
+    return;
+  }
+  latestPick += 1;
+  const mine = latestPick;
+  if (file.size > MAX_FILE_BYTES) {
+    resetView();
+    showMessage("This file is larger than " + Math.round(MAX_FILE_BYTES / (1024 * 1024)) +
+      " MB, so it is not opened.", true);
+    input.value = "";
+    return;
+  }
+  resetView();
+  showMessage("Reading the file.", false);
+  readFileText(file)
+    .then(function (text) {
+      if (mine === latestPick) {
+        loadReport(text);
+      }
+    })
+    .catch(function () {
+      if (mine === latestPick) {
+        resetView();
+        showMessage("The file could not be read.", true);
+      }
+    });
+  input.value = "";
+}
+
+document.getElementById("report-file").addEventListener("change", onFileChosen);
+</script>
+</body>
+</html>
