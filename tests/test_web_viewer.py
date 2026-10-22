@@ -20,6 +20,8 @@ Further limits:
   RD_BARE_PATH_ALLOWED (currently none).
 - The `.href =` and `.className =` check finds the enclosing function by the nearest
   preceding top-level `function name(` line, so it assumes helpers sit at column 0.
+- The section, navigation and fixed-wording checks only look for text and ids in the
+  file. They do not show that a section draws the right content from a real report.
 """
 
 import json
@@ -41,7 +43,9 @@ MIN_READS = 40
 OPTIONAL_PATHS: dict[str, str] = {
     "findings[].text": "legacy findings only; the sample has a rule finding",
     "findings[].evidence.*.more.*": "overflow counts; the sample syscheck has no 'more'",
-    "findings[].evidence.*.*.*": "map-valued fields (vulnerability, firewall) are absent from the sample",
+    "findings[].evidence.*.*.*": (
+        "map-valued fields (vulnerability, firewall) are absent from the sample"
+    ),
     "findings[].evidence.per_host.*.*.*.*": "per-host evidence is absent from the sample",
     "findings[].evidence.per_host.*": "per-host evidence is absent from the sample",
     "findings[].evidence.per_host.*.*": "per-host evidence is absent from the sample",
@@ -539,3 +543,119 @@ def test_csp_meta_tag_is_exact() -> None:
 def test_constant_arrays_are_valid_json(name: str) -> None:
     """READS and ASD_DOMAINS parse as JSON, so the tests can read them."""
     assert isinstance(_extract_array(name, _text()), list)
+
+
+# ---------------------------------------------------------------------------
+# (g) Sections, navigation, fixed wording and the README
+# ---------------------------------------------------------------------------
+
+SECTION_IDS = ["overview", "timeline", "findings", "essentials", "e8", "trends"]
+NAV_TARGETS = ["overview", "findings", "essentials", "e8", "trends"]
+
+# Wording the page must carry as written (statements, empty states and labels).
+REQUIRED_PHRASES = [
+    "Not assessed",
+    "Operator: ",
+    "No commentary",
+    "Check",
+    "implementation order",
+    "Read-only view of the JSON report.",
+    "This report has no ASD Essentials data. Report-only runs do not include it.",
+    "ASD Essentials for enterprise IT",
+    "Attribution and licence",
+    "Declared ratings",
+    "No ratings declared.",
+    "No principles were pointed at for this cluster.",
+    "Table view",
+    "No trend data",
+    "time not available",
+    "All phases",
+    "No recommendation was generated.",
+    "The model wrote no commentary for this cluster.",
+    "Ravensight reads alerts, not system settings, so it never rates or assesses.",
+    "Kept alongside the Essentials while ASD transitions",
+]
+
+
+def test_section_ids_exist_once_each() -> None:
+    """Each of the six section elements is present exactly once, with its body element."""
+    html = _html_only(_text())
+    for name in SECTION_IDS:
+        assert len(re.findall(rf'<section id="{name}"', html)) == 1, name
+        assert html.count(f'id="{name}-body"') == 1, name
+
+
+def test_nav_anchors_line_up_with_element_ids() -> None:
+    """Every nav href="#x" points at an element with id x, and all five links are there."""
+    html = _html_only(_text())
+    nav = re.search(r"<nav\b.*?</nav>", html, flags=re.DOTALL)
+    assert nav, "no nav element"
+    targets = re.findall(r'href="#([^"]+)"', nav.group(0))
+    assert targets == NAV_TARGETS
+    for target in targets:
+        assert html.count(f'id="{target}"') == 1, f"nav target {target} has no single element"
+
+
+def test_required_phrases_are_present() -> None:
+    """The fixed statements, labels and empty-state lines appear in the file."""
+    text = _text()
+    missing = [phrase for phrase in REQUIRED_PHRASES if phrase not in text]
+    assert missing == []
+
+
+def test_every_literal_id_lookup_has_one_element() -> None:
+    """Each literal getElementById("x") or querySelector("#x") matches exactly one id="x"."""
+    text = _text()
+    html = _html_only(text)
+    wanted = set(re.findall(r"getElementById\(\s*\"([^\"]+)\"\s*\)", text))
+    wanted |= set(re.findall(r"querySelector(?:All)?\(\s*\"#([\w-]+)\"\s*\)", text))
+    assert "report-file" in wanted and "message" in wanted and "nav" in wanted
+    for name in sorted(wanted):
+        assert html.count(f'id="{name}"') == 1, f"id {name!r} is not in the markup exactly once"
+
+
+def test_cluster_types_include_rule_vulnerability_and_cluster() -> None:
+    """CLUSTER_TYPES lists rule, vulnerability and the cluster fallback."""
+    match = re.search(r"const CLUSTER_TYPES = (\[[^\]]*\]);", _text())
+    assert match, "CLUSTER_TYPES not found"
+    assert set(json.loads(match.group(1))) == {"rule", "vulnerability", "cluster"}
+
+
+def test_e8_status_needs_attested_before_a_level() -> None:
+    """e8StatusText tests the declared status "Attested" before it shows a level."""
+    text = _text()
+    start = text.index("function e8StatusText(")
+    body = text[start : text.index("\n}\n", start)]
+    assert 'declaredStatus === "Attested"' in body
+    assert body.index('declaredStatus === "Attested"') < body.index("Attested at ML")
+
+
+def test_page_has_no_img_and_no_external_url() -> None:
+    """No img tag, no http address, and no protocol-relative address in the whole file."""
+    text = _text()
+    assert not re.search(r"<img\b", text, re.IGNORECASE)
+    assert "http://" not in text.lower()
+    assert not re.search(r"(?<![:\w])//[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
+    others = [
+        line
+        for line in text.splitlines()
+        if "https://" in line.lower() and line.strip() != URL_DEFINITION_LINE
+    ]
+    assert others == []
+
+
+def test_every_section_is_filled_by_a_render_function() -> None:
+    """Each section body is looked up by a render function, which calls showSection."""
+    text = _text()
+    for name in SECTION_IDS:
+        assert f'getElementById("{name}-body")' in text, f"no render for {name}"
+        assert f'showSection("{name}")' in text, f"{name} is never shown"
+
+
+def test_readme_describes_the_viewer() -> None:
+    """The README names the viewer file, the schema version it reads and that it is read-only."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Report viewer" in readme
+    assert "web/index.html" in readme
+    assert "schema version 3" in readme
+    assert "read-only" in readme

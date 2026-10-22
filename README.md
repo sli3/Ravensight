@@ -542,6 +542,14 @@ must be exactly `true` or `false`). This applies to Docker too, through the moun
 `config.toml`. With `json_output = false` and `overwrite = true`, an older same-day
 `.json` file stays beside the new markdown report and no warning is logged.
 
+### Report viewer
+
+`web/index.html` is a single page that shows a JSON report. Open it in a browser and
+choose a report `.json` file from `reports/`. It reads the JSON report only, schema version 3,
+never the markdown, and it is read-only: it cannot change a report or any other file.
+Nothing leaves the machine, because the page makes no network requests. An older
+report (schema version 2) shows a clear message instead of a page.
+
 ---
 
 ## Baseline Memory

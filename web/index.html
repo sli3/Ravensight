@@ -159,6 +159,361 @@ a { color: var(--link); }
 .sev-low { color: var(--sev-low); }
 .sev-unknown { color: var(--sev-unknown); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Navigation, headings and plain text blocks */
+.nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.navlink {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  text-decoration: none;
+  color: var(--text-primary);
+}
+.panel h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.panel h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.note { margin: 0; font-size: 14px; color: var(--text-secondary); max-width: 72ch; overflow-wrap: anywhere; }
+.empty {
+  margin: 0;
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.panel > div { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.block { display: flex; flex-direction: column; gap: 12px; }
+.pid { font-weight: 700; }
+.rating-line { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.foot { font-size: 13px; color: var(--text-secondary); }
+.sev-mark { display: inline-block; width: 10px; height: 10px; background: currentColor; flex: none; }
+
+/* Timeline */
+.tl-scroll { overflow-x: auto; }
+.tl { position: relative; min-width: 560px; }
+.tl-axis { display: flex; height: 20px; }
+.tl-spacer { flex: 0 0 168px; }
+.tl-ticks { flex: 1; position: relative; }
+.tl-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tl-tick-first { transform: none; }
+.tl-tick-last { transform: translateX(-100%); }
+.tl-lines { position: absolute; left: 168px; right: 0; top: 20px; bottom: 0; pointer-events: none; }
+.tl-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
+.lane {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--grid);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+}
+.lane[aria-pressed="true"] { background: var(--row-sel); }
+.lane-label {
+  flex: 0 0 168px;
+  box-sizing: border-box;
+  padding-right: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.lane-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.lane-hosts {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lane-track { flex: 1; position: relative; display: block; min-width: 0; }
+.lane-bar {
+  position: absolute;
+  top: 22px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--series-1);
+  display: block;
+}
+.lane-none { position: absolute; top: 14px; left: 0; font-size: 13px; color: var(--text-secondary); }
+
+/* Findings list and detail */
+.split { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.item-list {
+  flex: 1 1 340px;
+  max-width: 440px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+.item {
+  width: 100%;
+  min-height: 76px;
+  box-sizing: border-box;
+  text-align: left;
+  cursor: pointer;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+.item-sev { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.item-meta, .item-kind { color: var(--text-secondary); overflow-wrap: anywhere; }
+.item-title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  font-size: 12px;
+  border: 1px solid var(--muted);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 0 8px;
+  line-height: 20px;
+}
+.tag-dashed { border-style: dashed; }
+.tag-check { font-weight: 600; border-color: var(--sev-medium); color: var(--sev-medium); }
+.detail {
+  flex: 999 1 560px;
+  min-width: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.detail-head { display: flex; flex-direction: column; gap: 8px; }
+.detail-sev { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.detail .detail-title { margin: 0; font-size: 24px; line-height: 1.3; font-weight: 700; overflow-wrap: anywhere; }
+.detail-meta { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 13px; color: var(--text-secondary); }
+.check {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  background: var(--page);
+  border-radius: 8px;
+  padding: 12px 16px;
+  overflow-wrap: anywhere;
+}
+.check .tag { flex: none; font-weight: 700; }
+.prose { margin: 0; max-width: 68ch; overflow-wrap: anywhere; }
+.prose-main { font-size: 17px; }
+.prose-note { font-size: 14px; color: var(--text-secondary); margin: 0 0 4px; }
+.prose-none {
+  color: var(--text-secondary);
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.evidence {
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ev-shape-name { font-weight: 700; color: var(--text-secondary); }
+.ev-field { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.ev-name { flex: 0 0 auto; min-width: 9ch; color: var(--text-secondary); }
+.ev-vals { display: flex; flex-direction: column; min-width: 0; flex: 1 1 240px; }
+.ev-val { overflow-wrap: anywhere; }
+.ev-more { color: var(--text-secondary); }
+.ev-host { font-weight: 700; padding-top: 4px; border-top: 1px solid var(--grid); }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill {
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 10px;
+  line-height: 26px;
+  overflow-wrap: anywhere;
+}
+
+/* Essentials pointers, status chips and notices */
+.pointers { border-top: 1px solid var(--grid); padding-top: 20px; display: flex; flex-direction: column; gap: 12px; }
+.action {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.action-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.action-id { font-size: 12px; color: var(--muted); }
+.status-chip {
+  display: inline-block;
+  font-size: 12px;
+  border: 1px solid var(--muted);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 0 8px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.status-chip.dashed { border-style: dashed; }
+.push-end { margin-left: auto; }
+.domain-chip {
+  font-size: 12px;
+  background: var(--chip);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 0 8px;
+  line-height: 22px;
+}
+.reason { font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.reason strong { font-weight: 600; color: var(--text-primary); }
+.notices {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.notices strong { color: var(--text-primary); }
+
+/* Pointer map */
+.map-scroll { overflow-x: auto; }
+.map { border-collapse: collapse; min-width: 560px; width: 100%; }
+.map-caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.map th, .map td { border-bottom: 1px solid var(--grid); padding: 0; text-align: center; }
+.map thead th { border-bottom-color: var(--baseline); }
+.map-row { text-align: left; padding: 8px 12px 8px 0; font-weight: 400; min-width: 200px; }
+.map-name { display: block; font-size: 14px; font-weight: 500; }
+.map-kind { display: block; font-size: 12px; color: var(--text-secondary); }
+.map-head, .map-cell {
+  width: 100%;
+  min-width: 56px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+.map-head[aria-pressed="true"] { font-weight: 700; }
+.map-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--series-1); display: block; }
+.table-view { font-size: 14px; color: var(--text-secondary); }
+.table-view summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.tv-row { display: flex; flex-wrap: wrap; gap: 2px 16px; border-bottom: 1px solid var(--grid); padding: 6px 0; }
+.tv-name { flex: 0 0 232px; font-weight: 600; color: var(--text-primary); }
+.tv-text { flex: 1 1 240px; overflow-wrap: anywhere; }
+
+/* Declared ratings */
+.ratings { display: flex; flex-direction: column; border-top: 1px solid var(--baseline); }
+.rating {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.rating-who { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.rating-domains { font-size: 13px; color: var(--text-secondary); }
+.rating-status { flex: 0 0 164px; }
+.rating-reason { flex: 2 1 260px; min-width: 0; font-size: 14px; color: var(--text-secondary); overflow-wrap: anywhere; }
+
+/* Essential Eight cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 104px;
+  box-sizing: border-box;
+  justify-content: space-between;
+  min-width: 0;
+}
+.card-name { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.card-foot { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.card-sub { font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+
+/* Trends */
+.trends-pre {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+}
+
+@media print {
+  :root {
+    --page: #ffffff;
+    --surface-1: #ffffff;
+    --text-primary: #000000;
+    --text-secondary: #333333;
+    --muted: #555555;
+    --border: #999999;
+    --row-sel: #ffffff;
+  }
+  .picker, .nav, .message { display: none !important; }
+  .item-list { max-height: none; overflow: visible; }
+  .panel { break-inside: auto; }
+}
 </style>
 </head>
 <body>
@@ -180,6 +535,14 @@ a { color: var(--link); }
   </div>
 
   <p id="message" class="message" role="status" aria-live="polite">Choose a report JSON file to begin.</p>
+
+  <nav id="nav" class="nav" aria-label="Report sections" hidden>
+    <a class="navlink" href="#overview">Overview</a>
+    <a class="navlink" href="#findings">Findings</a>
+    <a class="navlink" href="#essentials">ASD Essentials</a>
+    <a class="navlink" href="#e8">Essential Eight</a>
+    <a class="navlink" href="#trends">Trends</a>
+  </nav>
 
   <main id="report" class="wrap-main" style="display:flex;flex-direction:column;gap:28px">
 
@@ -215,6 +578,8 @@ a { color: var(--link); }
 
   </main>
 
+  <footer class="foot">Read-only view of the JSON report.</footer>
+
 </div>
 <script>
 "use strict";
@@ -228,7 +593,7 @@ const SAFE_LINK_PREFIX = "https://";
 const MIN_BAR_PERCENT = 1.5;
 const FLAT_AXIS_PAD_MS = 30 * 60 * 1000;
 const MS_PER_HOUR = 60 * 60 * 1000;
-const CLUSTER_TYPES = ["rule", "cluster"];
+const CLUSTER_TYPES = ["rule", "vulnerability", "cluster"];
 const E8_UNMAPPED = "Unmapped";
 const SECTION_IDS = ["overview", "timeline", "findings", "essentials", "e8", "trends"];
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -236,6 +601,22 @@ const MAX_VALUE_DEPTH = 3;
 const PAIR_ARROW = " → ";
 const CUT_MARK = "…";
 const NO_ID_LABEL = "(no id)";
+const NO_TIME_TEXT = "time not available";
+const NOT_ASSESSED = "Not assessed";
+const ALL_PHASES = "All phases";
+const TICK_COUNT = 5;
+const NO_ESSENTIALS_TEXT = "This report has no ASD Essentials data. Report-only runs do not include it.";
+const ESSENTIALS_STATEMENT = "Ravensight reads alerts, not system settings, so it never rates or assesses. " +
+  "Findings are pointed at principles, and ratings appear only where the operator has declared them. " +
+  "Phase is ASD's suggested implementation order, not a rating. " +
+  "The ATT&CK mapping is a guide for setting priorities, not a rating.";
+const E8_NOTE = "Kept alongside the Essentials while ASD transitions: ASD has said it plans to deprecate " +
+  "the Essential Eight in about 12 months and retire it in about 24. " +
+  "Ratings come only from the operator's attestation file.";
+const NO_COMMENTARY_NARRATIVE = "The model wrote no commentary for this cluster. " +
+  "The evidence below is the original alert data.";
+const NO_RECOMMENDATION_TEXT = "No recommendation was generated.";
+const OMITTED_SUFFIX = " more pointers are not shown. Each finding lists at most 5.";
 
 // Every JSON path the viewer reads. "[]" is any list item, "*" is any key of a map.
 // The test in tests/test_web_viewer.py checks this list against the sample report.
@@ -523,15 +904,19 @@ function severityInfo(value) {
   return Object.prototype.hasOwnProperty.call(SEVERITY, key) ? SEVERITY[key] : SEVERITY_UNKNOWN;
 }
 
-const TIME_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+const TIME_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
 
 // Returns milliseconds since the epoch, or NaN for anything that is not an ISO time.
+// An offset such as +0000 (the Wazuh form) is written as +00:00 before parsing.
 function parseTime(value) {
   if (typeof value !== "string") {
     return NaN;
   }
   const text = value.trim();
-  return TIME_SHAPE.test(text) ? Date.parse(text) : NaN;
+  if (!TIME_SHAPE.test(text)) {
+    return NaN;
+  }
+  return Date.parse(text.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"));
 }
 
 const UTC_FORMAT = new Intl.DateTimeFormat("en-GB", {
@@ -606,6 +991,68 @@ function barPosition(firstMs, lastMs, axisStartMs, axisEndMs) {
     left = 100 - width;
   }
   return {left: left, width: width, reversed: lastMs < firstMs};
+}
+
+// A position as a CSS "%" style value, always a clamped number and never data text.
+function percentText(value) {
+  return (Number.isFinite(value) ? clampPercent(value) : 0).toFixed(2) + "%";
+}
+
+// Evenly spaced tick positions along an axis (count of 2 or more). Empty without an axis.
+function tickPositions(axis, count) {
+  if (!axis || count < 2) {
+    return [];
+  }
+  const span = axis.endMs - axis.startMs;
+  const ticks = [];
+  for (let i = 0; i < count; i += 1) {
+    const share = i / (count - 1);
+    ticks.push({percent: share * 100, ms: axis.startMs + span * share});
+  }
+  return ticks;
+}
+
+const TICK_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
+});
+
+function formatTick(ms) {
+  if (!Number.isFinite(ms)) {
+    return "-";
+  }
+  try {
+    return TICK_FORMAT.format(new Date(ms));
+  } catch (err) {
+    return "-";
+  }
+}
+
+// "<first> to <last>" in UTC, or the plain not-available text when either time is unusable.
+function timeRangeText(finding) {
+  if (!Number.isFinite(finding.firstMs) || !Number.isFinite(finding.lastMs)) {
+    return NO_TIME_TEXT;
+  }
+  return formatUtc(finding.firstMs) + " to " + formatUtc(finding.lastMs);
+}
+
+function timeText(ms) {
+  return Number.isFinite(ms) ? formatUtc(ms) : NO_TIME_TEXT;
+}
+
+// The "Check" sentence, built here from the flag words and shown only when there are any.
+function checkSentence(flags) {
+  return "The commentary mentions " + flags.join(", ") +
+    ", which are not in this cluster's evidence.";
+}
+
+// "Phase N", or "All phases" when the phase is null.
+function phaseText(phase) {
+  return phase === null ? ALL_PHASES : "Phase " + String(phase);
 }
 
 // ---------------------------------------------------------------------------
@@ -854,8 +1301,28 @@ function buildModel(report) {
 }
 
 // ---------------------------------------------------------------------------
-// Rendering (overview only for now; the other sections are filled in later)
+// Rendering (reads the model only, never the raw JSON)
 // ---------------------------------------------------------------------------
+
+// What the page currently shows: the model, the selected finding (an index into
+// model.findings), every button that selects a finding, and two lookups built once.
+const view = {
+  model: null,
+  selected: 0,
+  pressables: [],
+  detail: null,
+  pointers: new Map(),
+  statuses: new Map()
+};
+
+function resetViewState() {
+  view.model = null;
+  view.selected = 0;
+  view.pressables = [];
+  view.detail = null;
+  view.pointers = new Map();
+  view.statuses = new Map();
+}
 
 function showSection(id) {
   const section = document.getElementById(id);
@@ -865,6 +1332,11 @@ function showSection(id) {
 }
 
 function resetView() {
+  resetViewState();
+  const nav = document.getElementById("nav");
+  if (nav) {
+    nav.hidden = true;
+  }
   for (const id of SECTION_IDS) {
     const section = document.getElementById(id);
     const body = document.getElementById(id + "-body");
@@ -928,8 +1400,709 @@ function renderOverview(model) {
   showSection("overview");
 }
 
+// --- Shared helpers for the sections below ---
+
+function idLabel(f) {
+  return isBlank(f.id) ? NO_ID_LABEL : f.id;
+}
+
+function findingTitle(f) {
+  if (!isBlank(f.description)) {
+    return f.description;
+  }
+  return isBlank(f.text) ? "(no description)" : f.text;
+}
+
+function kindLabel(f) {
+  if (f.type === "unattached") {
+    return "Note not tied to an alert cluster";
+  }
+  if (f.type === "legacy") {
+    return "Earlier plain-text finding";
+  }
+  return "Other finding (type: " + f.type + ")";
+}
+
+function hasNoCommentary(f) {
+  return isBlank(f.narrative) && isBlank(f.recommendation);
+}
+
+// A heading with its content, used for the blocks of the finding detail.
+function titled(heading, children) {
+  return add(el("div"), [el("h4", heading)].concat(children));
+}
+
+// A button that selects a finding when clicked.
+function selectButton(cls, index) {
+  const btn = el("button", "", cls);
+  btn.type = "button";
+  btn.addEventListener("click", function () { selectFinding(index); });
+  return btn;
+}
+
+// A select button that also shows which finding is selected (aria-pressed).
+function pressableButton(cls, index) {
+  const btn = selectButton(cls, index);
+  btn.setAttribute("aria-pressed", index === view.selected ? "true" : "false");
+  view.pressables.push({index: index, node: btn});
+  return btn;
+}
+
+// Called only from a user's click. The detail panel is scrolled into view, and keyboard
+// focus stays on the control the user used.
+function selectFinding(index) {
+  view.selected = index;
+  for (const entry of view.pressables) {
+    entry.node.setAttribute("aria-pressed", entry.index === index ? "true" : "false");
+  }
+  renderDetail();
+  if (view.detail && typeof view.detail.scrollIntoView === "function") {
+    view.detail.scrollIntoView({block: "nearest"});
+  }
+}
+
+function clusterEntries(model) {
+  const entries = [];
+  model.findings.forEach(function (f, index) {
+    if (f.isCluster) {
+      entries.push({f: f, index: index});
+    }
+  });
+  return entries;
+}
+
+// The finding ids to their Essentials pointers, and the principle ids to the operator's
+// declared status. Built once per report; the first entry for an id wins.
+function indexEssentials(ess) {
+  view.pointers = new Map();
+  view.statuses = new Map();
+  if (!ess) {
+    return;
+  }
+  for (const entry of ess.byFinding) {
+    if (!isBlank(entry.id) && !view.pointers.has(entry.id)) {
+      view.pointers.set(entry.id, entry);
+    }
+  }
+  for (const item of ess.declared) {
+    view.statuses.set(item.id, item.status);
+  }
+}
+
+function operatorStatus(principleId) {
+  const declared = view.statuses.get(principleId);
+  return declared === undefined || isBlank(declared) ? NOT_ASSESSED : declared;
+}
+
+function statusChip(text, extra) {
+  const dashed = text === NOT_ASSESSED || text.endsWith(": " + NOT_ASSESSED);
+  return el("span", text, "status-chip" + (dashed ? " dashed" : "") + (extra ? " " + extra : ""));
+}
+
+// The attribution, licence (with its link), change note and notice, all in the JSON's own
+// words. A field the JSON lacks is left out and nothing is shown in its place.
+function noticesBlock(ess) {
+  const box = el("div", "", "notices");
+  const hasText = [ess.attribution, ess.licence, ess.licenceUrl, ess.changes, ess.notice]
+    .some(function (t) { return !isBlank(t); });
+  if (hasText) {
+    box.appendChild(el("strong", "Attribution and licence"));
+  }
+  if (!isBlank(ess.attribution)) {
+    box.appendChild(el("span", ess.attribution));
+  }
+  if (!isBlank(ess.licence) || !isBlank(ess.licenceUrl)) {
+    const line = el("span");
+    if (!isBlank(ess.licence)) {
+      line.appendChild(el("span", ess.licence));
+    }
+    if (!isBlank(ess.licenceUrl)) {
+      line.appendChild(el("span", isBlank(ess.licence) ? "" : " · "));
+      line.appendChild(safeLink(ess.licenceUrl, ess.licenceUrl.trim()));
+    }
+    box.appendChild(line);
+  }
+  if (!isBlank(ess.changes)) {
+    box.appendChild(el("span", ess.changes));
+  }
+  if (!isBlank(ess.notice)) {
+    box.appendChild(el("span", ess.notice));
+  }
+  return box;
+}
+
+// --- Timeline ---
+
+function buildLane(f, index, axis) {
+  const btn = pressableButton("pick lane", index);
+  btn.setAttribute("aria-label", "Cluster " + idLabel(f) + ", " + f.severity.label + ", " +
+    (f.hosts.length ? f.hosts.join(", ") : "no host") + ", " + timeRangeText(f));
+  const label = add(el("span", "", "lane-label"), [
+    add(el("span", "", "lane-head " + f.severity.cls), [
+      el("span", "", "sev-mark"),
+      el("span", idLabel(f) + " · " + f.severity.label)
+    ]),
+    el("span", f.hosts.join(", "), "lane-hosts")
+  ]);
+  const track = el("span", "", "lane-track");
+  const bar = axis ? barPosition(f.firstMs, f.lastMs, axis.startMs, axis.endMs) : null;
+  if (bar) {
+    const fill = el("span", "", "lane-bar");
+    fill.style.left = percentText(bar.left);
+    fill.style.width = percentText(bar.width);
+    track.appendChild(fill);
+  } else {
+    track.appendChild(el("span", NO_TIME_TEXT, "lane-none"));
+  }
+  return add(btn, [label, track]);
+}
+
+function renderTimeline(model) {
+  const body = document.getElementById("timeline-body");
+  clear(body);
+  const entries = clusterEntries(model);
+  if (entries.length === 0) {
+    body.appendChild(el("p", "This report has no cluster findings to place on a timeline.", "empty"));
+    showSection("timeline");
+    return;
+  }
+  const axis = timelineAxis(entries.map(function (e) { return e.f; }));
+  const ticks = tickPositions(axis, TICK_COUNT);
+  const tickRow = el("div", "", "tl-ticks");
+  const lines = el("div", "", "tl-lines");
+  lines.setAttribute("aria-hidden", "true");
+  ticks.forEach(function (tick, i) {
+    let cls = "tl-tick";
+    if (i === 0) {
+      cls += " tl-tick-first";
+    } else if (i === ticks.length - 1) {
+      cls += " tl-tick-last";
+    }
+    const label = el("span", formatTick(tick.ms), cls);
+    label.style.left = percentText(tick.percent);
+    tickRow.appendChild(label);
+    const line = el("span", "", "tl-line");
+    line.style.left = percentText(tick.percent);
+    lines.appendChild(line);
+  });
+  const chart = add(el("div", "", "tl"), [
+    add(el("div", "", "tl-axis"), [el("div", "", "tl-spacer"), tickRow]),
+    lines
+  ]);
+  for (const entry of entries) {
+    chart.appendChild(buildLane(entry.f, entry.index, axis));
+  }
+  add(body, [
+    el("p", "Times are UTC. Each bar runs from first seen to last seen. " +
+      "Select a row to open the finding.", "note"),
+    add(el("div", "", "tl-scroll"), [chart])
+  ]);
+  showSection("timeline");
+}
+
+// --- Findings list and detail ---
+
+function buildItem(f, index) {
+  const btn = pressableButton("pick item", index);
+  const head = el("span", "", "item-head");
+  if (f.isCluster) {
+    const meta = f.hosts.slice();
+    meta.push("from " + timeText(f.firstMs));
+    add(head, [
+      add(el("span", "", "item-sev " + f.severity.cls), [
+        el("span", "", "sev-mark"),
+        el("span", idLabel(f) + " · " + f.severity.label)
+      ]),
+      el("span", "· " + meta.join(" · "), "item-meta")
+    ]);
+  } else {
+    head.appendChild(el("span", kindLabel(f), "item-kind"));
+  }
+  add(btn, [head, el("span", findingTitle(f), "item-title")]);
+  if (f.isCluster) {
+    const tags = el("span", "", "tags");
+    if (hasNoCommentary(f)) {
+      tags.appendChild(el("span", "No commentary", "tag tag-dashed"));
+    }
+    if (f.flags.length > 0) {
+      tags.appendChild(el("span", "Check", "tag tag-check"));
+    }
+    if (tags.firstChild) {
+      btn.appendChild(tags);
+    }
+  }
+  return btn;
+}
+
+function renderValueLines(field) {
+  const vals = el("span", "", "ev-vals");
+  for (const value of field.values) {
+    vals.appendChild(el("span", value, "ev-val"));
+  }
+  if (field.more !== "") {
+    vals.appendChild(el("span", field.more, "ev-more"));
+  }
+  if (field.values.length === 0 && field.more === "") {
+    vals.appendChild(el("span", "none", "ev-more"));
+  }
+  return vals;
+}
+
+function renderShape(shape) {
+  const box = el("div", "", "ev-shape");
+  box.appendChild(el("div", shape.name, "ev-shape-name"));
+  for (const field of shape.fields) {
+    box.appendChild(add(el("div", "", "ev-field"), [
+      el("span", field.name, "ev-name"),
+      renderValueLines(field)
+    ]));
+  }
+  return box;
+}
+
+function renderEvidence(evidence) {
+  const box = el("div", "", "evidence mono");
+  if (evidence.shapes.length === 0 && evidence.perHost.length === 0) {
+    box.appendChild(el("span", "No structured evidence in this report.", "ev-more"));
+    return box;
+  }
+  for (const shape of evidence.shapes) {
+    box.appendChild(renderShape(shape));
+  }
+  for (const entry of evidence.perHost) {
+    const hostBox = el("div", "", "ev-shape");
+    hostBox.appendChild(el("div", "Host " + entry.host, "ev-host"));
+    for (const shape of entry.shapes) {
+      hostBox.appendChild(renderShape(shape));
+    }
+    box.appendChild(hostBox);
+  }
+  return box;
+}
+
+function strategiesFor(f) {
+  const found = [];
+  if (isBlank(f.id)) {
+    return found;
+  }
+  for (const pointer of view.model.e8.pointers) {
+    if (pointer.id === f.id) {
+      for (const name of pointer.strategies) {
+        if (found.indexOf(name) < 0) {
+          found.push(name);
+        }
+      }
+    }
+  }
+  return found;
+}
+
+function reasonParts(r) {
+  if (r.route === "mitre") {
+    const pieces = [];
+    if (!isBlank(r.techniqueName)) {
+      pieces.push(r.techniqueName.trim());
+    }
+    if (!isBlank(r.techniqueId)) {
+      pieces.push(r.viaParent ? "(parent of " + r.techniqueId + ")" : "(" + r.techniqueId + ")");
+    }
+    return {route: "MITRE ATT&CK", text: pieces.join(" ")};
+  }
+  if (r.route === "ism") {
+    return {route: "ISM control", text: r.ismId + (isBlank(r.field) ? "" : ", listed under " + r.field)};
+  }
+  if (r.route === "keyword") {
+    return {route: "Shared keywords, weak match", text: r.shared.join(", ")};
+  }
+  return {route: isBlank(r.route) ? "Other" : r.route, text: ""};
+}
+
+function buildActionCard(action) {
+  const head = add(el("div", "", "action-head"), [
+    el("span", action.principleId, "mono pid"),
+    el("span", action.principleName),
+    el("span", action.actionId, "mono action-id"),
+    statusChip("Operator: " + operatorStatus(action.principleId), "push-end")
+  ]);
+  const card = add(el("div", "", "action"), [head]);
+  if (action.domains.length > 0) {
+    const pills = el("div", "", "pills");
+    for (const d of action.domains) {
+      pills.appendChild(el("span", d.name + " · " + phaseText(d.phase), "domain-chip"));
+    }
+    card.appendChild(pills);
+  }
+  for (const reason of action.reasons) {
+    const parts = reasonParts(reason);
+    card.appendChild(add(el("div", "", "reason"), [
+      el("strong", parts.route),
+      el("span", isBlank(parts.text) ? "" : " · " + parts.text)
+    ]));
+  }
+  return card;
+}
+
+function buildPointers(f) {
+  const ess = view.model.essentials;
+  if (!ess) {
+    return null;
+  }
+  const box = el("div", "", "pointers");
+  add(box, [
+    el("h3", "Related ASD Essentials principles"),
+    el("p", "These are pointers, not ratings, and a guide for setting priorities. " +
+      "Phase is ASD's suggested implementation order. " +
+      "The status chip is the operator's own declaration.", "note")
+  ]);
+  const entry = isBlank(f.id) ? undefined : view.pointers.get(f.id);
+  const actions = entry ? entry.actions : [];
+  if (actions.length === 0) {
+    box.appendChild(el("p", "No principles were pointed at for this cluster.", "note"));
+  }
+  for (const action of actions) {
+    box.appendChild(buildActionCard(action));
+  }
+  if (entry && entry.omitted > 0) {
+    box.appendChild(el("p", String(entry.omitted) + OMITTED_SUFFIX, "note"));
+  }
+  box.appendChild(noticesBlock(ess));
+  return box;
+}
+
+function renderClusterDetail(box, f) {
+  const sev = add(el("span", "", "detail-sev " + f.severity.cls), [
+    el("span", "", "sev-mark"),
+    el("span", "Cluster " + idLabel(f) + " · " + f.severity.label)
+  ]);
+  add(box, [add(el("div", "", "detail-head"), [
+    sev,
+    el("h3", findingTitle(f), "detail-title"),
+    add(el("div", "", "detail-meta"), [
+      el("span", (f.hosts.length === 1 ? "Host " : "Hosts ") + (f.hosts.length ? f.hosts.join(", ") : "-")),
+      el("span", "First seen " + timeText(f.firstMs)),
+      el("span", "Last seen " + timeText(f.lastMs)),
+      el("span", "Count " + (f.count === null ? "-" : String(f.count)))
+    ])
+  ])]);
+  if (f.flags.length > 0) {
+    const note = add(el("div", "", "check"), [
+      el("span", "Check", "tag tag-check"),
+      el("span", checkSentence(f.flags))
+    ]);
+    note.setAttribute("role", "note");
+    box.appendChild(note);
+  }
+  box.appendChild(titled("What the model found", [
+    isBlank(f.narrative)
+      ? el("p", NO_COMMENTARY_NARRATIVE, "prose prose-none")
+      : el("p", f.narrative, "prose prose-main")
+  ]));
+  box.appendChild(titled("Recommendation", [
+    isBlank(f.recommendation)
+      ? el("p", NO_RECOMMENDATION_TEXT, "prose prose-note")
+      : el("p", f.recommendation, "prose")
+  ]));
+  box.appendChild(titled("Evidence", [renderEvidence(f.evidence)]));
+  if (f.notes.length > 0) {
+    box.appendChild(titled("Notes", f.notes.map(function (n) { return el("p", n, "prose prose-note"); })));
+  }
+  if (f.cves.length > 0) {
+    box.appendChild(titled("CVEs", [add(el("div", "", "pills"), f.cves.map(function (c) {
+      return el("span", c, "pill mono");
+    }))]));
+  }
+  const strategies = strategiesFor(f);
+  if (strategies.length > 0) {
+    box.appendChild(titled("Related Essential Eight strategies", [
+      add(el("div", "", "pills"), strategies.map(function (s) { return el("span", s, "pill"); }))
+    ]));
+  }
+  const pointers = buildPointers(f);
+  if (pointers) {
+    box.appendChild(pointers);
+  }
+}
+
+function renderOtherDetail(box, f) {
+  add(box, [add(el("div", "", "detail-head"), [
+    el("span", kindLabel(f), "detail-sev"),
+    el("h3", findingTitle(f), "detail-title")
+  ])]);
+  if (!isBlank(f.recommendation)) {
+    box.appendChild(titled("Recommendation", [el("p", f.recommendation, "prose")]));
+  }
+}
+
+// Draws only the selected finding, so a large report builds one detail, not hundreds.
+function renderDetail() {
+  const box = view.detail;
+  if (!box || !view.model) {
+    return;
+  }
+  clear(box);
+  const f = view.model.findings[view.selected];
+  if (!f) {
+    box.appendChild(el("p", "Select a finding to read it.", "note"));
+  } else if (f.isCluster) {
+    renderClusterDetail(box, f);
+  } else {
+    renderOtherDetail(box, f);
+  }
+}
+
+function renderFindings(model) {
+  const body = document.getElementById("findings-body");
+  clear(body);
+  if (model.findings.length === 0) {
+    body.appendChild(el("p", "This report has no findings.", "empty"));
+    showSection("findings");
+    return;
+  }
+  const list = el("div", "", "item-list");
+  model.findings.forEach(function (f, index) {
+    list.appendChild(buildItem(f, index));
+  });
+  const detail = el("article", "", "detail");
+  detail.setAttribute("aria-label", "Finding detail");
+  view.detail = detail;
+  add(body, [add(el("div", "", "split"), [list, detail])]);
+  renderDetail();
+  showSection("findings");
+}
+
+// --- ASD Essentials section ---
+
+// For one finding: each domain name to the action ids pointed at in it.
+function domainHits(f) {
+  const hits = new Map();
+  const entry = isBlank(f.id) ? undefined : view.pointers.get(f.id);
+  if (!entry) {
+    return hits;
+  }
+  for (const action of entry.actions) {
+    for (const d of action.domains) {
+      const list = hits.get(d.name) || [];
+      if (list.indexOf(action.actionId) < 0) {
+        list.push(action.actionId);
+      }
+      hits.set(d.name, list);
+    }
+  }
+  return hits;
+}
+
+function mapHeaderRow(entries) {
+  const row = el("tr");
+  const corner = el("th", "Domain", "map-row");
+  corner.setAttribute("scope", "col");
+  row.appendChild(corner);
+  for (const entry of entries) {
+    const th = el("th");
+    th.setAttribute("scope", "col");
+    const btn = pressableButton("pick map-head", entry.index);
+    btn.textContent = idLabel(entry.f);
+    btn.setAttribute("aria-label", "Open cluster " + idLabel(entry.f) + ", " + entry.f.severity.label);
+    th.appendChild(btn);
+    row.appendChild(th);
+  }
+  return row;
+}
+
+function mapDomainRow(domain, entries, hitsBy) {
+  const row = el("tr");
+  const head = add(el("th", "", "map-row"), [
+    el("span", domain.name, "map-name"),
+    el("span", domain.kind, "map-kind")
+  ]);
+  head.setAttribute("scope", "row");
+  row.appendChild(head);
+  entries.forEach(function (entry, i) {
+    const hits = hitsBy[i].get(domain.name);
+    const cell = el("td");
+    const btn = selectButton("pick map-cell", entry.index);
+    const base = idLabel(entry.f) + ", " + domain.name + ", ";
+    if (hits) {
+      btn.appendChild(el("span", "", "map-dot"));
+      btn.setAttribute("aria-label", base + hits.length + (hits.length === 1 ? " pointer: " : " pointers: ") +
+        hits.join(", "));
+    } else {
+      btn.setAttribute("aria-label", base + "no pointers");
+    }
+    cell.appendChild(btn);
+    row.appendChild(cell);
+  });
+  return row;
+}
+
+function buildTableView(entries, hitsBy) {
+  const details = el("details", "", "table-view");
+  details.appendChild(el("summary", "Table view"));
+  for (const domain of ASD_DOMAINS) {
+    const parts = [];
+    entries.forEach(function (entry, i) {
+      const hits = hitsBy[i].get(domain.name);
+      if (hits) {
+        parts.push(idLabel(entry.f) + " (" + hits.join(", ") + ")");
+      }
+    });
+    details.appendChild(add(el("div", "", "tv-row"), [
+      el("strong", domain.name, "tv-name"),
+      el("span", parts.length > 0 ? parts.join("; ") : "No pointers", "tv-text")
+    ]));
+  }
+  return details;
+}
+
+function buildPointerMap(model) {
+  const box = el("div", "", "block");
+  add(box, [
+    el("h3", "Pointer map"),
+    el("p", "Which domains each finding is pointed at, from the pointers listed per finding. " +
+      "A dot means the finding has at least one pointer in that domain. " +
+      "An empty cell is not a gap, and a dot is not a rating.", "note")
+  ]);
+  const entries = clusterEntries(model);
+  if (entries.length === 0) {
+    box.appendChild(el("p", "This report has no cluster findings to map.", "empty"));
+    return box;
+  }
+  const hitsBy = entries.map(function (entry) { return domainHits(entry.f); });
+  const table = el("table", "", "map");
+  table.appendChild(el("caption", "Pointer map: ASD domains by finding", "map-caption"));
+  table.appendChild(add(el("thead"), [mapHeaderRow(entries)]));
+  const tbody = el("tbody");
+  for (const domain of ASD_DOMAINS) {
+    tbody.appendChild(mapDomainRow(domain, entries, hitsBy));
+  }
+  table.appendChild(tbody);
+  add(box, [add(el("div", "", "map-scroll"), [table]), buildTableView(entries, hitsBy)]);
+  return box;
+}
+
+function isDeclared(entry) {
+  return !isBlank(entry.status) && entry.status !== NOT_ASSESSED;
+}
+
+function buildRatingRow(entry) {
+  const who = add(el("div", "", "rating-who"), [
+    add(el("div", "", "rating-line"), [el("span", entry.id, "mono pid"), el("span", entry.name, "pid")])
+  ]);
+  if (entry.domains.length > 0) {
+    who.appendChild(el("div", entry.domains.join(", "), "rating-domains"));
+  }
+  return add(el("div", "", "rating"), [
+    who,
+    add(el("div", "", "rating-status"), [statusChip(entry.status)]),
+    el("div", isBlank(entry.reason) ? "No reason given." : entry.reason, "rating-reason")
+  ]);
+}
+
+function buildRatings(ess) {
+  const box = el("div", "", "block");
+  add(box, [
+    el("h3", "Declared ratings"),
+    el("p", "Written by the operator in the Essentials attestation file. " +
+      "Ravensight does not compute or change them.", "note")
+  ]);
+  const declared = ess.declared.filter(isDeclared).sort(function (a, b) {
+    return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+  });
+  if (declared.length === 0) {
+    box.appendChild(el("p", "No ratings declared.", "empty"));
+  } else {
+    box.appendChild(add(el("div", "", "ratings"), declared.map(buildRatingRow)));
+  }
+  if (ess.declared.length > 0) {
+    const others = ess.declared.length - declared.length;
+    box.appendChild(el("p", String(others) +
+      (others === 1 ? " other principle" : " other principles") + ": Not assessed.", "note"));
+  }
+  return box;
+}
+
+function renderEssentials(model) {
+  const body = document.getElementById("essentials-body");
+  clear(body);
+  const ess = model.essentials;
+  if (!ess) {
+    body.appendChild(el("p", NO_ESSENTIALS_TEXT, "empty"));
+    showSection("essentials");
+    return;
+  }
+  add(body, [
+    el("p", ESSENTIALS_STATEMENT, "note"),
+    buildPointerMap(model),
+    buildRatings(ess),
+    noticesBlock(ess)
+  ]);
+  showSection("essentials");
+}
+
+// --- Essential Eight and trends ---
+
+function e8StatusText(row) {
+  if (row.declaredStatus === "Attested" && row.declaredLevel !== null) {
+    return "Attested at ML" + String(row.declaredLevel);
+  }
+  if (!isBlank(row.declaredStatus) && row.declaredStatus !== NOT_ASSESSED) {
+    return row.declaredStatus;
+  }
+  return NOT_ASSESSED;
+}
+
+function buildE8Card(row) {
+  const foot = el("span", "", "card-foot");
+  if (row.isUnmapped) {
+    foot.appendChild(el("span", "Not one of the Essential Eight", "card-sub"));
+  } else {
+    foot.appendChild(statusChip(e8StatusText(row)));
+    if (!isBlank(row.declaredReason)) {
+      foot.appendChild(el("span", row.declaredReason, "card-sub"));
+    }
+  }
+  foot.appendChild(el("span", row.relatedFindings.length > 0
+    ? "Related findings: " + row.relatedFindings.join(", ")
+    : "No related findings", "card-sub"));
+  return add(el("div", "", "card"), [el("span", row.name, "card-name"), foot]);
+}
+
+function renderE8(model) {
+  const body = document.getElementById("e8-body");
+  clear(body);
+  body.appendChild(el("p", E8_NOTE, "note"));
+  const rows = model.e8.rows.filter(function (r) { return !r.isUnmapped; })
+    .concat(model.e8.rows.filter(function (r) { return r.isUnmapped; }));
+  if (rows.length === 0) {
+    body.appendChild(el("p", "This report has no Essential Eight data.", "empty"));
+  } else {
+    body.appendChild(add(el("div", "", "cards"), rows.map(buildE8Card)));
+  }
+  showSection("e8");
+}
+
+function renderTrends(model) {
+  const body = document.getElementById("trends-body");
+  clear(body);
+  if (model.trends === null) {
+    body.appendChild(el("p", "No trend data", "empty"));
+  } else {
+    body.appendChild(el("pre", model.trends, "trends-pre"));
+  }
+  showSection("trends");
+}
+
 function renderReport(model) {
+  view.model = model;
+  view.selected = 0;
+  view.pressables = [];
+  indexEssentials(model.essentials);
   renderOverview(model);
+  renderTimeline(model);
+  renderFindings(model);
+  renderEssentials(model);
+  renderE8(model);
+  renderTrends(model);
+  showSection("nav");
 }
 
 // ---------------------------------------------------------------------------
