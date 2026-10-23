@@ -185,6 +185,15 @@ a { color: var(--link); }
   overflow-wrap: anywhere;
 }
 .panel > div { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.panel.panel-essentials { padding: 28px; gap: 24px; }
+.panel.panel-essentials h2 { font-size: 20px; font-weight: 700; }
+.panel.panel-essentials > div { gap: 24px; }
+.panel.panel-overview { background: transparent; border: 0; padding: 0; }
+.panel.panel-overview h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.panel.panel-findings { background: transparent; border: 0; padding: 0; gap: 12px; }
+.panel.panel-findings h2 { font-size: 16px; }
+.panel.panel-trends { gap: 12px; }
+.panel.panel-timeline { gap: 2px; }
 .block { display: flex; flex-direction: column; gap: 12px; }
 .pid { font-weight: 700; }
 .rating-line { display: flex; flex-wrap: wrap; gap: 0 8px; }
@@ -208,6 +217,7 @@ a { color: var(--link); }
 .tl-tick-first { transform: none; }
 .tl-tick-last { transform: translateX(-100%); }
 .tl-lines { position: absolute; left: 168px; right: 0; top: 20px; bottom: 0; pointer-events: none; }
+.tl .tl-lines { z-index: 1; }
 .tl-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
 .tl-line:last-child { transform: translateX(-100%); }
 .lane {
@@ -234,7 +244,8 @@ a { color: var(--link); }
   justify-content: center;
   min-width: 0;
 }
-.lane-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.lane-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+.lane[aria-pressed="true"] .lane-head { font-weight: 700; }
 .lane-hosts {
   font-size: 12px;
   color: var(--text-secondary);
@@ -243,21 +254,29 @@ a { color: var(--link); }
   text-overflow: ellipsis;
 }
 .lane-track { flex: 1; position: relative; display: block; min-width: 0; overflow: hidden; }
+.lane .lane-track { z-index: 2; }
 .lane-bar {
   position: absolute;
-  top: 22px;
-  height: 4px;
-  border-radius: 2px;
+  top: 23px;
+  height: 2px;
+  border-radius: 1px;
   background: var(--series-1);
   display: block;
 }
+.lane:not([aria-pressed="true"]) .lane-bar { opacity: 0.75; }
 .lane-none { position: absolute; top: 14px; left: 0; font-size: 13px; color: var(--text-secondary); }
 
 /* Findings list and detail */
 .split { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
-.item-list {
+.list-col {
   flex: 1 1 340px;
   max-width: 440px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.item-list {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -549,22 +568,21 @@ a { color: var(--link); }
 
   <main id="report" class="wrap-main" style="display:flex;flex-direction:column;gap:28px">
 
-    <section id="overview" aria-labelledby="overview-h" class="panel" hidden>
+    <section id="overview" aria-labelledby="overview-h" class="panel panel-overview" hidden>
       <h2 id="overview-h">Run summary</h2>
       <div id="overview-body"></div>
     </section>
 
-    <section id="timeline" aria-labelledby="timeline-h" class="panel" hidden>
+    <section id="timeline" aria-labelledby="timeline-h" class="panel panel-timeline" hidden>
       <h2 id="timeline-h">When findings occurred</h2>
       <div id="timeline-body"></div>
     </section>
 
-    <section id="findings" aria-labelledby="findings-h" class="panel" hidden>
-      <h2 id="findings-h">Findings</h2>
+    <section id="findings" aria-labelledby="findings-h" class="panel panel-findings" hidden>
       <div id="findings-body"></div>
     </section>
 
-    <section id="essentials" aria-labelledby="essentials-h" class="panel" hidden>
+    <section id="essentials" aria-labelledby="essentials-h" class="panel panel-essentials" hidden>
       <h2 id="essentials-h">ASD Essentials for enterprise IT</h2>
       <div id="essentials-body"></div>
     </section>
@@ -574,7 +592,7 @@ a { color: var(--link); }
       <div id="e8-body"></div>
     </section>
 
-    <section id="trends" aria-labelledby="trends-h" class="panel" hidden>
+    <section id="trends" aria-labelledby="trends-h" class="panel panel-trends" hidden>
       <h2 id="trends-h">Trends</h2>
       <div id="trends-body"></div>
     </section>
@@ -1853,11 +1871,18 @@ function renderDetail() {
   }
 }
 
+// Build the Findings heading that sits at the top of the list column.
+function findingsHeading() {
+  const h = el("h2", "Findings");
+  h.setAttribute("id", "findings-h");
+  return h;
+}
+
 function renderFindings(model) {
   const body = document.getElementById("findings-body");
   clear(body);
   if (model.findings.length === 0) {
-    body.appendChild(el("p", "This report has no findings.", "empty"));
+    add(body, [add(el("div", "", "block"), [findingsHeading(), el("p", "This report has no findings.", "empty")])]);
     showSection("findings");
     return;
   }
@@ -1868,7 +1893,8 @@ function renderFindings(model) {
   const detail = el("article", "", "detail");
   detail.setAttribute("aria-label", "Finding detail");
   view.detail = detail;
-  add(body, [add(el("div", "", "split"), [list, detail])]);
+  const column = add(el("div", "", "list-col"), [findingsHeading(), list]);
+  add(body, [add(el("div", "", "split"), [column, detail])]);
   renderDetail();
   showSection("findings");
 }
