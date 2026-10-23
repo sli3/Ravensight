@@ -24,6 +24,9 @@
   --sev-medium: #93370d;
   --sev-low: #175cd3;
   --sev-unknown: #6f6d67;
+  --accent: #5b2fe0;
+  --accent-ink: #ffffff;
+  --accent-hover: #4a22c4;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -44,6 +47,9 @@
     --sev-medium: #f2b84b;
     --sev-low: #79b8ff;
     --sev-unknown: #a09e96;
+    --accent: #9d7bff;
+    --accent-ink: #0d0d0d;
+    --accent-hover: #b49bff;
   }
 }
 [hidden] { display: none !important; }
@@ -57,7 +63,7 @@ body {
 }
 .wrap {
   box-sizing: border-box;
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 32px 24px 72px;
   display: flex;
@@ -74,34 +80,39 @@ body {
 .top-title { display: flex; align-items: baseline; gap: 4px 16px; flex-wrap: wrap; }
 .top-title h1 { margin: 0; font-size: 22px; font-weight: 700; }
 .subtle { color: var(--text-secondary); }
-.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; }
 .chip {
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
   padding: 4px 12px;
   background: var(--chip);
   border-radius: 999px;
   font-size: 13px;
   color: var(--text-secondary);
 }
-.picker { display: flex; flex-direction: column; gap: 6px; }
-.picker label { font-weight: 600; }
-.picker input[type="file"] {
-  min-height: 44px;
-  max-width: 100%;
+.top-right { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; min-width: 0; max-width: 100%; }
+@media (max-width: 480px) { .top-right { justify-content: flex-start; width: 100%; } }
+.picker { position: relative; display: inline-flex; }
+.picker .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; opacity: 0; }
+.open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   box-sizing: border-box;
-  font: inherit;
-  color: inherit;
-}
-.picker input[type="file"]::file-selector-button {
-  min-height: 44px;
-  padding: 0 16px;
-  margin-right: 12px;
-  font: inherit;
-  color: inherit;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
+  min-height: 36px;
+  padding: 0 14px;
   border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
+.open-btn:hover { background: var(--accent-hover); }
+.picker .vh:focus-visible + .open-btn { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.open-ico { flex: none; display: block; }
 .message {
   margin: 0;
   min-height: 1.5em;
@@ -145,15 +156,6 @@ a { color: var(--link); }
 .kpi-label { font-size: 13px; color: var(--text-secondary); }
 .kpi-value { font-size: 32px; font-weight: 600; line-height: 1.2; }
 .kpi-sub { font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 20px;
-  margin: 0;
-  font-size: 14px;
-}
-.facts dt { color: var(--text-secondary); }
-.facts dd { margin: 0; }
 .sev-high { color: var(--sev-high); }
 .sev-medium { color: var(--sev-medium); }
 .sev-low { color: var(--sev-low); }
@@ -555,17 +557,21 @@ a { color: var(--link); }
   <header class="top">
     <div class="top-title">
       <h1>Ravensight</h1>
-      <span class="subtle">Report viewer</span>
+      <span id="run-subtitle" class="subtle">Report viewer</span>
     </div>
-    <div class="chips">
-      <span class="chip">Read-only</span>
+    <div class="top-right">
+      <div id="run-chips" class="chips">
+        <span class="chip">Read-only</span>
+      </div>
+      <div class="picker">
+        <input id="report-file" class="vh" type="file" accept=".json,application/json">
+        <label for="report-file" class="open-btn" title="Choose a report JSON file">
+          <svg class="open-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span>Choose report</span>
+        </label>
+      </div>
     </div>
   </header>
-
-  <div class="picker">
-    <label for="report-file">Choose a report JSON</label>
-    <input id="report-file" type="file" accept=".json,application/json">
-  </div>
 
   <p id="message" class="message" role="status" aria-live="polite">Choose a report JSON file to begin.</p>
 
@@ -634,6 +640,7 @@ const PAIR_ARROW = " → ";
 const CUT_MARK = "…";
 const NO_ID_LABEL = "(no id)";
 const NO_TIME_TEXT = "time not available";
+const IDLE_SUBTITLE = "Report viewer";
 const NOT_ASSESSED = "Not assessed";
 const ALL_PHASES = "All phases";
 const TICK_COUNT = 5;
@@ -1372,6 +1379,18 @@ function resetView() {
   if (nav) {
     nav.hidden = true;
   }
+  const subtitle = document.getElementById("run-subtitle");
+  if (subtitle) {
+    subtitle.textContent = IDLE_SUBTITLE;
+  }
+  const runChips = document.getElementById("run-chips");
+  if (runChips) {
+    for (const old of Array.from(runChips.children)) {
+      if (old.classList.contains("chip-run")) {
+        runChips.removeChild(old);
+      }
+    }
+  }
   for (const id of SECTION_IDS) {
     const section = document.getElementById(id);
     const body = document.getElementById(id + "-body");
@@ -1398,19 +1417,32 @@ function kpiCard(label, value, sub) {
   ]);
 }
 
-function factRows(summary) {
-  const rows = [
-    ["Generated (UTC)", summary.generatedText],
-    ["Window (UTC)", summary.windowText || "-"]
-  ];
-  if (summary.level !== "") {
-    rows.push(["Alert level", summary.level]);
+function renderHeader(model) {
+  const summary = model.summary;
+  const subtitle = document.getElementById("run-subtitle");
+  const chips = document.getElementById("run-chips");
+  let subtitleText = "Report";
+  if (Number.isFinite(summary.generatedMs)) {
+    subtitleText += " · generated " + summary.generatedText;
   }
-  if (summary.model !== "") {
-    rows.push(["Model", summary.model]);
+  subtitle.textContent = subtitleText;
+  for (const old of Array.from(chips.children)) {
+    if (old.classList.contains("chip-run")) {
+      chips.removeChild(old);
+    }
   }
-  rows.push(["Report schema version", summary.schemaVersion || "-"]);
-  return rows;
+  add(chips, [el("span", "Report schema " + (summary.schemaVersion || "-"), "chip chip-run")]);
+  if (String(summary.model || "").trim() !== "") {
+    add(chips, [el("span", String(summary.model), "chip chip-run")]);
+  }
+  if (summary.level !== "" && summary.level !== undefined && summary.level !== null) {
+    add(chips, [el("span", "Alert level " + summary.level, "chip chip-run")]);
+  }
+  if (String(summary.windowText || "").trim() !== "") {
+    const windowChip = el("span", String(summary.windowText), "chip chip-run");
+    windowChip.setAttribute("title", "Run window (UTC)");
+    add(chips, [windowChip]);
+  }
 }
 
 function renderOverview(model) {
@@ -1427,11 +1459,7 @@ function renderOverview(model) {
       summary.noCommentaryIds.length ? "Cluster " + summary.noCommentaryIds.join(", ") : "None"
     )
   ]);
-  const facts = el("dl", "", "facts");
-  for (const row of factRows(summary)) {
-    add(facts, [el("dt", row[0]), el("dd", row[1])]);
-  }
-  add(body, [cards, facts]);
+  add(body, [cards]);
   showSection("overview");
 }
 
@@ -2155,6 +2183,7 @@ function renderReport(model) {
   view.selected = 0;
   view.pressables = [];
   indexEssentials(model.essentials);
+  renderHeader(model);
   renderOverview(model);
   renderTimeline(model);
   renderFindings(model);
