@@ -1691,7 +1691,8 @@ Decisions (agreed with Prin):
   and structured trends. Trends stay the `trends_markdown` text, shown as plain paragraphs,
   with no chart
 - The timeline is one range bar per finding, drawn from `first_seen` and `last_seen`, with a
-  round dot at each end (one dot when the two times are equal), so the line reads like the
+  round dot at each end (one dot when the two times are equal or so close that the drawn
+  line is at its minimum width), so the line reads like the
   design. The dots mark those two real times only (Prin's decision, 23 Oct 2026). The
   sub-caption says a line runs from first seen to last seen with a dot at each end, and
   never calls a dot an alert time
@@ -1707,6 +1708,10 @@ Decisions (agreed with Prin):
   differ, the JSON wins (see the Session 2 scope)
 - The pointer map shows the 8 ASD domain names as fixed rows, kept in one constant in the
   viewer (Prin's decision), so a domain with no pointers still shows an empty row
+- Page width (Prin's decision, 23 Oct 2026): the viewer's page column may be wider than
+  artboard E's 1200px column, up to a maximum of 1600px, with at least 24px of space at each
+  side, so wide screens are used better. This is the one departure from artboard E's layout.
+  All other layout and style still follows artboard E
 
 #### Session 1 — JSON schema version 3
 
@@ -1743,7 +1748,8 @@ In scope:
     the severity totals, the hosts involved and the number of findings with no commentary
   - the findings list and a timeline of one range bar per finding from `first_seen` to
     `last_seen`, labelled UTC, with a round dot at each end of the line (`first_seen` and
-    `last_seen` only, one dot when equal) and no per-alert dots, because the JSON holds no
+    `last_seen` only, one dot when equal or so close that the drawn line is at its minimum
+    width) and no per-alert dots, because the JSON holds no
     per-alert times
   - the finding detail: `description` as the title (shortened by the display only), `hosts`,
     first and last seen, `count`, `narrative`, `recommendation`, CVEs and notes. Evidence is
@@ -1818,6 +1824,7 @@ In scope:
 - Run the viewer against real reports from live runs (a full run, a run with no Essentials
   data, a run with empty commentary and a run with `flags`), and fix only defects in
   `web/` and its tests
+- Widen the page column to a maximum of 1600px (see Decisions)
 - Update `README.md` and this section's Feature Status row
 
 Out of scope:
