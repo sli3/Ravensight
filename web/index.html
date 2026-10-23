@@ -201,7 +201,7 @@ a { color: var(--link); }
 .sev-mark { display: inline-block; width: 10px; height: 10px; background: currentColor; flex: none; }
 
 /* Timeline */
-.tl-scroll { overflow-x: auto; }
+.tl-scroll { overflow-x: auto; padding-right: 6px; }
 .tl { position: relative; min-width: 560px; }
 .tl-axis { display: flex; height: 20px; }
 .tl-spacer { flex: 0 0 168px; }
@@ -234,7 +234,6 @@ a { color: var(--link); }
   text-align: left;
   position: relative;
 }
-.lane[aria-pressed="true"] { background: var(--row-sel); border-color: var(--grid); }
 .lane-label {
   flex: 0 0 168px;
   box-sizing: border-box;
@@ -245,6 +244,7 @@ a { color: var(--link); }
   min-width: 0;
 }
 .lane-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+.lane[aria-pressed="true"] { background: transparent; border-color: var(--grid); }
 .lane[aria-pressed="true"] .lane-head { font-weight: 700; }
 .lane-hosts {
   font-size: 12px;
@@ -253,7 +253,7 @@ a { color: var(--link); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.lane-track { flex: 1; position: relative; display: block; min-width: 0; overflow: hidden; }
+.lane-track { flex: 1; position: relative; display: block; min-width: 0; overflow: visible; }
 .lane .lane-track { z-index: 2; }
 .lane-bar {
   position: absolute;
@@ -263,7 +263,18 @@ a { color: var(--link); }
   background: var(--series-1);
   display: block;
 }
-.lane:not([aria-pressed="true"]) .lane-bar { opacity: 0.75; }
+.lane-dot {
+  position: absolute;
+  top: 19px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: var(--series-1);
+  box-shadow: 0 0 0 2px var(--surface-1);
+  display: block;
+}
+.lane:not([aria-pressed="true"]) .lane-bar, .lane:not([aria-pressed="true"]) .lane-dot { opacity: 0.75; }
 .lane-none { position: absolute; top: 14px; left: 0; font-size: 13px; color: var(--text-secondary); }
 
 /* Findings list and detail */
@@ -1572,6 +1583,14 @@ function buildLane(f, index, axis) {
     fill.style.left = percentText(bar.left);
     fill.style.width = percentText(bar.width);
     track.appendChild(fill);
+    const startDot = el("span", "", "lane-dot");
+    startDot.style.left = percentText(bar.left);
+    track.appendChild(startDot);
+    if (f.firstMs !== f.lastMs) {
+      const endDot = el("span", "", "lane-dot");
+      endDot.style.left = percentText(bar.left + bar.width);
+      track.appendChild(endDot);
+    }
   } else {
     track.appendChild(el("span", NO_TIME_TEXT, "lane-none"));
   }
@@ -1614,8 +1633,8 @@ function renderTimeline(model) {
     chart.appendChild(buildLane(entry.f, entry.index, axis));
   }
   add(body, [
-    el("p", "Times are UTC. Each bar runs from first seen to last seen. " +
-      "Select a row to open the finding.", "note"),
+    el("p", "Times are UTC. Each line runs from first seen to last seen, " +
+      "with a dot at each end. Select a row to open the finding.", "note"),
     add(el("div", "", "tl-scroll"), [chart])
   ]);
   showSection("timeline");
