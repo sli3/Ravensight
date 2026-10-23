@@ -63,7 +63,7 @@ body {
 }
 .wrap {
   box-sizing: border-box;
-  max-width: 1600px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 32px 24px 72px;
   display: flex;
@@ -91,8 +91,11 @@ body {
   font-size: 13px;
   color: var(--text-secondary);
 }
-.top-right { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; min-width: 0; max-width: 100%; }
-@media (max-width: 480px) { .top-right { justify-content: flex-start; width: 100%; } }
+.top-right { display: flex; flex-wrap: wrap; flex-direction: column; align-items: flex-end; justify-content: flex-end; gap: 8px 12px; min-width: 0; max-width: 100%; }
+.picker-row { display: flex; flex-wrap: wrap-reverse; align-items: center; justify-content: flex-end; gap: 6px 12px; min-width: 0; max-width: 100%; }
+.picker-note { font-size: 13px; color: var(--muted); }
+.chips:empty { display: none; }
+@media (max-width: 480px) { .top-right { align-items: flex-start; width: 100%; } .picker-row { justify-content: flex-start; } }
 .picker { position: relative; display: inline-flex; }
 .picker .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; opacity: 0; }
 .open-btn {
@@ -199,7 +202,6 @@ a { color: var(--link); }
 .block { display: flex; flex-direction: column; gap: 12px; }
 .pid { font-weight: 700; }
 .rating-line { display: flex; flex-wrap: wrap; gap: 0 8px; }
-.foot { font-size: 13px; color: var(--text-secondary); }
 .sev-mark { display: inline-block; width: 10px; height: 10px; background: currentColor; flex: none; }
 
 /* Timeline */
@@ -388,14 +390,19 @@ a { color: var(--link); }
   display: flex;
   flex-direction: column;
   gap: 12px;
+  container-type: inline-size;
 }
 .ev-shape-name { font-weight: 700; color: var(--text-secondary); }
-.ev-field { display: flex; flex-wrap: wrap; gap: 0 12px; }
-.ev-name { flex: 0 0 auto; min-width: 9ch; color: var(--text-secondary); }
-.ev-vals { display: flex; flex-direction: column; min-width: 0; flex: 1 1 240px; }
-.ev-val { overflow-wrap: anywhere; }
+.ev-field { display: grid; grid-template-columns: 20ch minmax(0, 1fr); gap: 12px; padding: 5px 0; border-top: 1px solid var(--grid); }
+.ev-shape-name + .ev-field { border-top: 0; padding-top: 0; }
+.ev-field:last-child { padding-bottom: 0; }
+.ev-name { min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); }
+.ev-vals { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.ev-vals .ev-val, .ev-vals .ev-more { max-width: 100%; box-sizing: border-box; min-width: 0; padding: 1px 8px; line-height: 1.4; border: 1px solid var(--border); border-radius: 6px; background: var(--chip); overflow-wrap: anywhere; }
+.ev-vals .ev-more { background: transparent; color: var(--text-secondary); border-style: dashed; }
 .ev-more { color: var(--text-secondary); }
 .ev-host { font-weight: 700; padding-top: 4px; border-top: 1px solid var(--grid); }
+@container (max-width: 446px) { .ev-field { grid-template-columns: 14ch minmax(0, 1fr); gap: 8px; } }
 .pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .pill {
   font-size: 13px;
@@ -560,20 +567,18 @@ a { color: var(--link); }
       <span id="run-subtitle" class="subtle">Report viewer</span>
     </div>
     <div class="top-right">
-      <div id="run-chips" class="chips">
-        <span class="chip">Read-only</span>
-      </div>
-      <div class="picker">
+      <div id="run-chips" class="chips"></div>
+      <div class="picker-row"><span class="picker-note">Read-only view of the JSON report.</span><div class="picker">
         <input id="report-file" class="vh" type="file" accept=".json,application/json">
         <label for="report-file" class="open-btn" title="Choose a report JSON file">
           <svg class="open-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
           <span>Choose report</span>
         </label>
-      </div>
+      </div></div>
     </div>
   </header>
 
-  <p id="message" class="message" role="status" aria-live="polite">Choose a report JSON file to begin.</p>
+  <p id="message" class="message" role="status" aria-live="polite"></p>
 
   <nav id="nav" class="nav" aria-label="Report sections" hidden>
     <a class="navlink" href="#overview">Overview</a>
@@ -615,8 +620,6 @@ a { color: var(--link); }
     </section>
 
   </main>
-
-  <footer class="foot">Read-only view of the JSON report.</footer>
 
 </div>
 <script>
@@ -1707,14 +1710,20 @@ function buildItem(f, index) {
 
 function renderValueLines(field) {
   const vals = el("span", "", "ev-vals");
+  vals.setAttribute("role", "list");
+  const addChip = (text, cls) => {
+    const chip = el("span", text, cls);
+    chip.setAttribute("role", "listitem");
+    vals.appendChild(chip);
+  };
   for (const value of field.values) {
-    vals.appendChild(el("span", value, "ev-val"));
+    addChip(value, "ev-val");
   }
   if (field.more !== "") {
-    vals.appendChild(el("span", field.more, "ev-more"));
+    addChip(field.more, "ev-more");
   }
   if (field.values.length === 0 && field.more === "") {
-    vals.appendChild(el("span", "none", "ev-more"));
+    addChip("none", "ev-more");
   }
   return vals;
 }
