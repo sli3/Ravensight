@@ -1008,6 +1008,7 @@ function clampPercent(value) {
 
 // Position of one range bar on an axis, as percentages. Null when a time is invalid.
 // Equal times get a minimum visible width, and a last_seen before first_seen is swapped.
+// It also reports widened, true when the true width was below the minimum.
 function barPosition(firstMs, lastMs, axisStartMs, axisEndMs) {
   const all = [firstMs, lastMs, axisStartMs, axisEndMs];
   if (!all.every(Number.isFinite) || axisEndMs <= axisStartMs) {
@@ -1018,11 +1019,13 @@ function barPosition(firstMs, lastMs, axisStartMs, axisEndMs) {
   const late = Math.max(firstMs, lastMs);
   let left = clampPercent(((early - axisStartMs) / span) * 100);
   const right = clampPercent(((late - axisStartMs) / span) * 100);
-  const width = Math.max(right - left, MIN_BAR_PERCENT);
+  const trueWidth = right - left;
+  const width = Math.max(trueWidth, MIN_BAR_PERCENT);
   if (left + width > 100) {
     left = 100 - width;
   }
-  return {left: left, width: width, reversed: lastMs < firstMs};
+  return {left: left, width: width, reversed: lastMs < firstMs,
+    widened: trueWidth < MIN_BAR_PERCENT};
 }
 
 // A position as a CSS "%" style value, always a clamped number and never data text.
@@ -1584,9 +1587,9 @@ function buildLane(f, index, axis) {
     fill.style.width = percentText(bar.width);
     track.appendChild(fill);
     const startDot = el("span", "", "lane-dot");
-    startDot.style.left = percentText(bar.left);
+    startDot.style.left = percentText(bar.widened ? bar.left + bar.width / 2 : bar.left);
     track.appendChild(startDot);
-    if (f.firstMs !== f.lastMs) {
+    if (!bar.widened) {
       const endDot = el("span", "", "lane-dot");
       endDot.style.left = percentText(bar.left + bar.width);
       track.appendChild(endDot);
