@@ -689,13 +689,17 @@ def test_readme_describes_the_viewer() -> None:
 
 
 def test_text_width_caps() -> None:
-    """The note and prose caps are 100ch and 90ch, with no older cap left."""
+    """No prose or note has a length cap, and no older ch cap is left."""
     text = _text()
     assert "68ch" not in text
     assert "72ch" not in text
-    assert sorted(re.findall(r"max-width:\s*(\d+)ch", text)) == ["100", "90"]
-    assert re.search(r"\.note \{[^}]*max-width: 100ch", text)
-    assert re.search(r"\.prose \{[^}]*max-width: 90ch", text)
+    assert "100ch" not in text
+    assert re.findall(r"max-width:\s*\d+ch", text) == []
+    plain_note = re.search(r"^\.note \{([^}]*)\}", text, re.MULTILINE)
+    assert plain_note is not None
+    assert "max-width" not in plain_note.group(1)
+    assert not re.search(r"\.detail \.note \{[^}]*max-width", text)
+    assert not re.search(r"\.prose \{[^}]*max-width", text)
 
 
 def test_detail_two_column_layout_rules() -> None:
