@@ -1863,6 +1863,117 @@ Out of scope for the whole section:
 - Any change to how findings are matched or analysed
 - Opening, editing or printing `config.toml` or `.env`
 
+### 24. Trends Chart in the Viewer
+
+**What it does:**
+Draws the historical trends as a line chart in the web viewer, so a rise or fall in a
+finding over the rolling window can be seen at a glance instead of read from a text table.
+Today the per-day counts exist inside `ravensight/trending.py` (`_collect_series` builds one
+count map per local calendar day and `_build_rows` works out the average, latest count,
+days seen, direction and anomaly flag per finding), but only the finished markdown text
+reaches the JSON report as `trends_markdown`. This section adds the same numbers to the
+JSON as data, and then draws them. It is the "structured trends" and "charts" item that
+section 23 left for a later session. It is built on the `web-ui-report` branch.
+
+**Design rule:** the chart shows only what the JSON holds, as the report states it. The
+viewer never works out a rating, a score, a percentage or a forecast. The direction and the
+anomaly flag are the values `trending.py` already produces, shown as text from the JSON, and
+no colour in the chart implies a rating or a severity (no red, amber or green).
+
+**Sessions: 3. Session 1 is the report, Session 2 is the viewer, Session 3 checks them
+against real reports.**
+
+Decisions (agreed with Prin, to be confirmed before Session 1 starts):
+- Graph first: the chart replaces nothing. The `trends_markdown` text stays in the JSON and
+  in the viewer under the chart, and the markdown report is unchanged
+- The JSON gains one new top-level key, `trends`, and `schema_version` becomes 4 (the same
+  rule as sections 17 and 23: every additive change bumps the version). `trends` is `null`
+  when there is no scan history or no qualifying daily run. Otherwise it is an object with
+  `window_days`, `days` (the local calendar day of each qualifying daily run, in order, as
+  `YYYY-MM-DD` text), `hidden` (the number of rows left out by `max_rows`, as in the text
+  table) and `rows`. Each row has `label` (the display label, with vendor aliases applied),
+  `counts` (one whole number per entry in `days`, zero where the finding was absent that
+  day, as `_collect_series` already treats it), `latest`, `avg`, `days_seen`, `direction`
+  (`up`, `down`, `stable` or `new`) and `anomaly` (true or false). The rows are the same
+  rows, in the same order, that the text table shows. The cluster key itself is not added
+- The viewer accepts schema versions 3 and 4. A version 3 report still opens and shows the
+  trends text only, with no chart. Any other version still shows the clear message
+- The chart is plain inline SVG with no library, one line per finding over the days, with a
+  dot on each day that has a data point, a labelled day axis and a count axis. Days with no
+  daily run are not on the axis, as in the data. The lines use neutral series colours that
+  are not red, amber or green
+- Which lines show: the rows whose direction is `new` or whose `anomaly` is true, then the
+  rows with the largest `latest`, up to 5 lines at first (Prin to confirm the number). Every
+  row in `trends.rows` can be switched on or off with a chip selector under the chart, so
+  the viewer never hides a finding that the JSON holds. Each chip shows the row's label and
+  its direction, as text from the JSON
+- The chart and its selector use only text from the JSON and set attributes through one small
+  helper, never HTML (the same safety rule as section 23)
+
+#### Session 1 — Report: structured trends and schema version 4
+
+In scope:
+- `ravensight/trending.py`: a new method on `Trending` that returns the structured data
+  described in the Decisions (built from the same `_collect_series` and `_build_rows`, with
+  no change to how a day is chosen, how direction or anomaly is worked out, or to the
+  markdown text). `generate()` keeps returning the same markdown as before
+- `main.py`: pass the structured trends to `Reporter.generate` in a full run (report-only
+  runs get `null`, as for the other run-only data)
+- `ravensight/reporter.py`: `JSON_SCHEMA_VERSION` becomes 4 and the JSON gains the `trends`
+  key. Every older key and the markdown output stay byte-identical
+- `README.md`: the JSON section describes schema version 4 and the `trends` key
+- A schema 4 sample report `tests/fixtures/report-schema4-sample.json` (placeholder data
+  only) and tests for each change: the structured rows match the text table's rows and
+  order, `counts` lines up with `days`, a finding absent on a day counts as 0, the cap and
+  `hidden`, `null` for no history, the markdown is byte-identical, older keys are kept, and
+  the schema 3 sample test is updated to say schema 4 is the current version
+
+Out of scope:
+- Any change to how trends, direction or anomalies are worked out (window length, thresholds,
+  same-day rerun collapsing, vendor aliases)
+- Any other change to the JSON shape, the markdown report, the LLM prompt or analysis logic
+- The viewer (Session 2)
+- `config.toml` and `config.example.toml`
+
+#### Session 2 — Viewer: the trends chart
+
+In scope:
+- `web/index.html`: accept schema versions 3 and 4, read `trends` through the existing
+  single reader helper (new READS entries only for the new key paths), and draw the chart
+  and the chip selector in the Trends section, above the existing trends text, as set out in
+  the Decisions. A report with `trends` null or missing (including every schema 3 report)
+  shows the text only, as today
+- Follow the layout and style of the existing viewer (section 23). Prin reviews the look in
+  a browser, and any departure from the Decisions needs a roadmap line first
+- `tests/test_web_viewer.py`: static checks that the new `trends` key paths exist in the
+  schema 4 sample fixture, that versions 3 and 4 are accepted, and that the chart code
+  follows the existing safety rules (no HTML insertion, no network, no banned words)
+- `README.md` and this section's Feature Status row
+
+Out of scope:
+- Any change to the report, the JSON shape or `ravensight/trending.py` (Session 1 owns them)
+- Forecasts, trend lines, thresholds or any figure the JSON does not hold, and any rating,
+  score, percentage, pass or fail wording, or colour that implies one
+- Per-alert detail, comparing or listing several reports, exporting an image
+- A chart library or any framework, and any network request
+
+#### Session 3 — Check against real reports and tidy
+
+In scope:
+- Run the report and the viewer against real runs (a run with a long history, a run with a
+  short history of one or two days, a run with no history and a report-only run) and fix
+  only defects in `ravensight/trending.py`, `ravensight/reporter.py`, `web/` and their tests
+- Update `README.md` and this section's Feature Status row
+
+Out of scope:
+- New screens or data, and any item left out of the Decisions
+- Everything listed as out of scope for Sessions 1 and 2
+
+Out of scope for the whole section:
+- A web server, authentication, uploading a report anywhere
+- Any change to the baseline file format or to how scan history is stored
+- Opening, editing or printing `config.toml` or `.env`
+
 ## Suggested Build Order
 
 1. ~~Historical Trending~~ — Complete ✅
