@@ -72,6 +72,41 @@ class Trending:
         rows = self._build_rows(series)
         return self._render(rows, n_days=len(series))
 
+    def generate_data(
+        self,
+        baseline_data: dict[str, Any],
+        vendor_aliases: dict[str, str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Return the trend table as structured data, or None when there is none."""
+        self._vendor_aliases = vendor_aliases or {}
+        scan_history = baseline_data.get("scan_history", [])
+        if not scan_history:
+            return None
+
+        series = self._collect_series(scan_history)
+        if not series:
+            return None
+
+        rows = self._build_rows(series)
+        shown, hidden = self._select_rows(rows)
+        return {
+            "window_days": self._window_days,
+            "days": [d["date"] for d in series],
+            "hidden": hidden,
+            "rows": [
+                {
+                    "label": self._label(r["key"]),
+                    "counts": [d["counts"].get(r["key"], 0) for d in series],
+                    "latest": r["latest"],
+                    "avg": round(float(r["avg"]), 1),
+                    "days_seen": r["days_seen"],
+                    "direction": r["direction"],
+                    "anomaly": r["anomaly"],
+                }
+                for r in shown
+            ],
+        }
+
     def _collect_series(self, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Filter, collapse and shape scan history into per-day count maps.
 
@@ -161,14 +196,21 @@ class Trending:
 
         return rows
 
-    def _render(self, rows: list[dict[str, Any]], n_days: int) -> str:
-        """Render trend rows into the markdown report."""
+    def _select_rows(
+        self, rows: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Sort rows in place and return the rows to show plus the hidden count."""
         rows.sort(key=lambda r: (-r["latest"], -r["avg"], self._label(r["key"])))
 
         shown = [r for r in rows if r["anomaly"] or r["direction"] == "new"]
         regular = [r for r in rows if not (r["anomaly"] or r["direction"] == "new")]
         shown.extend(regular[: max(0, self._max_rows - len(shown))])
         hidden = len(rows) - len(shown)
+        return shown, hidden
+
+    def _render(self, rows: list[dict[str, Any]], n_days: int) -> str:
+        """Render trend rows into the markdown report."""
+        shown, hidden = self._select_rows(rows)
 
         note = (
             f"*Rolling window: {self._window_days} days · {n_days} "

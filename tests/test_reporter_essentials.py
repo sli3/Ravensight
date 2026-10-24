@@ -494,7 +494,7 @@ def test_json_essentials_null_when_absent(tmp_path: Path) -> None:
         payload = _load(rep.generate(data, essentials=value))
         assert "essentials" in payload
         assert payload["essentials"] is None
-        assert payload["schema_version"] == 3
+        assert payload["schema_version"] == 4
 
 
 def test_json_essentials_filled(tmp_path: Path) -> None:

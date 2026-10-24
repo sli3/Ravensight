@@ -150,14 +150,17 @@ def main() -> None:
 
     if args.report_only:
         trends_output = None
+        trends_data = None
         if "trending" in config:
             trend_mgr = trending.Trending(config["trending"])
-            trends_output = trend_mgr.generate(baseline_mgr.load(), vendor_aliases=vendor_aliases)
+            trend_baseline = baseline_mgr.load()
+            trends_output = trend_mgr.generate(trend_baseline, vendor_aliases=vendor_aliases)
+            trends_data = trend_mgr.generate_data(trend_baseline, vendor_aliases=vendor_aliases)
 
         rep = reporter.Reporter(config["reports"])
         note = _similar_incidents_note(embedder)
         report_data = {**baseline_mgr.load(), "similar_incidents_unavailable_note": note}
-        rep.generate(report_data, trends=trends_output)
+        rep.generate(report_data, trends=trends_output, trends_data=trends_data)
         return
 
     with run_reporter.run():
@@ -233,10 +236,13 @@ def main() -> None:
         run_reporter.stage("Baseline update", "done")
 
         trends_output = None
+        trends_data = None
         if "trending" in config:
             run_reporter.stage("Trends", "active")
             trend_mgr = trending.Trending(config["trending"])
-            trends_output = trend_mgr.generate(baseline_mgr.load(), vendor_aliases=vendor_aliases)
+            trend_baseline = baseline_mgr.load()
+            trends_output = trend_mgr.generate(trend_baseline, vendor_aliases=vendor_aliases)
+            trends_data = trend_mgr.generate_data(trend_baseline, vendor_aliases=vendor_aliases)
             run_reporter.stage("Trends", "done")
 
         asd_data = analyser._load_asd_data(asd_path) if asd_path else None
@@ -252,7 +258,7 @@ def main() -> None:
         analysis["similar_incidents_unavailable_note"] = _similar_incidents_note(embedder)
         rep = reporter.Reporter(config["reports"])
         run_reporter.stage("Report", "active")
-        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers, attestation=attestation, run_params={**run_params, "model": config["llm"]["model"]}, essentials=essentials)
+        report_path = rep.generate(analysis, trends=trends_output, asd_data=asd_data, e8_scores=e8_scores, matched_controls=matched_controls, finding_pointers=finding_pointers, attestation=attestation, run_params={**run_params, "model": config["llm"]["model"]}, essentials=essentials, trends_data=trends_data)
         run_reporter.stage("Report", "done")
 
     run_reporter.finish(analysis, report_path, counter.warnings, counter.errors)

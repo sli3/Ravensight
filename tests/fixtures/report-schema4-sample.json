@@ -1,0 +1,176 @@
+{
+  "schema_version": 4,
+  "generated_at": "2026-01-01T00:00:00+00:00",
+  "run": {
+    "hours": 24,
+    "agent": null,
+    "level": 7,
+    "model": "placeholder-model"
+  },
+  "findings": [
+    {
+      "type": "rule",
+      "id": "C1",
+      "severity": "Medium",
+      "description": "Example placeholder alert.",
+      "count": 3,
+      "first_seen": "2026-01-01T00:00:00.000Z",
+      "last_seen": "2026-01-01T01:00:00.000Z",
+      "narrative": "Placeholder narrative for the example finding.",
+      "recommendation": "Monitor: placeholder recommendation.",
+      "evidence": {
+        "syscheck": {
+          "events": [
+            "deleted"
+          ],
+          "paths": [
+            "/example/path"
+          ]
+        }
+      },
+      "hosts": [
+        "host-a"
+      ],
+      "flags": [],
+      "notes": [],
+      "cves": []
+    }
+  ],
+  "trends_markdown": "## Historical Trends\n\nPlaceholder trends text.\n",
+  "trends": {
+    "window_days": 30,
+    "days": [
+      "2026-01-01",
+      "2026-01-02",
+      "2026-01-03"
+    ],
+    "hidden": 0,
+    "rows": [
+      {
+        "label": "Placeholder finding one",
+        "counts": [
+          1,
+          2,
+          9
+        ],
+        "latest": 9,
+        "avg": 4.0,
+        "days_seen": 3,
+        "direction": "up",
+        "anomaly": false
+      },
+      {
+        "label": "Placeholder finding two",
+        "counts": [
+          0,
+          0,
+          1
+        ],
+        "latest": 1,
+        "avg": 0.3,
+        "days_seen": 3,
+        "direction": "new",
+        "anomaly": false
+      }
+    ]
+  },
+  "e8_status": {
+    "Patch applications": {
+      "status": "Not assessed",
+      "related_findings": [
+        "C1"
+      ],
+      "related_controls": [
+        {
+          "id": "ISM-0000",
+          "levels": [
+            1,
+            2
+          ]
+        }
+      ]
+    }
+  },
+  "finding_pointers": [
+    {
+      "id": "C1",
+      "ism": [
+        {
+          "id": "ISM-0000",
+          "category": "Example category",
+          "shared": [
+            "patch"
+          ]
+        }
+      ],
+      "e8": [
+        {
+          "strategy": "Patch applications",
+          "shared": [
+            "patch"
+          ]
+        }
+      ]
+    }
+  ],
+  "matched_controls": [
+    {
+      "id": "ISM-0000",
+      "category": "Example category",
+      "description": "Placeholder control description."
+    }
+  ],
+  "essentials": {
+    "attribution": "© Commonwealth of Australia 2026",
+    "licence": "CC BY 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "Restructured from ASD's PDF and XLSX publications into JSON and checked against the three documents listed above. Where those documents differ, both versions are kept.",
+    "notice": "UNOFFICIAL community dataset. Not produced, endorsed or supported by ASD. Check against ASD's official documents at cyber.gov.au before relying on it.",
+    "dataset_schema_version": 1,
+    "finding_actions": [
+      {
+        "id": "C1",
+        "actions": [
+          {
+            "action_id": "A1",
+            "principle_id": "P1",
+            "principle_name": "First principle",
+            "domains": [
+              {
+                "name": "Visibility and response",
+                "priority_phase": 1
+              }
+            ],
+            "reasons": [
+              {
+                "route": "mitre",
+                "technique_id": "T0000.001",
+                "technique_name": "Example technique",
+                "via_parent": true,
+                "list": "guide"
+              }
+            ]
+          }
+        ],
+        "omitted": 0
+      }
+    ],
+    "attestation": {
+      "P1": {
+        "status": "Partially effective",
+        "reason": "Placeholder reason.",
+        "domains": [
+          "Visibility and response"
+        ],
+        "name": "First principle"
+      }
+    }
+  },
+  "attestation": {
+    "Patch applications": {
+      "status": "Not assessed",
+      "level": null,
+      "reason": ""
+    }
+  }
+}

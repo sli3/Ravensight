@@ -61,12 +61,13 @@ def test_json_is_valid_with_expected_keys(tmp_path: Path) -> None:
         "run",
         "findings",
         "trends_markdown",
+        "trends",
         "e8_status",
         "finding_pointers",
         "matched_controls",
         "essentials",
     }
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
 
 
 def test_generated_at_is_converted_to_utc() -> None:
@@ -364,12 +365,12 @@ def _assert_same_shape(got: Any, want: Any, path: str = "$") -> None:
         _assert_same_shape(got[0], want[0], f"{path}[]")
 
 
-def test_payload_key_sets_match_schema3_fixture(tmp_path: Path) -> None:
-    """The generated JSON has the same recursive key sets as the committed schema 3 sample."""
+def test_payload_key_sets_match_schema4_fixture(tmp_path: Path) -> None:
+    """The generated JSON has the same recursive key sets as the committed schema 4 sample."""
     from tests.test_reporter_essentials import _action, _entry, _essentials
 
     sample = json.loads(
-        (Path(__file__).parent / "fixtures" / "report-schema3-sample.json").read_text(
+        (Path(__file__).parent / "fixtures" / "report-schema4-sample.json").read_text(
             encoding="utf-8"
         )
     )
@@ -401,6 +402,31 @@ def test_payload_key_sets_match_schema3_fixture(tmp_path: Path) -> None:
         }
     ]
     controls = [{"id": "ISM-0000", "category": "Example category", "description": "Placeholder."}]
+    trends_data = {
+        "window_days": 30,
+        "days": ["2026-01-01", "2026-01-02", "2026-01-03"],
+        "hidden": 0,
+        "rows": [
+            {
+                "label": "Placeholder one",
+                "counts": [1, 2, 9],
+                "latest": 9,
+                "avg": 4.0,
+                "days_seen": 3,
+                "direction": "up",
+                "anomaly": False,
+            },
+            {
+                "label": "Placeholder two",
+                "counts": [0, 0, 1],
+                "latest": 1,
+                "avg": 0.3,
+                "days_seen": 3,
+                "direction": "new",
+                "anomaly": False,
+            },
+        ],
+    }
     evidence = {"syscheck": {"events": ["deleted"], "paths": ["/example/path"]}}
     path = _make_reporter(tmp_path).generate(
         {"summary": "s", "findings": [_cluster(id="C1", evidence=evidence)]},
@@ -411,6 +437,57 @@ def test_payload_key_sets_match_schema3_fixture(tmp_path: Path) -> None:
         attestation={"Patch applications": _att("Not assessed")},
         run_params={"hours": 24, "agent": None, "level": 7, "model": "any"},
         essentials=essentials,
+        trends_data=trends_data,
     )
 
     _assert_same_shape(_load(path), sample)
+
+
+_TRENDS_DATA: dict[str, Any] = {
+    "window_days": 30,
+    "days": ["2026-01-01", "2026-01-02", "2026-01-03"],
+    "hidden": 0,
+    "rows": [
+        {
+            "label": "Placeholder one",
+            "counts": [1, 2, 9],
+            "latest": 9,
+            "avg": 4.0,
+            "days_seen": 3,
+            "direction": "up",
+            "anomaly": False,
+        }
+    ],
+}
+
+
+def test_trends_null_without_trends_data_and_equal_with_it(tmp_path: Path) -> None:
+    """trends is null by default and equals the dict passed as trends_data."""
+    rep = _make_reporter(tmp_path, overwrite=True)
+    data = {"summary": "s", "findings": []}
+    assert _load(rep.generate(data))["trends"] is None
+    assert _load(rep.generate(data, trends_data=_TRENDS_DATA))["trends"] == _TRENDS_DATA
+
+
+def test_trends_markdown_unchanged_by_trends_data(tmp_path: Path) -> None:
+    """trends_markdown is the same with or without trends_data."""
+    rep = _make_reporter(tmp_path, overwrite=True)
+    data = {"summary": "s", "findings": []}
+    text = "## Historical Trends\n\nPlaceholder.\n"
+    payload = _load(rep.generate(data, trends=text, trends_data=_TRENDS_DATA))
+    assert payload["trends_markdown"] == text
+
+
+def test_markdown_byte_identical_with_and_without_trends_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The markdown written does not change when trends_data is passed."""
+    monkeypatch.setattr(reporter, "datetime", _FrozenDatetime)
+    data = {"summary": "s", "findings": [_cluster(id="C1")]}
+    plain = Reporter({"output_dir": str(tmp_path / "a"), "overwrite": True}).generate(
+        data, trends="## Historical Trends\n"
+    )
+    with_data = Reporter({"output_dir": str(tmp_path / "b"), "overwrite": True}).generate(
+        data, trends="## Historical Trends\n", trends_data=_TRENDS_DATA
+    )
+    assert plain.read_bytes() == with_data.read_bytes()

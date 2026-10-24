@@ -683,7 +683,7 @@ def _render_essentials_section(essentials: Any, findings: list) -> str:
     return "\n".join(lines)
 
 
-JSON_SCHEMA_VERSION = 3
+JSON_SCHEMA_VERSION = 4
 
 _CLUSTER_LIST_KEYS = ("hosts", "flags", "notes", "cves")
 _CLUSTER_SCALAR_KEYS = (
@@ -771,10 +771,12 @@ def _build_json_payload(
     finding_pointers: list | None,
     attestation: dict | None,
     essentials: dict | None = None,
+    trends_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the plain dict written as the JSON report (no summary, MITRE tags or similar incidents).
 
     essentials is the optional Essentials block; the payload's essentials key is None without a usable dataset.
+    trends_data is the optional structured trend table, written under "trends".
     """
     findings = [
         mapped
@@ -787,6 +789,7 @@ def _build_json_payload(
         "run": run_params,
         "findings": findings,
         "trends_markdown": trends or None,
+        "trends": trends_data,
         "e8_status": e8_scores,
         "finding_pointers": finding_pointers,
         "matched_controls": matched_controls,
@@ -837,6 +840,7 @@ class Reporter:
         attestation: dict | None = None,
         run_params: dict | None = None,
         essentials: dict | None = None,
+        trends_data: dict[str, Any] | None = None,
     ) -> Path:
         """
         Generate markdown report from analysis data, plus a JSON file beside it.
@@ -852,6 +856,7 @@ class Reporter:
             run_params: Optional run window and filters, echoed under "run" in the JSON only.
             essentials: Optional Essentials block (dataset, finding_actions, attestation);
                 adds the ASD Essentials section to the markdown and an essentials key to the JSON.
+            trends_data: Optional structured trend table, shown under "trends" in the JSON only.
 
         Returns:
             Path of the written markdown report file. It is written to a .tmp file first,
@@ -902,6 +907,7 @@ class Reporter:
                 finding_pointers=finding_pointers,
                 attestation=attestation,
                 essentials=essentials,
+                trends_data=trends_data,
             )
         return filename
 
@@ -918,6 +924,7 @@ class Reporter:
         finding_pointers: list | None,
         attestation: dict | None,
         essentials: dict | None = None,
+        trends_data: dict[str, Any] | None = None,
     ) -> None:
         """Write the JSON report beside the markdown (including any essentials block); log a warning and carry on if it fails."""
         tmp = json_path.with_name(json_path.name + ".tmp")
@@ -932,6 +939,7 @@ class Reporter:
                 finding_pointers=finding_pointers,
                 attestation=attestation,
                 essentials=essentials,
+                trends_data=trends_data,
             )
             text = json.dumps(payload, ensure_ascii=False, indent=2)
             tmp.write_text(text + "\n", encoding="utf-8")
