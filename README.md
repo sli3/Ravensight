@@ -553,8 +553,10 @@ must be exactly `true` or `false`). This applies to Docker too, through the moun
 choose a report `.json` file from `reports/`. It reads the JSON report only (schema versions 3 and 4),
 never the markdown, and it is read-only: it cannot change a report or any other file.
 Nothing leaves the machine, because the page makes no network requests. A schema version 4
-report draws its trends as a line chart above the trends text, with chips under the chart
-to show or hide each finding's line. A schema version 3 report shows the trends text only.
+report draws its trends as a line chart above a table of every finding, with a button on
+each row to show or hide that finding's line and a small line per row. The trends text sits
+in a collapsed "Text version" section under the table. A schema version 3 report shows the
+trends text only.
 Any other schema version (for example an older schema version 2 report) shows a clear
 message instead of a page.
 

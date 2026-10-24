@@ -590,8 +590,10 @@ REQUIRED_PHRASES = [
     "No principles were pointed at for this cluster.",
     "Table view",
     "No trend data",
-    "Select a chip to show or hide it.",
+    "Select a row's button to show or hide its line.",
     "No findings selected.",
+    "Text version",
+    "The chart could not be drawn.",
     "time not available",
     "All phases",
     "No recommendation was generated.",
@@ -699,6 +701,7 @@ TRENDS_READS = [
     "trends.rows[].label",
     "trends.rows[].counts",
     "trends.rows[].latest",
+    "trends.rows[].avg",
     "trends.rows[].direction",
     "trends.rows[].anomaly",
 ]
@@ -712,7 +715,7 @@ def test_supported_schemas_and_message() -> None:
 
 
 def test_trends_reads_are_schema4_only() -> None:
-    """The trends reads are exactly the agreed ten, absent from schema 3, present in schema 4."""
+    """The trends reads are exactly the agreed eleven, absent from schema 3, present in schema 4."""
     reads = _extract_array("READS", _text())
     trends = [entry for entry in reads if entry == "trends" or entry.startswith("trends.")]
     assert sorted(trends) == sorted(TRENDS_READS)
@@ -721,6 +724,70 @@ def test_trends_reads_are_schema4_only() -> None:
     for entry in trends:
         assert not _exists(schema3, entry), f"{entry} is in the schema 3 sample"
         assert _exists(schema4, entry), f"{entry} is not in the schema 4 sample"
+
+
+def test_text_version_is_a_closed_details_element() -> None:
+    """The trends text sits in a details element built with el, which the code never opens."""
+    text = _text()
+    assert 'el("summary", "Text version")' in text
+    assert 'el("details"' in text
+    assert not re.search(r"\.open\s*=(?!=)", text)
+    assert not re.search(r"setAttribute\(\s*[\"']open[\"']", text)
+
+
+def test_text_version_details_only_wraps_when_the_chart_was_drawn() -> None:
+    """The details wrapper depends on the drawn flag, and an empty model is not drawn."""
+    text = _text()
+    assert "if (drawn) {" in text
+    assert "This report's trends table has no findings to draw.\", \"empty\"));\n    return false;" in text
+
+
+def test_trend_columns_are_the_five_headers_in_order() -> None:
+    """TREND_COLUMNS holds the five table headers, in order."""
+    assert _extract_array("TREND_COLUMNS", _text()) == [
+        "Finding",
+        "Avg/day",
+        "Latest",
+        "Direction",
+        "Daily counts",
+    ]
+
+
+def test_avg_is_read_in_schema4_only() -> None:
+    """avg is in READS, in the schema 4 sample and not in the schema 3 sample."""
+    reads = _extract_array("READS", _text())
+    schema3 = _load_json(FIXTURE)
+    schema4 = _load_json(FIXTURE4)
+    for entry in ("trends.rows[].avg",):
+        assert entry in reads
+        assert _exists(schema4, entry)
+        assert not _exists(schema3, entry)
+    assert "trends.rows[].days_seen" not in reads
+
+
+def test_days_seen_and_state_words_are_gone_and_more_findings_wording_is_present() -> None:
+    """The page has no days_seen column or Shown and Hidden words, and groups the rest."""
+    text = _text()
+    for old in ("days_seen", "daysSeen", '"Shown"', '"Hidden"'):
+        assert old not in text, old
+    assert " more findings" in text
+    assert "1 more finding" in text
+
+
+def test_old_chip_list_is_gone() -> None:
+    """The old trends chip list and its wording are absent (other chips still exist)."""
+    text = _text()
+    for old in ("tr-chip", "trendChip", "Select a chip"):
+        assert old not in text, old
+
+
+def test_no_string_timers_and_one_svg_creator() -> None:
+    """setTimeout never takes a string, and createElementNS appears once, in svgEl."""
+    text = _text()
+    assert 'setTimeout("' not in text
+    assert "setTimeout('" not in text
+    assert len(re.findall(r"createElementNS", text)) == 1
+    assert [func for _, func in _assignment_sites(text, r"createElementNS")] == ["svgEl"]
 
 
 def test_svg_elements_come_only_from_svgel() -> None:
