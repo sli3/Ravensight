@@ -53,7 +53,7 @@ The base project is complete. All modules are working end-to-end:
 | Report Table Tidy-up (section 21) | ✅ Complete | Session 1 (commit `e4a5f6f`): `ravensight/reporter.py` `MAX_FINDING_LABEL_CHARS = 100` replaces the literal 60 in the Finding cell of both `_render_finding_pointers` (ASD Framework table) and `_render_essentials_pointers` (Essentials table), still cut at a word boundary, so a 68-character title such as the netstat finding is shown whole; the ISM description cells at 120 are unchanged; `ravensight/e8_scorer.py` adds "there" to `E8_GENERIC_WORDS`, so the word alone no longer counts as a shared keyword in the Essential Eight, ISM and Essentials keyword routes; 6 new tests across `tests/test_reporter_findings.py`, `tests/test_reporter_essentials.py` and `tests/test_e8_scorer.py`; 868 tests pass, ruff clean. Seen in a live Docker run: the image was rebuilt and the report generated, but no long-titled finding got a pointer in that run, so the longer label and the "there" change were not seen live. Negation ("no external source" still matches on "external") is not handled, by design. |
 | Analysis Coverage and Prompt Evidence Cut (section 22) | ✅ Complete | Session 1 (commit `f5c2d78`): found in a Debug session on 22 Oct 2026 after two live runs left two dpkg clusters (note "normal dpkg upgrade sequence") with no narrative or recommendation and no warning, and after a narrative copied a path cut as "/etc/ssh/ssh_c…". `ravensight/analyser.py` `_build_prompt` output instruction now asks for one narrative line and one recommendation line for every listed cluster id, with a short line allowed for a cluster its note already explains; `_parse_analysis` logs at most two neutral warnings naming cluster ids with no narrative or no recommendation, checking only the first `MAX_PROMPT_CLUSTERS` clusters, nothing on the legacy path and no change to the returned findings; the new private `_cut_on_value` cuts the prompt evidence at the last ", " or "; " (hard cut when there is none) in place of the two raw character slices, so the prompt segment stays at most `MAX_EVIDENCE_LINE_CHARS` and a path is never cut inside; two existing tests in `tests/test_prompt_context.py` changed from exactly 400 characters to at most 400 on a value boundary, plus 10 new tests in that file and `tests/test_finding_parse.py`; 878 tests pass, ruff clean. Seen in four live runs on 22 Oct after a rebuild: the path cut is gone, and the coverage warning named exactly C4 and C5 in the two runs where the model skipped them (the other two runs were complete), so coverage still depends on the model. Open: the stream `finish_reason` is still not logged, the report shows nothing for a cluster with no commentary, and the longer reply may need watching against `max_tokens` (8192). |
 | Web UI Report Viewer (section 23) | 🔶 In progress | Built on the `web-ui-report` branch. Session 1 (commit `2af63af`): `JSON_SCHEMA_VERSION` 3; the JSON `essentials` block gains `licence_url` and `changes` (new `_json_essentials_licence_extras` and constants, with the existing fallback rule; the shared `_essentials_source` is untouched, so the markdown is byte-identical), every `essentials.attestation` entry gains `name`, and `run` gains `model` in full runs only (`main.py` passes a copy of the run parameters to `Reporter.generate`; the baseline path still gets the three-key dict); README JSON section updated; placeholder sample report `tests/fixtures/report-schema3-sample.json` and a recursive key-set test; 894 tests pass. Design spec `docs/web-ui/Viewer.dc.html` (commit `d4506d2`, artboard E, placeholder data only, scrubbed of private names). Session 2 (commits `acce411` and `5a1d60a`): `web/index.html`, one self-contained file with inline CSS and plain JavaScript, no framework or library, no network request, a Content-Security-Policy meta tag; it loads one report JSON through a file picker, shows a clear message for any schema version other than 3, and renders from a model built once with a single reader helper (`rd`) and a text-only DOM helper, so no JSON text is ever inserted as HTML. It shows the run header with derived totals (alert total as the sum of cluster counts, findings per severity, window, hosts), a timeline of one UTC range bar per finding, the findings list and detail (structured evidence by shape, the "Check" line built from `flags`, notes, CVEs), the Essential Eight cards (declared status and level from the operator's attestation only), the ASD Essentials pointers per finding with the operator's declared status, a pointer map over the 8 fixed ASD domains, the declared ratings, the attribution, licence link, change note and unofficial notice from the JSON, and the trends text as preformatted text; the README has a short "Report viewer" section; `tests/test_web_viewer.py` has 38 static checks (READS key paths against the sample report, the 8 domain names against the dataset, no network or external URL, no HTML-insertion methods, no banned words or private names, id lookups, section and nav ids); 932 tests pass, ruff clean. Browser check on 23 Oct 2026 (Chrome, `tests/fixtures/report-schema3-sample.json` only, console clean on load and upload): the viewer renders and the sample's finding selects and shows its detail. Style-parity fixes against artboard E (commits `b6701bd` and `e6bc226`, `web/index.html` only, 933 tests pass): Essentials and Trends section spacing, a tighter timeline heading, visible timeline gridlines, a 2px range line, lane label weights, the Overview cards and Findings list sitting straight on the page, and the Findings heading moved into the list column. On 23 Oct 2026 the timeline gained a round dot at each end of the line (first and last seen only, one dot when equal) and lost the selected-row fill, after Prin amended this section's scope. Left as they are because the roadmap puts them out of scope or they are data-driven: per-alert timeline dots and the "Alert time" legend (the JSON holds no per-alert times), the axis labels and the header text. Also on 23 Oct 2026, each recorded in this section's Decisions and seen in Prin's real report: the run details became header chips, the file picker became a compact violet header button with the read-only sentence beside it (the Read-only chip, the idle status text and the footer are gone), the page column may be up to 1800px, and the evidence panel shows one row per field with a wide label column and the values as chips. 933 tests pass. Not checked yet: a narrow window, 30 or more findings, the empty-findings state, a long list, and any real report, so Session 3 (check against real reports and fix defects) is still needed. Open: Safari's parsing of six-digit fractional seconds in `generated_at`, tick labels have no year, a reversed time range is swapped silently, 500 findings make a very tall page, and an empty notices box shows when all five notice fields are blank. |
-| Trends Chart in the Viewer (section 24) | 🔶 In progress | Built on the `web-ui-report` branch. Session 1 (report side, uncommitted at time of update): `ravensight/trending.py` `Trending._select_rows` (the row order and cap moved out of `_render` unchanged) and the new `Trending.generate_data()` return the per-day counts as data (days, hidden count and rows with label, counts, latest, average, days seen, direction and anomaly, no cluster key); `main.py` passes it to `Reporter.generate` in both the full run and `--report-only` when `[trending]` exists; `ravensight/reporter.py` `JSON_SCHEMA_VERSION` 4 with a new `trends` key (the markdown and `trends_markdown` are unchanged, proved by a fixed expected-text test); README JSON section updated; sample `tests/fixtures/report-schema4-sample.json`; new `tests/test_trending_structured.py` and updated reporter tests; 947 tests pass, ruff clean. Not started: Session 2 (the chart in `web/index.html`, which still rejects schema 4 reports until it lands, so the two sessions are one release) and Session 3 (real reports). |
+| Trends Chart in the Viewer (section 24) | 🔶 In progress | Built on the `web-ui-report` branch. Session 1 (report side, commit `395bfaa`): `ravensight/trending.py` `Trending._select_rows` (the row order and cap moved out of `_render` unchanged) and the new `Trending.generate_data()` return the per-day counts as data (days, hidden count and rows with label, counts, latest, average, days seen, direction and anomaly, no cluster key); `main.py` passes it to `Reporter.generate` in both the full run and `--report-only` when `[trending]` exists; `ravensight/reporter.py` `JSON_SCHEMA_VERSION` 4 with a new `trends` key (the markdown and `trends_markdown` are unchanged, proved by a fixed expected-text test); README JSON section updated; sample `tests/fixtures/report-schema4-sample.json`; new `tests/test_trending_structured.py` and updated reporter tests; 947 tests pass, ruff clean. Session 2 (commit `9c7b372`): `web/index.html` accepts schema versions 3 and 4 and draws the trends as an inline SVG line chart (day axis, count axis, a neutral eight-colour palette, default 5 lines) with a selector per finding; a schema 3 report shows the text only. Session 3 (uncommitted at time of update, seen in Prin's real 17-row report on 24 Oct 2026): the text dump became a table built from `trends.rows` (Finding, Avg/day, Latest, Direction and a small line per row on its own scale), each row's first cell is the show/hide button with a swatch that is filled when shown, the default 5 rows are listed first and the others sit in a closed "N more findings" section, and the trends text sits in a closed "Text version" section; four small chart defects were fixed; 958 tests pass. Not checked: a narrow window, the opened "N more findings" group on a real report and printing (closed sections do not print). Open: Session 4 (more real-report checks). |
 
 ---
 
@@ -1881,12 +1881,13 @@ viewer never works out a rating, a score, a percentage or a forecast. The direct
 anomaly flag are the values `trending.py` already produces, shown as text from the JSON, and
 no colour in the chart implies a rating or a severity (no red, amber or green).
 
-**Sessions: 3. Session 1 is the report, Session 2 is the viewer, Session 3 checks them
-against real reports.**
+**Sessions: 4. Session 1 is the report, Session 2 is the chart, Session 3 is the trends
+table, Session 4 checks them against real reports.**
 
 Decisions (agreed with Prin):
 - Graph first: the chart replaces nothing. The `trends_markdown` text stays in the JSON and
-  in the viewer under the chart, and the markdown report is unchanged
+  in the viewer under the chart (from Session 3 on, inside a collapsed "Text version"
+  section, see the Trends table decision), and the markdown report is unchanged
 - The JSON gains one new top-level key, `trends`, and `schema_version` becomes 4 (the same
   rule as sections 17 and 23: every additive change bumps the version). `trends` is `null`
   when the `[trending]` section is missing, when there is no scan history, or when there is
@@ -1912,6 +1913,31 @@ Decisions (agreed with Prin):
   its direction, as text from the JSON
 - The chart and its selector use only text from the JSON and set attributes through one small
   helper, never HTML (the same safety rule as section 23)
+- Trends table (Prin's decision, 24 Oct 2026, Session 3): the text dump under the chart is
+  replaced by a table built from `trends.rows`, never by parsing `trends_markdown`. Its
+  columns are Finding (the label, wrapped), Avg/day, Latest and Direction (the
+  JSON's own word, with the word "anomaly" beside it when the flag is true), with the
+  numbers aligned to the right, in the report's own order, and a fifth column, Daily counts,
+  that holds each row's small line ("Days seen" is not a column: it is the same number in
+  every row, so the note states the number of daily runs once). Each row is also the selector:
+  it has a show/hide toggle and a swatch in the same colour as its line, in place of the chip
+  list under the chart (the default of 5 lines and the rule that every row stays reachable
+  do not change). Each row also has a small line drawn from its `counts`, in the row's
+  colour, with no axes. Each small line uses its own scale, from 0 to that finding's highest
+  daily count, and the table's note says so. The `trends_markdown` text is still shown, inside a collapsed "Text
+  version" section under the table (closed by default), so nothing is lost. The viewer adds
+  no figure the JSON lacks (no sigma values) and no colour that implies a rating (no red,
+  amber or green for direction). This replaces the chip selector under the chart and the
+  visible text of Session 2
+- Compact trends table (Prin's decision, 24 Oct 2026, Session 3): a row is one line high
+  where its label fits. The swatch is the show/hide control (filled when the line is shown,
+  empty when it is hidden), with no "Shown" or "Hidden" words and no large highlighted box;
+  a shown row has a bolder label. The findings drawn at first (the default of 5 lines) are
+  listed first, in the report's own order. The other findings sit under them inside a native
+  collapsed section, closed by default and named for how many findings it holds (for
+  example "12 more findings"), with the same columns and the same controls, so every
+  finding stays reachable. A row keeps its place when it is switched on or off. The group
+  is worked out once when a report is loaded
 
 #### Session 1 — Report: structured trends and schema version 4
 
@@ -1961,7 +1987,35 @@ Out of scope:
 - Per-alert detail, comparing or listing several reports, exporting an image
 - A chart library or any framework, and any network request
 
-#### Session 3 — Check against real reports and tidy
+#### Session 3 — Viewer: the trends table
+
+In scope:
+- `web/index.html`: replace the chip list under the chart and the visible trends text with
+  the table described in the Trends table decision (row toggles with swatches, a small line
+  per row, the text version inside a collapsed "Text version" section), reading the `trends`
+  key paths already in READS plus `trends.rows[].avg`, which Session 2 left out because
+  nothing used it
+- Four small defects found in the chart review: the note counts only the days that are
+  plotted and reads correctly for one day, the dot tooltips show the same date text as the
+  day axis, a short message appears when the chart cannot be drawn (the toggles stay but say
+  so), and redrawing on a window resize waits for the resizing to pause
+- The compact table of the Compact trends table decision: one-line rows with the swatch as
+  the control, the drawn findings first, the other findings in a collapsed section, and no
+  "Days seen" column (its `trends.rows[].days_seen` READS entry and `rd` literal are removed)
+- `tests/test_web_viewer.py`: static checks for the table (no HTML insertion, no network, no
+  banned words, the Text version section, READS gains exactly `trends.rows[].avg` (11
+  `trends` entries in all)), and the README viewer paragraph
+- This section's Feature Status row
+
+Out of scope:
+- Any change to the report, the JSON shape or `ravensight/trending.py`
+- Parsing `trends_markdown`, and any figure the JSON does not hold (such as the sigma
+  values in the text version)
+- Sorting or filtering the table, a "Show all" or "Clear" control (the collapsed section of
+  other findings is not one), and colour for direction
+- Everything listed as out of scope for Session 2
+
+#### Session 4 — Check against real reports and tidy
 
 In scope:
 - Run the report and the viewer against real runs (a run with a long history, a run with a
@@ -1971,7 +2025,7 @@ In scope:
 
 Out of scope:
 - New screens or data, and any item left out of the Decisions
-- Everything listed as out of scope for Sessions 1 and 2
+- Everything listed as out of scope for Sessions 1 to 3
 
 Out of scope for the whole section:
 - A web server, authentication, uploading a report anywhere
