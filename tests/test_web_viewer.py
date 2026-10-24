@@ -688,6 +688,42 @@ def test_readme_describes_the_viewer() -> None:
     assert "read-only" in readme
 
 
+def test_text_width_caps() -> None:
+    """The note and prose caps are 100ch and 90ch, with no older cap left."""
+    text = _text()
+    assert "68ch" not in text
+    assert "72ch" not in text
+    assert sorted(re.findall(r"max-width:\s*(\d+)ch", text)) == ["100", "90"]
+    assert re.search(r"\.note \{[^}]*max-width: 100ch", text)
+    assert re.search(r"\.prose \{[^}]*max-width: 90ch", text)
+
+
+def test_detail_two_column_layout_rules() -> None:
+    """The cluster detail uses a named container and a two column wrapper without order."""
+    text = _text()
+    assert 'el("div", "", "detail-cols")' in text
+    assert "@container detail (min-width: 900px)" in text
+    assert "container-name: detail" in text
+    assert "@container (max-width: 446px)" in text
+    rules = re.findall(r"[^{}]*\.detail-cols[^{}]*\{[^}]*\}", text)
+    assert rules
+    for rule in rules:
+        assert "order:" not in rule
+
+
+def test_cluster_detail_dom_order_stays_narrative_first() -> None:
+    """Both headings sit inside the wrapper, ahead of the evidence and the notes."""
+    text = _text()
+    start = text.index("function renderClusterDetail(")
+    body = text[start : text.index("\n}\n", start)]
+    wrapper = body.index('el("div", "", "detail-cols")')
+    found = body.index("What the model found")
+    recommendation = body.index('"Recommendation"')
+    evidence = body.index('titled("Evidence"')
+    notes = body.index('titled("Notes"')
+    assert wrapper < found < recommendation < evidence < notes
+
+
 # ---------------------------------------------------------------------------
 # (h) Schema 4 trends chart
 # ---------------------------------------------------------------------------

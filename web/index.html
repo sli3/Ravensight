@@ -196,7 +196,7 @@ a { color: var(--link); }
 }
 .panel h3 { margin: 0; font-size: 16px; font-weight: 600; }
 .panel h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.note { margin: 0; font-size: 14px; color: var(--text-secondary); max-width: 72ch; overflow-wrap: anywhere; }
+.note { margin: 0; font-size: 14px; color: var(--text-secondary); max-width: 100ch; overflow-wrap: anywhere; }
 .empty {
   margin: 0;
   border: 1px dashed var(--muted);
@@ -370,6 +370,8 @@ a { color: var(--link); }
   display: flex;
   flex-direction: column;
   gap: 20px;
+  container-name: detail;
+  container-type: inline-size;
 }
 .detail-head { display: flex; flex-direction: column; gap: 8px; }
 .detail-sev { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
@@ -386,7 +388,7 @@ a { color: var(--link); }
   overflow-wrap: anywhere;
 }
 .check .tag { flex: none; font-weight: 700; }
-.prose { margin: 0; max-width: 68ch; overflow-wrap: anywhere; }
+.prose { margin: 0; max-width: 90ch; overflow-wrap: anywhere; }
 .prose-main { font-size: 17px; }
 .prose-note { font-size: 14px; color: var(--text-secondary); margin: 0 0 4px; }
 .prose-none {
@@ -395,6 +397,9 @@ a { color: var(--link); }
   border-radius: 8px;
   padding: 12px 16px;
 }
+.detail-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 32px; align-items: start; }
+.detail-cols > div { min-width: 0; }
+@container detail (min-width: 900px) { .detail-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .evidence {
   background: var(--page);
   border: 1px solid var(--border);
@@ -2051,15 +2056,17 @@ function renderClusterDetail(box, f) {
     note.setAttribute("role", "note");
     box.appendChild(note);
   }
-  box.appendChild(titled("What the model found", [
-    isBlank(f.narrative)
-      ? el("p", NO_COMMENTARY_NARRATIVE, "prose prose-none")
-      : el("p", f.narrative, "prose prose-main")
-  ]));
-  box.appendChild(titled("Recommendation", [
-    isBlank(f.recommendation)
-      ? el("p", NO_RECOMMENDATION_TEXT, "prose prose-note")
-      : el("p", f.recommendation, "prose")
+  box.appendChild(add(el("div", "", "detail-cols"), [
+    titled("What the model found", [
+      isBlank(f.narrative)
+        ? el("p", NO_COMMENTARY_NARRATIVE, "prose prose-none")
+        : el("p", f.narrative, "prose prose-main")
+    ]),
+    titled("Recommendation", [
+      isBlank(f.recommendation)
+        ? el("p", NO_RECOMMENDATION_TEXT, "prose prose-note")
+        : el("p", f.recommendation, "prose")
+    ])
   ]));
   box.appendChild(titled("Evidence", [renderEvidence(f.evidence)]));
   if (f.notes.length > 0) {
