@@ -17,6 +17,14 @@
   --baseline: #c3c2b7;
   --border: rgba(11, 11, 11, 0.10);
   --series-1: #2a78d6;
+  --chart-1: #2a78d6;
+  --chart-2: #b83280;
+  --chart-3: #0e7490;
+  --chart-4: #475569;
+  --chart-5: #1e3a8a;
+  --chart-6: #78716c;
+  --chart-7: #0284c7;
+  --chart-8: #0b0b0b;
   --row-sel: #eef4fc;
   --chip: #f0efec;
   --link: #1c5cab;
@@ -40,6 +48,14 @@
     --baseline: #383835;
     --border: rgba(255, 255, 255, 0.10);
     --series-1: #3987e5;
+    --chart-1: #3987e5;
+    --chart-2: #e879b9;
+    --chart-3: #22b8cf;
+    --chart-4: #94a3b8;
+    --chart-5: #7f9bea;
+    --chart-6: #a8a29e;
+    --chart-7: #38bdf8;
+    --chart-8: #f0efec;
     --row-sel: #222a35;
     --chip: #262624;
     --link: #79b8ff;
@@ -541,6 +557,49 @@ a { color: var(--link); }
   overflow-wrap: anywhere;
   overflow-x: auto;
 }
+.tr-svg { display: block; max-width: 100%; height: auto; }
+.tr-grid { stroke: var(--grid); stroke-width: 1; }
+.tr-axis { stroke: var(--baseline); stroke-width: 1; }
+.tr-tick { font-size: 12px; fill: var(--muted); }
+.tr-path { fill: none; stroke: var(--tc); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tr-dot { fill: var(--tc); stroke: var(--surface-1); stroke-width: 1.5; }
+.tr-series:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.tr-d1 .tr-path { stroke-dasharray: 6 4; }
+.tr-d2 .tr-path { stroke-dasharray: 2 4; }
+.tr-c0 { --tc: var(--chart-1); }
+.tr-c1 { --tc: var(--chart-2); }
+.tr-c2 { --tc: var(--chart-3); }
+.tr-c3 { --tc: var(--chart-4); }
+.tr-c4 { --tc: var(--chart-5); }
+.tr-c5 { --tc: var(--chart-6); }
+.tr-c6 { --tc: var(--chart-7); }
+.tr-c7 { --tc: var(--chart-8); }
+#trends-svg-ns { position: absolute; width: 0; height: 0; overflow: hidden; }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 8px; max-height: 15rem; overflow-y: auto; padding: 2px; }
+.tr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.tr-chip:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.tr-chip[aria-pressed="true"] { background: var(--row-sel); border-color: var(--tc); color: var(--text-primary); }
+.tr-sw { flex: none; display: inline-block; width: 20px; height: 0; border-top: 3px solid var(--tc); }
+.tr-sw.tr-sw-d1 { border-top-style: dashed; }
+.tr-sw.tr-sw-d2 { border-top-style: dotted; }
+.tr-flag { flex: none; font-size: 12px; border: 1px solid var(--muted); border-radius: 4px; padding: 0 6px; line-height: 18px; }
 
 @media print {
   :root {
@@ -617,6 +676,7 @@ a { color: var(--link); }
     <section id="trends" aria-labelledby="trends-h" class="panel panel-trends" hidden>
       <h2 id="trends-h">Trends</h2>
       <div id="trends-body"></div>
+      <svg id="trends-svg-ns" width="0" height="0" aria-hidden="true" focusable="false"></svg>
     </section>
 
   </main>
@@ -629,7 +689,7 @@ a { color: var(--link); }
 // Constants
 // ---------------------------------------------------------------------------
 
-const SUPPORTED_SCHEMA = 3;
+const SUPPORTED_SCHEMAS = [3, 4];
 const SAFE_LINK_PREFIX = "https://";
 const MIN_BAR_PERCENT = 1.5;
 const FLAT_AXIS_PAD_MS = 30 * 60 * 1000;
@@ -659,6 +719,14 @@ const NO_COMMENTARY_NARRATIVE = "The model wrote no commentary for this cluster.
   "The evidence below is the original alert data.";
 const NO_RECOMMENDATION_TEXT = "No recommendation was generated.";
 const OMITTED_SUFFIX = " more pointers are not shown. Each finding lists at most 5.";
+const SVG_NS = document.getElementById("trends-svg-ns").namespaceURI;
+const TREND_FALLBACK_WIDTH = 960;
+const TREND_MIN_WIDTH = 300;
+const TREND_HEIGHT = 300;
+const TREND_DEFAULT_LINES = 5;
+const NO_TREND_LABEL = "(no label)";
+const DAY_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // Every JSON path the viewer reads. "[]" is any list item, "*" is any key of a map.
 // The test in tests/test_web_viewer.py checks this list against the sample report.
@@ -693,6 +761,16 @@ const READS = [
   "findings[].evidence.per_host.*.*.*.*",
   "findings[].evidence.per_host.*.*.more.*",
   "trends_markdown",
+  "trends",
+  "trends.window_days",
+  "trends.days",
+  "trends.hidden",
+  "trends.rows",
+  "trends.rows[].label",
+  "trends.rows[].counts",
+  "trends.rows[].latest",
+  "trends.rows[].direction",
+  "trends.rows[].anomaly",
   "e8_status",
   "e8_status.*.status",
   "e8_status.*.related_findings",
@@ -922,6 +1000,19 @@ function clear(node) {
   while (node.firstChild) {
     node.removeChild(node.firstChild);
   }
+}
+
+// The only creator of SVG elements. Attributes are set as text and never from markup.
+function svgEl(tag, attrs, text) {
+  const node = document.createElementNS(SVG_NS, tag);
+  const map = attrs || {};
+  for (const key of Object.keys(map)) {
+    node.setAttribute(key, String(map[key]));
+  }
+  if (text !== undefined && text !== null && text !== "") {
+    node.textContent = String(text);
+  }
+  return node;
 }
 
 // An external link is made only for an https address; anything else is plain text.
@@ -1333,6 +1424,58 @@ function summarise(report, findings) {
   };
 }
 
+// The trends table of a schema 4 report, as a chart model. Null when there is no
+// usable table or no valid day. It never throws. A day is valid only if its text is
+// a date; counts are read at the same index as the day, and anything that is not a
+// whole number of zero or more leaves a gap. Rows are identified by their index.
+function buildTrendChart(report) {
+  try {
+    const t = rd(report, "trends");
+    if (!isObj(t)) {
+      return null;
+    }
+    const rawDays = asList(rd(t, "days"));
+    const days = [];
+    rawDays.forEach(function (day, i) {
+      if (typeof day === "string" && DAY_SHAPE.test(day)) {
+        days.push({text: day, index: i});
+      }
+    });
+    if (days.length === 0) {
+      return null;
+    }
+    const rows = [];
+    asList(rd(t, "rows")).forEach(function (row, i) {
+      if (!isObj(row)) {
+        return;
+      }
+      const counts = asList(rd(row, "counts"));
+      rows.push({
+        index: i,
+        label: asText(rd(row, "label")).trim() || NO_TREND_LABEL,
+        direction: asText(rd(row, "direction")).trim(),
+        anomaly: rd(row, "anomaly") === true,
+        latest: countOrNull(rd(row, "latest")),
+        values: days.map(function (day) { return countOrNull(counts[day.index]); })
+      });
+    });
+    const windowDays = rd(t, "window_days");
+    const years = {};
+    days.forEach(function (day) { years[day.text.slice(0, 4)] = true; });
+    return {
+      windowDays: Number.isSafeInteger(windowDays) && windowDays > 0 ? windowDays : null,
+      dayCount: rawDays.length,
+      days: days.map(function (day) { return day.text; }),
+      multiYear: keysOf(years).length > 1,
+      hidden: countOrNull(rd(t, "hidden")) || 0,
+      rows: rows,
+      empty: rows.length === 0
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
 function buildModel(report) {
   const findings = asList(rd(report, "findings")).map(buildFinding).filter(Boolean);
   const trends = rd(report, "trends_markdown");
@@ -1341,7 +1484,8 @@ function buildModel(report) {
     findings: findings,
     e8: buildE8(report),
     essentials: buildEssentials(report),
-    trends: typeof trends === "string" && trends.trim() !== "" ? trends : null
+    trends: typeof trends === "string" && trends.trim() !== "" ? trends : null,
+    trend: buildTrendChart(report)
   };
 }
 
@@ -1357,7 +1501,8 @@ const view = {
   pressables: [],
   detail: null,
   pointers: new Map(),
-  statuses: new Map()
+  statuses: new Map(),
+  trend: null
 };
 
 function resetViewState() {
@@ -1367,6 +1512,7 @@ function resetViewState() {
   view.detail = null;
   view.pointers = new Map();
   view.statuses = new Map();
+  view.trend = null;
 }
 
 function showSection(id) {
@@ -2176,13 +2322,263 @@ function renderE8(model) {
   showSection("e8");
 }
 
+// "2026-10-22" as "22 Oct", or "22 Oct 2026" when full. Text only, no Date. A month
+// outside 1 to 12 keeps the raw text.
+function dayText(text, full) {
+  const month = parseInt(text.slice(5, 7), 10);
+  if (!(month >= 1 && month <= 12)) {
+    return text;
+  }
+  const label = String(parseInt(text.slice(8, 10), 10)) + " " + MONTH_SHORT[month - 1];
+  return full ? label + " " + text.slice(0, 4) : label;
+}
+
+// The count axis: a step of 1, 2 or 5 times a power of ten, about 4 intervals.
+function niceScale(max) {
+  if (!(max > 0)) {
+    return {top: 1, ticks: [0, 1]};
+  }
+  const raw = Math.max(1, max / 4);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  let step = mag * 10;
+  for (const factor of [1, 2, 5]) {
+    if (factor * mag >= raw) {
+      step = factor * mag;
+      break;
+    }
+  }
+  const top = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= top; v += step) {
+    ticks.push(v);
+  }
+  return {top: top, ticks: ticks};
+}
+
+// Colour and dash come from the row index only, never from data.
+function seriesClass(i) {
+  return "tr-c" + (i % 8) + " tr-d" + (Math.floor(i / 8) % 3);
+}
+
+function trendWidth(host) {
+  return Math.max(TREND_MIN_WIDTH, host.clientWidth || TREND_FALLBACK_WIDTH);
+}
+
+// The lines drawn at first: new or anomalous rows, then the rest by latest count.
+function defaultTrendSelection(rows) {
+  const flagged = rows.filter(function (r) { return r.direction === "new" || r.anomaly; });
+  const rest = rows.filter(function (r) { return flagged.indexOf(r) < 0; })
+    .map(function (r, pos) { return {row: r, pos: pos}; })
+    .sort(function (a, b) {
+      const la = a.row.latest === null ? 0 : a.row.latest;
+      const lb = b.row.latest === null ? 0 : b.row.latest;
+      return lb - la || a.pos - b.pos;
+    })
+    .map(function (e) { return e.row; });
+  const selected = {};
+  for (const r of flagged.concat(rest).slice(0, TREND_DEFAULT_LINES)) {
+    selected[r.index] = true;
+  }
+  return selected;
+}
+
+// Which day positions get a label: every step-th one, and the last one if there is room.
+function dayLabelIndices(n, plotW, labelW, xAt) {
+  const fit = Math.max(1, Math.floor(plotW / labelW));
+  const step = Math.ceil(n / fit);
+  const picked = [];
+  for (let i = 0; i < n; i += step) {
+    picked.push(i);
+  }
+  const last = n - 1;
+  if (picked[picked.length - 1] !== last &&
+      xAt(last) - xAt(picked[picked.length - 1]) >= labelW) {
+    picked.push(last);
+  }
+  return picked;
+}
+
+function seriesNode(row, xAt, yAt, days, full) {
+  const group = svgEl("g", {"class": "tr-series " + seriesClass(row.index), "tabindex": "0", "role": "img"});
+  const name = row.direction === "" ? row.label : row.label + ", " + row.direction;
+  const spoken = [];
+  row.values.forEach(function (v, k) {
+    if (v !== null) {
+      spoken.push(dayText(days[k], full) + " " + v);
+    }
+  });
+  group.setAttribute("aria-label", name + ": " + (spoken.length ? spoken.join(", ") : "no counts"));
+  group.appendChild(svgEl("title", {}, name));
+  let run = [];
+  const flush = function () {
+    if (run.length >= 2) {
+      group.appendChild(svgEl("polyline", {
+        "class": "tr-path",
+        "points": run.map(function (pt) { return pt[0].toFixed(1) + "," + pt[1].toFixed(1); }).join(" ")
+      }));
+    }
+    run = [];
+  };
+  const dots = [];
+  row.values.forEach(function (v, k) {
+    if (v === null) {
+      flush();
+      return;
+    }
+    const x = xAt(k);
+    const y = yAt(v);
+    run.push([x, y]);
+    dots.push({x: x, y: y, tip: row.label + ", " + days[k] + ": " + v});
+  });
+  flush();
+  for (const d of dots) {
+    const dot = svgEl("circle", {"cx": d.x.toFixed(1), "cy": d.y.toFixed(1), "r": "3.5", "class": "tr-dot"});
+    dot.appendChild(svgEl("title", {}, d.tip));
+    group.appendChild(dot);
+  }
+  return group;
+}
+
+// Draws the chart for the selected rows into the host. The host is cleared first.
+function drawTrend() {
+  const st = view.trend;
+  if (!st) {
+    return;
+  }
+  clear(st.host);
+  const tm = st.model;
+  const W = trendWidth(st.host);
+  st.width = W;
+  const shown = tm.rows.filter(function (r) { return st.selected[r.index] === true; });
+  if (shown.length === 0) {
+    st.host.appendChild(el("p", "No findings selected. Select a chip to draw its line.", "empty"));
+    return;
+  }
+  const H = TREND_HEIGHT;
+  let max = 0;
+  for (const r of shown) {
+    for (const v of r.values) {
+      if (v !== null && v > max) {
+        max = v;
+      }
+    }
+  }
+  const scale = niceScale(max);
+  const longest = Math.max.apply(null, scale.ticks.map(function (v) { return String(v).length; }));
+  const left = Math.max(36, 8 + 7 * longest + 8);
+  const right = 16;
+  const top = 12;
+  const bottom = 30;
+  const plotW = W - left - right;
+  const plotH = H - top - bottom;
+  const n = tm.days.length;
+  const xAt = function (k) {
+    return n === 1 ? left + plotW / 2 : left + 12 + (plotW - 24) * k / (n - 1);
+  };
+  const yAt = function (v) { return top + plotH * (1 - v / scale.top); };
+  const svg = svgEl("svg", {
+    "class": "tr-svg", "viewBox": "0 0 " + W + " " + H, "width": W, "height": H,
+    "role": "group", "aria-label": "Daily counts per finding"
+  });
+  for (const v of scale.ticks) {
+    const y = yAt(v).toFixed(1);
+    svg.appendChild(svgEl("line", {
+      "class": v === 0 ? "tr-axis" : "tr-grid", "x1": left, "x2": W - right, "y1": y, "y2": y
+    }));
+    svg.appendChild(svgEl("text", {
+      "class": "tr-tick", "x": left - 6, "y": (yAt(v) + 4).toFixed(1), "text-anchor": "end"
+    }, String(v)));
+  }
+  const labels = tm.days.map(function (d) { return dayText(d, tm.multiYear); });
+  const longestDay = Math.max.apply(null, labels.map(function (l) { return l.length; }));
+  const labelW = 7 * longestDay + 14;
+  for (const k of dayLabelIndices(n, plotW, labelW, xAt)) {
+    const half = 3.5 * labels[k].length;
+    const x = Math.min(Math.max(xAt(k), half + 2), W - half - 2);
+    svg.appendChild(svgEl("text", {
+      "class": "tr-tick", "x": x.toFixed(1), "y": H - 10, "text-anchor": "middle"
+    }, labels[k]));
+  }
+  for (const row of shown) {
+    svg.appendChild(seriesNode(row, xAt, yAt, tm.days, tm.multiYear));
+  }
+  st.host.appendChild(svg);
+}
+
+// A redraw after a click or a resize: a failure empties the chart, never the page.
+function redrawTrend() {
+  try {
+    drawTrend();
+  } catch (err) {
+    const st = view.trend;
+    view.trend = null;
+    if (st) {
+      clear(st.host);
+    }
+  }
+}
+
+function trendChip(row, st) {
+  const chip = el("button", "", "tr-chip " + seriesClass(row.index));
+  chip.setAttribute("type", "button");
+  chip.setAttribute("aria-pressed", st.selected[row.index] === true ? "true" : "false");
+  add(chip, [
+    el("span", "", "tr-sw tr-sw-d" + (Math.floor(row.index / 8) % 3)),
+    el("span", row.direction === "" ? row.label : row.label + " · " + row.direction)
+  ]);
+  if (row.anomaly) {
+    chip.appendChild(el("span", "anomaly", "tr-flag"));
+  }
+  chip.addEventListener("click", function () {
+    st.selected[row.index] = st.selected[row.index] !== true;
+    chip.setAttribute("aria-pressed", st.selected[row.index] ? "true" : "false");
+    redrawTrend();
+  });
+  return chip;
+}
+
+// Fills the trends body with the notes, the chart and the chips. Returns true if shown.
+function renderTrendChart(body, tm) {
+  const days = tm.windowDays === null ? "" : " in the last " + tm.windowDays + " days";
+  body.appendChild(el("p", "Daily counts, one point for each of the " + tm.dayCount +
+    " days with a daily run" + days + ". Each line is one finding. " +
+    "Select a chip to show or hide it. Days with no daily run are not on the axis.", "note"));
+  if (tm.hidden > 0) {
+    body.appendChild(el("p", (tm.hidden === 1 ? "1 more finding is" : tm.hidden + " more findings are") +
+      " not in this report's trends table.", "note"));
+  }
+  if (tm.empty) {
+    body.appendChild(el("p", "This report's trends table has no findings to draw.", "empty"));
+    return true;
+  }
+  const host = el("div", "", "tr-host");
+  const chips = el("div", "", "tr-chips");
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", "Findings to draw");
+  add(body, [host, chips]);
+  view.trend = {model: tm, selected: defaultTrendSelection(tm.rows), host: host, width: 0};
+  add(chips, tm.rows.map(function (row) { return trendChip(row, view.trend); }));
+  drawTrend();
+  return true;
+}
+
 function renderTrends(model) {
   const body = document.getElementById("trends-body");
   clear(body);
-  if (model.trends === null) {
-    body.appendChild(el("p", "No trend data", "empty"));
-  } else {
+  showSection("trends");
+  let drawn = false;
+  if (model.trend !== null) {
+    try {
+      drawn = renderTrendChart(body, model.trend);
+    } catch (err) {
+      view.trend = null;
+      clear(body);
+    }
+  }
+  if (model.trends !== null) {
     body.appendChild(el("pre", model.trends, "trends-pre"));
+  } else if (!drawn) {
+    body.appendChild(el("p", "No trend data", "empty"));
   }
   showSection("trends");
 }
@@ -2220,7 +2616,7 @@ function loadReport(text) {
     return;
   }
   const version = rd(data, "schema_version");
-  if (version !== SUPPORTED_SCHEMA) {
+  if (SUPPORTED_SCHEMAS.indexOf(version) < 0) {
     let seen;
     if (version === undefined) {
       seen = "This report has no schema version.";
@@ -2230,7 +2626,7 @@ function loadReport(text) {
       seen = "The schema_version in this report must be a number, but it is " +
         describeFound(version) + ".";
     }
-    showMessage("This viewer reads schema version " + SUPPORTED_SCHEMA + ". " + seen, true);
+    showMessage("This viewer reads schema versions " + SUPPORTED_SCHEMAS.join(" and ") + ". " + seen, true);
     return;
   }
   try {
@@ -2290,6 +2686,14 @@ function onFileChosen(event) {
 }
 
 document.getElementById("report-file").addEventListener("change", onFileChosen);
+
+// Redraw the trends chart when the page width changes, only if a chart is shown.
+window.addEventListener("resize", function () {
+  const st = view.trend;
+  if (st && trendWidth(st.host) !== st.width) {
+    redrawTrend();
+  }
+});
 </script>
 </body>
 </html>

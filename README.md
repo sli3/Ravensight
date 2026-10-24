@@ -505,9 +505,9 @@ Each run also writes a machine-readable JSON file with the same name as the
 markdown report and a `.json` suffix, for example
 `reports/<YYYY-MM-DD>/security_report_<HH-MM-SS>.json`, or
 `reports/<YYYY-MM-DD>_security_report.json` with `overwrite = true`. It is UTF-8
-and carries `"schema_version": 3`. Top-level keys:
+and carries `"schema_version": 4`. Top-level keys:
 
-- `schema_version` — integer, currently `3`
+- `schema_version` — integer, currently `4`
 - `generated_at` — generation time in UTC (ISO 8601)
 - `run` — run window, filters and model: `hours`, `agent`, `level` and `model` in a
   full run, and `null` in a `--report-only` run
@@ -519,6 +519,11 @@ and carries `"schema_version": 3`. Top-level keys:
   `{"type": "legacy", "text": ...}`
 - `trends_markdown` — the Historical Trends section as a markdown string (not
   structured data), or `null`
+- `trends` — the Historical Trends table as structured data, or `null` when there is
+  no `[trending]` section, no scan history or no qualifying daily run. Otherwise it has
+  `window_days`, `days` (the run days, `YYYY-MM-DD`), `hidden` (rows not shown) and
+  `rows` (each with `label`, `counts`, `latest`, `avg`, `days_seen`, `direction` and
+  `anomaly`): the same rows in the same order as the text table
 - `e8_status` — Essential Eight strategies with their status and related findings and
   controls, or `null`
 - `finding_pointers` — per-finding Essential Eight and ISM control pointers, or `null`
@@ -545,10 +550,13 @@ must be exactly `true` or `false`). This applies to Docker too, through the moun
 ### Report viewer
 
 `web/index.html` is a single page that shows a JSON report. Open it in a browser and
-choose a report `.json` file from `reports/`. It reads the JSON report only, schema version 3,
+choose a report `.json` file from `reports/`. It reads the JSON report only (schema versions 3 and 4),
 never the markdown, and it is read-only: it cannot change a report or any other file.
-Nothing leaves the machine, because the page makes no network requests. An older
-report (schema version 2) shows a clear message instead of a page.
+Nothing leaves the machine, because the page makes no network requests. A schema version 4
+report draws its trends as a line chart above the trends text, with chips under the chart
+to show or hide each finding's line. A schema version 3 report shows the trends text only.
+Any other schema version (for example an older schema version 2 report) shows a clear
+message instead of a page.
 
 ---
 

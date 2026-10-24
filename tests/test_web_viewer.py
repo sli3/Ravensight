@@ -2,7 +2,7 @@
 
 LIMITS: these tests only read the HTML file as text. They cannot execute the
 JavaScript, so they cannot prove that a path is read correctly, only that every
-declared read exists in the schema 3 sample (or in a small inline payload for
+declared read exists in the schema 3 and 4 samples (or in a small inline payload for
 shapes the sample lacks) and that every literal read is declared. A render bug,
 a ReferenceError or a layout defect is not caught here. Prin's browser check and
 roadmap section 23 Session 3 cover that.
@@ -24,6 +24,7 @@ Further limits:
   file. They do not show that a section draws the right content from a real report.
 """
 
+import colorsys
 import json
 import re
 from pathlib import Path
@@ -34,6 +35,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 VIEWER = ROOT / "web" / "index.html"
 FIXTURE = ROOT / "tests" / "fixtures" / "report-schema3-sample.json"
+FIXTURE4 = ROOT / "tests" / "fixtures" / "report-schema4-sample.json"
 DATASET = ROOT / "data" / "defaults" / "essentials_enterprise_it.json"
 
 MIN_READS = 40
@@ -154,6 +156,7 @@ URL_DEFINITION_LINE = 'const SAFE_LINK_PREFIX = "https://";'
 GUARDED_ASSIGNMENTS: dict[str, tuple[str, ...]] = {
     r"\.href\s*=(?!=)": ("safeLink",),
     r"\.className\s*=(?!=)": ("el", "showMessage"),
+    r"createElementNS\s*\(": ("svgEl",),
 }
 
 # A bare identifier may be the path argument of rd( only for these internal uses.
@@ -283,9 +286,12 @@ def test_every_read_exists_in_the_sample_or_extra_payload() -> None:
     """Every READS entry resolves in the sample fixture, or is listed and found in the extras."""
     reads = _extract_array("READS", _text())
     fixture = _load_json(FIXTURE)
+    fixture4 = _load_json(FIXTURE4)
     missing = []
     for entry in reads:
         if _exists(fixture, entry):
+            continue
+        if (entry == "trends" or entry.startswith("trends.")) and _exists(fixture4, entry):
             continue
         if entry in OPTIONAL_PATHS and _exists(EXTRA_PAYLOAD, entry):
             continue
@@ -584,6 +590,8 @@ REQUIRED_PHRASES = [
     "No principles were pointed at for this cluster.",
     "Table view",
     "No trend data",
+    "Select a chip to show or hide it.",
+    "No findings selected.",
     "time not available",
     "All phases",
     "No recommendation was generated.",
@@ -674,5 +682,99 @@ def test_readme_describes_the_viewer() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "Report viewer" in readme
     assert "web/index.html" in readme
-    assert "schema version 3" in readme
+    assert "schema versions 3 and 4" in readme
     assert "read-only" in readme
+
+
+# ---------------------------------------------------------------------------
+# (h) Schema 4 trends chart
+# ---------------------------------------------------------------------------
+
+TRENDS_READS = [
+    "trends",
+    "trends.window_days",
+    "trends.days",
+    "trends.hidden",
+    "trends.rows",
+    "trends.rows[].label",
+    "trends.rows[].counts",
+    "trends.rows[].latest",
+    "trends.rows[].direction",
+    "trends.rows[].anomaly",
+]
+
+
+def test_supported_schemas_and_message() -> None:
+    """The viewer accepts schema versions 3 and 4 and says so in its message."""
+    text = _text()
+    assert "const SUPPORTED_SCHEMAS = [3, 4];" in text
+    assert "This viewer reads schema versions " in text
+
+
+def test_trends_reads_are_schema4_only() -> None:
+    """The trends reads are exactly the agreed ten, absent from schema 3, present in schema 4."""
+    reads = _extract_array("READS", _text())
+    trends = [entry for entry in reads if entry == "trends" or entry.startswith("trends.")]
+    assert sorted(trends) == sorted(TRENDS_READS)
+    schema3 = _load_json(FIXTURE)
+    schema4 = _load_json(FIXTURE4)
+    for entry in trends:
+        assert not _exists(schema3, entry), f"{entry} is in the schema 3 sample"
+        assert _exists(schema4, entry), f"{entry} is not in the schema 4 sample"
+
+
+def test_svg_elements_come_only_from_svgel() -> None:
+    """createElementNS appears once, inside svgEl, and the namespace is read from the page."""
+    text = _text()
+    assert len(re.findall(r"createElementNS\s*\(", text)) == 1
+    sites = _assignment_sites(text, r"createElementNS\s*\(")
+    assert [func for _, func in sites] == ["svgEl"]
+    assert re.search(r"const SVG_NS = [^;]*\.namespaceURI;", text)
+    assert "w3.org" not in text.lower()
+
+
+def _luminance(colour: str) -> float:
+    """Return the WCAG relative luminance of a #rrggbb colour."""
+    channels = [int(colour[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _contrast(first: str, second: str) -> float:
+    """Return the WCAG contrast ratio of two #rrggbb colours."""
+    hi, lo = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _hue_saturation(colour: str) -> tuple[float, float]:
+    """Return (hue in degrees, HSL saturation) of a #rrggbb colour."""
+    r, g, b = (int(colour[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    hue, _light, sat = colorsys.rgb_to_hls(r, g, b)
+    return hue * 360, sat
+
+
+def _theme_blocks(text: str) -> dict[str, str]:
+    """Return the light (root) and dark (media query) custom-property blocks."""
+    light = re.search(r"^:root \{(.*?)^\}", text, flags=re.DOTALL | re.MULTILINE)
+    dark = re.search(
+        r"@media \(prefers-color-scheme: dark\) \{\s*:root \{(.*?)\n  \}", text, flags=re.DOTALL
+    )
+    assert light and dark, "theme blocks not found"
+    return {"light": light.group(1), "dark": dark.group(1)}
+
+
+def test_chart_palette_is_defined_in_both_themes_and_readable() -> None:
+    """Each --chart-N token has 3:1 contrast with --surface-1 and avoids status hues."""
+    blocks = _theme_blocks(_text())
+    forbidden = [(345, 360), (0, 20), (20, 70), (70, 170), (250, 300)]
+    for theme, block in blocks.items():
+        surface = re.search(r"--surface-1:\s*(#[0-9a-fA-F]{6});", block)
+        assert surface, f"no --surface-1 in the {theme} theme"
+        tokens = dict(re.findall(r"--(chart-\d):\s*(#[0-9a-fA-F]{6});", block))
+        assert sorted(tokens) == [f"chart-{n}" for n in range(1, 9)], theme
+        for name, colour in tokens.items():
+            assert _contrast(colour, surface.group(1)) >= 3, f"{theme} {name} {colour}"
+            hue, sat = _hue_saturation(colour)
+            if sat < 0.15:
+                continue
+            assert not any(lo <= hue < hi for lo, hi in forbidden), f"{theme} {name} hue {hue}"
