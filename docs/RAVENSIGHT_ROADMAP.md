@@ -1732,6 +1732,15 @@ Decisions (agreed with Prin):
   sentence "Read-only view of the JSON report." moves from the footer to the header, to the
   left of the file picker button on the same line, in small muted text (it drops under the
   button on a narrow window). This departs from artboard E, which has the chip and the footer
+- Text width (Prin's decision, 24 Oct 2026): the line length of prose is raised above the
+  design's limit so wide screens are used better: about 100 characters for the notes under
+  the section headings (timeline, Essential Eight, Essentials, pointer map and Trends notes)
+  and about 90 for the finding's narrative, recommendation and notes.
+  In the finding detail, on a wide window the narrative sits on the left and the
+  recommendation on the right, in two columns, with the evidence panel, the notes and the
+  other cards below at full width; on a narrow window the two stack in the same order. No
+  text is changed, only where it sits and how wide it can run. This departs from artboard
+  E's text widths
 
 #### Session 1 — JSON schema version 3
 
@@ -1852,6 +1861,8 @@ In scope:
 - Show evidence values as chips with a wider label column (see Decisions)
 - Remove the Read-only chip and move the read-only sentence next to the file picker (see
   Decisions)
+- Raise the text line-length limits and put the finding's narrative and recommendation
+  side by side on wide windows (see Decisions)
 - Update `README.md` and this section's Feature Status row
 
 Out of scope:
