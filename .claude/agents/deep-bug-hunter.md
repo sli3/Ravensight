@@ -1,6 +1,6 @@
 ---
 name: deep-bug-hunter
-description: Merged post-edit review + deep bug investigation. Reviews diffs after the writer (Codex or code-writer) finishes — running pytest, ruff and pyright itself and reporting only problems on changed lines — and performs slow, thorough read-only debugging when invoked for a Debug session or escalated from a /build fix loop. Checks for config pattern consistency (new config keys following existing patterns like mitre_path/asd_path), ChromaDB metadatas= usage, and OPNsense/FreeBSD-specific false-positive handling. Read-only — never modifies files.
+description: Fallback reviewer and debugger, used when Codex's review or diagnosis fails or hits its usage limit. Merged post-edit review + deep bug investigation. Reviews diffs after the writer (Codex or code-writer) finishes — running pytest, ruff and pyright itself and reporting only problems on changed lines — and performs slow, thorough read-only debugging when invoked for a Debug session or escalated from a /build fix loop. Checks for config pattern consistency (new config keys following existing patterns like mitre_path/asd_path), ChromaDB metadatas= usage, and OPNsense/FreeBSD-specific false-positive handling. Read-only — never modifies files.
 tools: Read, Grep, Glob, Bash, mcp__graft
 model: opus
 ---

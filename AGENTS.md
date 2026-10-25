@@ -31,7 +31,7 @@ baseline memory tracking.
 
 `pm` is the orchestrator, run on demand with `claude --agent pm`. It runs the `/build`
 skill and delegates to three subagents. It also runs Codex (ChatGPT) itself with
-`codex exec`, for writing and first-pass bug investigation. Each agent's behaviour, permissions and model
+`codex exec`: `gpt-6.1-sol` writes the code, and `gpt-6-astra` reviews and debugs it. Each agent's behaviour, permissions and model
 are defined in its own file under `.claude/agents/` — this file deliberately does not
 restate them, so it cannot drift out of date.
 
@@ -42,7 +42,7 @@ Claude Code reads this file via `CLAUDE.md`'s `@AGENTS.md` import.
 | `pm` | primary | Orchestrates a build, gates output, writes the session memo, keeps the roadmap current |
 | `plan-reviewer` | subagent | Read-only plan and scope gate |
 | `code-writer` | subagent | Fallback writer when Codex fails or hits its limit |
-| `deep-bug-hunter` | subagent | Read-only post-edit review and root-cause analysis |
+| `deep-bug-hunter` | subagent | Fallback reviewer and debugger when Codex fails or hits its limit |
 
 Skills: `/build "<task>"` runs the full autonomous build cycle; `/multi @agent ...`
 runs several agents in parallel and synthesises their findings.
@@ -54,12 +54,34 @@ Codex without its sandbox.
 
 ### If you are Codex
 
-`pm` runs you with `codex exec`, as the writer or as a first-pass bug
-investigator. Your sandbox (`.codex/config.toml`) blocks the protected files in
-Safety Gates below; treat them as off-limits anyway. Edit only the files your brief
-lists, never commit, and end with the files changed, what changed, and the tests run
-with their result. Follow Python Style and Running Python and Tests below. Skip the
-Memory and Session Management sections: they are for Claude Code agents.
+`pm` runs you with `codex exec` in one of three modes, named at the start of your
+brief. Your sandbox (`.codex/config.toml`) blocks the protected files in Safety Gates
+below; treat them as off-limits anyway. In every mode: never commit, follow Python
+Style and Running Python and Tests below, and skip the Memory and Session Management
+sections, which are for Claude Code agents.
+
+**Writer (no mode named).** Edit only the files your brief lists, and end with the
+files changed, what changed, and the tests run with their result.
+
+**Review mode.** Do not edit any file. Run `git status --short` and `git diff` to find
+the changed lines, then run `uv run pytest -q -p no:cacheprovider`,
+`uv run ruff check --output-format=concise` and `uv run pyright` on the changed `.py`
+files. Report only problems on changed lines, and give one count for pre-existing
+ones. Check for: logic errors; missing or wrong exception handling; missing type
+hints; style breaks (pathlib not os.path, logging not print, no bare except); new
+config keys that do not follow existing names such as `mitre_path` and `asd_path`;
+ChromaDB misuse (`metadatas=` on `add`, `upsert` and `update`; `query` filters with
+`where=` and returns metadata through `include=`); OPNsense/FreeBSD false-positive
+cases treated as hard suppression instead of advisory context; and anything that
+departs from the plan in your brief. No refactors or unrelated suggestions. Report:
+- Checks: pytest N passed, N failed (test name and cause); new ruff and pyright
+  errors on changed lines (file:line message), and the pre-existing count
+- Findings: file:line and the problem, or "Zero findings"
+
+**Diagnosis mode.** Do not edit any file. Trace the execution path to the fault,
+reproduce it with `uv run pytest` where you can, and report: the root cause in one
+sentence, your confidence (High, Medium or Low), the execution path, the affected
+files and functions, what not to touch, the fix strategy (no code), and unknowns.
 
 ---
 

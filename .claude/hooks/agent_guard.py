@@ -155,11 +155,13 @@ HARMLESS_REDIRECTS = re.compile(r"\s2>&1|\s2>/dev/null")
 COMMAND_SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
 # Files holding live credentials. No guarded agent may name them in Bash.
 SECRET_FILES = re.compile(r"config\.toml|\.env\b(?!\.example)")
-# The only Codex commands pm may run: a new task or a follow-up, with an effort
-# level and a one-line brief in double quotes. No other flag fits, so the
-# sandbox in .codex/config.toml always applies.
+# The only Codex commands pm may run: a writer task, a writer follow-up by
+# session id, or a reviewer task on gpt-6-astra, each with an effort level and a
+# one-line brief in double quotes. No other flag fits, so the sandbox in
+# .codex/config.toml always applies.
 CODEX_EXEC = re.compile(
-    r'codex exec (?:resume --last )?-c model_reasoning_effort=(?:low|medium|high) '
+    r'codex exec (?:resume [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} '
+    r'|-m gpt-6-astra )?-c model_reasoning_effort=(?:low|medium|high|xhigh) '
     r'"[^"\\$`;&|<>\n\r]+"'
 )
 # Any run of the codex command or the plugin's script, to stop other agents.
@@ -254,8 +256,8 @@ def check_bash(agent: str, command: str) -> None:
             block(f"{agent} may not run Codex; only pm may, with codex exec")
         if not CODEX_EXEC.fullmatch(command.strip()):
             block(
-                "pm may run Codex only as: codex exec [resume --last] "
-                '-c model_reasoning_effort=low|medium|high "<one-line brief>", with no other '
+                "pm may run Codex only as: codex exec [resume <session id> | -m gpt-6-astra] "
+                '-c model_reasoning_effort=low|medium|high|xhigh "<one-line brief>", with no other '
                 "flags, and no double quote, backslash, $, backticks, ; & | < > or line "
                 "breaks in the brief"
             )
