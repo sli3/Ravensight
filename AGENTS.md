@@ -30,7 +30,8 @@ baseline memory tracking.
 ## Agents
 
 `pm` is the orchestrator, run on demand with `claude --agent pm`. It runs the `/build`
-skill and delegates to three subagents. Each agent's behaviour, permissions and model
+skill and delegates to four subagents. `codex:codex-rescue` comes from OpenAI's Codex
+plugin and hands writing and first-pass bug investigation to Codex (ChatGPT). Each agent's behaviour, permissions and model
 are defined in its own file under `.claude/agents/` — this file deliberately does not
 restate them, so it cannot drift out of date.
 
@@ -40,7 +41,8 @@ Claude Code reads this file via `CLAUDE.md`'s `@AGENTS.md` import.
 |-------|------|---------|
 | `pm` | primary | Orchestrates a build, gates output, writes the session memo, keeps the roadmap current |
 | `plan-reviewer` | subagent | Read-only plan and scope gate |
-| `code-writer` | subagent | Writes and edits source and tests |
+| `codex:codex-rescue` | subagent (plugin) | Forwards writing and first-pass investigation to Codex |
+| `code-writer` | subagent | Fallback writer when Codex fails or hits its limit |
 | `deep-bug-hunter` | subagent | Read-only post-edit review and root-cause analysis |
 
 Skills: `/build "<task>"` runs the full autonomous build cycle; `/multi @agent ...`
@@ -48,6 +50,15 @@ runs several agents in parallel and synthesises their findings.
 
 Only the agents in the table above exist. If a skill or document tells you to invoke
 any other agent, it is out of date — do not attempt it. Report it to Prin.
+
+### If you are Codex
+
+`pm` runs you through `codex:codex-rescue`, as the writer or as a first-pass bug
+investigator. Your sandbox (`.codex/config.toml`) blocks the protected files in
+Safety Gates below; treat them as off-limits anyway. Edit only the files your brief
+lists, never commit, and end with the files changed, what changed, and the tests run
+with their result. Follow Python Style and Running Python and Tests below. Skip the
+Memory and Session Management sections: they are for Claude Code agents.
 
 ---
 
@@ -57,17 +68,17 @@ any other agent, it is out of date — do not attempt it. Report it to Prin.
   credentials. Only `config.example.toml` changes; Prin copies new sections across by hand
 - `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, and everything under `.claude/` are edited by
   Prin only. `docs/RAVENSIGHT_ROADMAP.md` is also Prin's, with two exceptions.
-  `pm` may edit it, with targeted Edit calls only, to update the Feature Status
-  table after a `/build` run or to make a change Prin asks for in the session (rules
-  in `pm`'s own file). The main Claude Code session may also edit it, with targeted
+  `pm` may edit it, and insert into `docs/roadmap-archive.md`, with targeted Edit
+  calls only, to keep the roadmap short once a build is committed or to make a
+  change Prin asks for in the session (rules in `pm`'s own file). The main Claude Code session may also edit it, with targeted
   Edit calls only, but only for a change Prin asks for in that session. Never edit
   it unprompted, never rewrite the whole file, and leave the edit uncommitted for
-  Prin's review. `plan-reviewer`, `code-writer` and `deep-bug-hunter` never edit it
+  Prin's review. No other agent, and not Codex, edits either file
 - Never `git push` without explicit approval
 - Never use `--force` in Git
-- Always show `git diff` and wait for "OK" before committing. Only `pm` commits, and
-  only when Prin asks for it in the session; Prin's approval of the `git commit`
-  prompt is that OK. Other agents never commit
+- Only `pm` commits, and only when Prin asks for it in the session. Prin's request
+  to commit is the OK: `pm` shows `git diff` and `git status`, then commits. Other
+  agents, and Codex, never commit
 - Never modify any file without first reading its current contents
 - Never work around a permission deny or `ask` prompt — no string building, encoding,
   `python3 -c` or `uv run python -c` wrappers, subprocess calls or alternative tools. If a rule blocks

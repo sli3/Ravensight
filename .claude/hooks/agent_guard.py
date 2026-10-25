@@ -28,14 +28,23 @@ PLAN_REVIEWER = "plan-reviewer"
 CODE_WRITER = "code-writer"
 DEEP_BUG_HUNTER = "deep-bug-hunter"
 TEAM = (PLAN_REVIEWER, CODE_WRITER, DEEP_BUG_HUNTER)
+# The Codex plugin's forwarding agent. Hook input may name it with or without
+# the plugin prefix, so both spellings are guarded.
+CODEX_RESCUE = "codex:codex-rescue"
+CODEX_AGENT_NAMES = (CODEX_RESCUE, "codex-rescue")
+SPAWNABLE = TEAM + (CODEX_RESCUE,)
 
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
-# Per-call model overrides pm may pass, by subagent. Every subagent's own model
-# is set in its definition file; code-writer may be run on haiku for light tasks.
-ALLOWED_MODEL_OVERRIDES = {CODE_WRITER: ("haiku",)}
+# Per-call model overrides pm may pass, by subagent. plan-reviewer and
+# deep-bug-hunter always run on the model in their definition files.
+ALLOWED_MODEL_OVERRIDES = {
+    CODE_WRITER: ("haiku", "sonnet", "opus"),
+    CODEX_RESCUE: ("haiku", "sonnet"),
+}
 
 ROADMAP = "docs/RAVENSIGHT_ROADMAP.md"
+ARCHIVE = "docs/roadmap-archive.md"
 MEMO_DIR = ".session-memos/"
 
 GRAFT_READ = (
@@ -93,13 +102,14 @@ CODE_WRITER_DENY_NAMES = {
     "CLAUDE.md",
     "ROADMAP.md",
     "RAVENSIGHT_ROADMAP.md",
+    "roadmap-archive.md",
     ".mcp.json",
 }
 # Top-level directories code-writer must never edit.
 CODE_WRITER_DENY_DIRS = {".claude"}
 # The same protected names, spotted anywhere in a code-writer Bash command.
 CODE_WRITER_BASH_DENY = re.compile(
-    r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|\.mcp\.json"
+    r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|roadmap-archive\.md|\.mcp\.json"
     r"|\.claude/"
 )
 
@@ -144,6 +154,15 @@ ARTIFACT_PM_PATHS = ("project/Viewer.dc.html", "project/canvas.json", "project/E
 UNSAFE_SHELL = re.compile(r"[<>`]|\$\(")
 HARMLESS_REDIRECTS = re.compile(r"\s2>&1|\s2>/dev/null")
 COMMAND_SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
+# Files holding live credentials. No guarded agent may name them in Bash.
+SECRET_FILES = re.compile(r"config\.toml|\.env\b(?!\.example)")
+# codex-rescue may run only the plugin's companion script, in task mode.
+CODEX_TASK = re.compile(
+    r'node\s+"?(?:\$\{CLAUDE_PLUGIN_ROOT\}|/[^"\s]*/\.claude/plugins/cache/openai-codex/codex/[^/"\s]+)'
+    r'/scripts/codex-companion\.mjs"?\s+task(?:\s|$)'
+)
+# Anything that could chain, redirect or expand inside a codex-rescue command.
+CODEX_UNSAFE = re.compile(r"[;&|<>`\n\r$]")
 
 
 def block(reason: str) -> None:
@@ -172,20 +191,24 @@ def code_writer_may_edit(rel: str) -> bool:
     return not (name == ".env" or (name.startswith(".env.") and name != ".env.example"))
 
 
-def roadmap_edit_problem(tool_input: dict, project_dir: Path) -> str | None:
-    """Return a reason to block a pm roadmap Edit, or None if it may go ahead.
+def roadmap_edit_problem(tool_input: dict, project_dir: Path, rel: str) -> str | None:
+    """Return a reason to block a pm roadmap or archive Edit, or None if it may go ahead.
 
-    pm may edit any part of the roadmap, but only with targeted Edit calls: a
-    non-empty old_string that matches exactly once. Whole-file Write is refused
-    in check_file_tool. Which parts pm should touch, and when, is governed by
-    pm.md (ROADMAP UPDATES), not by this guard.
+    pm may edit the roadmap and its archive only with targeted Edit calls: a
+    non-empty old_string that matches exactly once. The archive is insert-only:
+    new_string must begin with old_string unchanged, so archived text is never
+    altered. Whole-file Write is refused in check_file_tool. Which parts pm
+    should touch, and when, is governed by pm.md (ROADMAP UPDATES), not by this
+    guard.
     """
     old = tool_input.get("old_string", "")
     if not old:
-        return "roadmap edits need a non-empty old_string"
-    text = (project_dir / ROADMAP).read_text(encoding="utf-8")
+        return f"{rel} edits need a non-empty old_string"
+    text = (project_dir / rel).read_text(encoding="utf-8")
     if text.count(old) != 1:
-        return "old_string must match exactly one place in the roadmap; widen it"
+        return f"old_string must match exactly one place in {rel}; widen it"
+    if rel == ARCHIVE and not str(tool_input.get("new_string", "")).startswith(old):
+        return "the archive is insert-only: new_string must begin with old_string unchanged"
     return None
 
 
@@ -194,7 +217,7 @@ def check_file_tool(agent: str, tool: str, tool_input: dict, project_dir: Path) 
     raw = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     rel = project_relative(raw, project_dir)
 
-    if agent in (PLAN_REVIEWER, DEEP_BUG_HUNTER):
+    if agent in (PLAN_REVIEWER, DEEP_BUG_HUNTER) or agent in CODEX_AGENT_NAMES:
         block(f"{agent} is read-only and may not use {tool}")
 
     if agent == CODE_WRITER:
@@ -204,23 +227,32 @@ def check_file_tool(agent: str, tool: str, tool_input: dict, project_dir: Path) 
 
     if agent == PM:
         if rel is None:
-            block("pm may only write inside .session-memos/ and the roadmap")
+            block("pm may only write inside .session-memos/, the roadmap and its archive")
         if rel.startswith(MEMO_DIR) and tool in ("Edit", "Write"):
             if tool == "Write" and (project_dir / rel).exists():
                 block(f"{rel} already exists; never overwrite a session memo")
             return
-        if rel == ROADMAP:
+        if rel in (ROADMAP, ARCHIVE):
             if tool != "Edit":
-                block("pm may change the roadmap only with targeted Edit calls, never a whole-file write")
-            reason = roadmap_edit_problem(tool_input, project_dir)
+                block(f"pm may change {rel} only with targeted Edit calls, never a whole-file write")
+            reason = roadmap_edit_problem(tool_input, project_dir, rel)
             if reason:
                 block(reason)
             return
-        block(f"pm may not edit {rel}; only .session-memos/ and the roadmap")
+        block(f"pm may not edit {rel}; only .session-memos/, the roadmap and its archive")
 
 
 def check_bash(agent: str, command: str) -> None:
     """Apply the per-agent Bash rules."""
+    if SECRET_FILES.search(command):
+        block(f"{agent} may not name config.toml or a .env file in Bash; they hold live credentials")
+    if agent in CODEX_AGENT_NAMES:
+        rest = command.strip().replace("${CLAUDE_PLUGIN_ROOT}", "", 1)
+        if CODEX_UNSAFE.search(rest):
+            block("codex-rescue commands may not contain ; & | < > backticks, $ or line breaks")
+        if not CODEX_TASK.match(command.strip()):
+            block("codex-rescue may run only the codex-companion 'task' command")
+        return
     if agent == CODE_WRITER:
         if CODE_WRITER_BASH_DENY.search(command):
             block("code-writer may not name protected governance files in Bash; use Read to read them")
@@ -245,20 +277,21 @@ def check_bash(agent: str, command: str) -> None:
 
 def check_agent(agent: str, tool_input: dict) -> None:
     """Restrict which subagents can be spawned, and with which model."""
-    if agent in TEAM:
+    if agent in TEAM or agent in CODEX_AGENT_NAMES:
         block(f"{agent} may not spawn subagents")
     if agent == PM:
         subagent = tool_input.get("subagent_type", "")
-        if subagent not in TEAM:
+        if subagent not in SPAWNABLE:
             block(
-                f"pm may spawn only {', '.join(TEAM)}, not '{subagent or 'default'}'; "
+                f"pm may spawn only {', '.join(SPAWNABLE)}, not '{subagent or 'default'}'; "
                 "never substitute a built-in agent such as general-purpose"
             )
         model = tool_input.get("model")
-        if model and model not in ALLOWED_MODEL_OVERRIDES.get(subagent, ()):
+        allowed = ALLOWED_MODEL_OVERRIDES.get(subagent, ())
+        if model and model not in allowed:
             block(
-                "a model override is allowed only as haiku on a code-writer call "
-                "for a light task; omit the model parameter otherwise"
+                f"model '{model}' is not allowed on {subagent}; allowed: "
+                f"{', '.join(allowed) or 'none (omit the model parameter)'}"
             )
 
 
@@ -357,7 +390,7 @@ def main() -> None:
     """Read the hook input from stdin and apply the rules for its agent."""
     data = json.load(sys.stdin)
     agent = data.get("agent_type") or ""
-    if agent != PM and agent not in TEAM:
+    if agent != PM and agent not in TEAM and agent not in CODEX_AGENT_NAMES:
         return
     tool = data.get("tool_name", "")
     tool_input = data.get("tool_input") or {}

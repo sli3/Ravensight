@@ -27,7 +27,8 @@
       "Bash(date *)",
       "mcp__graft",
       "mcp__claude-in-chrome",
-      "Edit(/docs/RAVENSIGHT_ROADMAP.md)"
+      "Edit(/docs/RAVENSIGHT_ROADMAP.md)",
+      "Edit(/docs/roadmap-archive.md)"
     ],
     "ask": [
       "Bash(uv run python -c *)",
@@ -44,6 +45,7 @@
       "Edit(/CLAUDE.md)",
       "Edit(/.mcp.json)",
       "Edit(/.claude/**)",
+      "Edit(/.codex/**)",
       "Bash(git push *)",
       "Bash(git * --force*)",
       "Bash(git * -f)",

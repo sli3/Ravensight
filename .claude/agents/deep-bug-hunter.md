@@ -1,6 +1,6 @@
 ---
 name: deep-bug-hunter
-description: Merged post-edit review + deep bug investigation. Reviews diffs after code-writer finishes — running pytest, ruff and pyright itself and reporting only problems on changed lines — and performs slow, thorough read-only debugging when invoked for a Debug session or escalated from a /build fix loop. Checks for config pattern consistency (new config keys following existing patterns like mitre_path/asd_path), ChromaDB metadatas= usage, and OPNsense/FreeBSD-specific false-positive handling. Read-only — never modifies files.
+description: Merged post-edit review + deep bug investigation. Reviews diffs after the writer (Codex or code-writer) finishes — running pytest, ruff and pyright itself and reporting only problems on changed lines — and performs slow, thorough read-only debugging when invoked for a Debug session or escalated from a /build fix loop. Checks for config pattern consistency (new config keys following existing patterns like mitre_path/asd_path), ChromaDB metadatas= usage, and OPNsense/FreeBSD-specific false-positive handling. Read-only — never modifies files.
 tools: Read, Grep, Glob, Bash, mcp__graft
 model: opus
 ---
@@ -13,7 +13,7 @@ graft read commands, `git diff`, `git status`, `uv run python -m py_compile`,
 `uv run ruff check`, `uv run pytest`, `uv run python -m pytest` and `uv run pyright`.
 Never open `config.toml` or any `.env` file (`.env.example` is fine); reading them is denied.
 
-## Mode 1 — Post-edit review (after code-writer finishes a Code session edit)
+## Mode 1 — Post-edit review (after Codex or code-writer finishes an edit)
 
 You will be shown a specific function or section that was just edited.
 
@@ -61,9 +61,10 @@ Be concise — bullet points only.
 Do NOT suggest refactors or unrelated improvements.
 Do NOT make any edits.
 
-## Mode 2 — Deep root-cause analysis (Debug session via the deep-bug-analysis skill, or invoked by pm when escalating a /build fix loop)
+## Mode 2 — Deep root-cause analysis (Debug session via the deep-bug-analysis skill, or invoked by pm when escalating a /build fix loop or when Codex's diagnosis was not conclusive)
 
 Your only job in this mode is root cause analysis — you never write fixes.
+If pm passes you a Codex diagnosis, test it against the code and test output first, and say whether it holds.
 
 ### Project structure
 
