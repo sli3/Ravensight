@@ -1,0 +1,34 @@
+model = "gpt-6.1-sol"
+approval_policy = "never"
+default_permissions = "ravensight"
+web_search = "disabled"
+
+[permissions.ravensight]
+extends = ":workspace"
+
+[permissions.ravensight.filesystem]
+"/home/sli3/.cache/uv" = "write"
+
+[permissions.ravensight.filesystem.":workspace_roots"]
+"config.toml" = "deny"
+".env" = "deny"
+".mcp.json" = "deny"
+"data/baseline_state.json" = "deny"
+"data/chroma" = "deny"
+"data/eval_after.json" = "deny"
+"data/platform_agents.json" = "read"
+"data/essentials_attestation.json" = "deny"
+"data/asd_framework.json" = "read"
+"data/essentials_enterprise_it.json" = "read"
+"data/mitre_attack.json" = "read"
+"AGENTS.md" = "read"
+"CLAUDE.md" = "read"
+".claude" = "read"
+".codex" = "read"
+".session-memos" = "read"
+".git" = "read"
+"docs/RAVENSIGHT_ROADMAP.md" = "read"
+"docs/roadmap-archive.md" = "read"
+
+[shell_environment_policy]
+ignore_default_excludes = false

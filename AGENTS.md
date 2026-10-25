@@ -30,7 +30,8 @@ baseline memory tracking.
 ## Agents
 
 `pm` is the orchestrator, run on demand with `claude --agent pm`. It runs the `/build`
-skill and delegates to three subagents. Each agent's behaviour, permissions and model
+skill and delegates to three subagents. It also runs Codex (ChatGPT) itself with
+`codex exec`: `gpt-6.1-sol` writes the code, and `gpt-6-astra` reviews and debugs it. Each agent's behaviour, permissions and model
 are defined in its own file under `.claude/agents/` — this file deliberately does not
 restate them, so it cannot drift out of date.
 
@@ -40,14 +41,54 @@ Claude Code reads this file via `CLAUDE.md`'s `@AGENTS.md` import.
 |-------|------|---------|
 | `pm` | primary | Orchestrates a build, gates output, writes the session memo, keeps the roadmap current |
 | `plan-reviewer` | subagent | Read-only plan and scope gate |
-| `code-writer` | subagent | Writes and edits source and tests |
-| `deep-bug-hunter` | subagent | Read-only post-edit review and root-cause analysis |
+| `code-writer` | subagent | Fallback writer when Codex fails or hits its limit |
+| `deep-bug-hunter` | subagent | Fallback reviewer and debugger when Codex fails or hits its limit |
 
 Skills: `/build "<task>"` runs the full autonomous build cycle; `/multi @agent ...`
 runs several agents in parallel and synthesises their findings.
 
 Only the agents in the table above exist. If a skill or document tells you to invoke
-any other agent, it is out of date — do not attempt it. Report it to Prin.
+any other agent, it is out of date — do not attempt it. Report it to Prin. Never use
+the Codex plugin's `codex:codex-rescue` agent or its `/codex:` commands: they start
+Codex without its sandbox.
+
+### If you are Codex
+
+`pm` runs you with `codex exec` in one of three modes, named at the start of your
+brief. Your sandbox (`.codex/config.toml`) blocks the protected files in Safety Gates
+below; treat them as off-limits anyway. In every mode: never commit, follow Python
+Style and Running Python and Tests below, and skip the Memory and Session Management
+sections, which are for Claude Code agents.
+
+**Writer (no mode named).** Edit only the files your brief lists, and end with the
+files changed and what changed. Do not run pytest: the sandbox blocks the `.env` file the tests load, so pm runs
+the test suite itself. If your brief points
+to a hand-off file under `.session-memos/`, read it first: it holds the findings or
+test output to act on, word for word.
+
+**Review mode.** Do not edit any file. Run `git status --short` and `git diff HEAD` to find
+the changed lines (pm stages the build before a review, so a plain `git diff` would be
+empty), then run
+`uv run ruff check --output-format=concise` and `uv run pyright` on the changed `.py`
+files. Report only problems on changed lines, and give one count for pre-existing
+ones. Check for: logic errors; missing or wrong exception handling; missing type
+hints; style breaks (pathlib not os.path, logging not print, no bare except); new
+config keys that do not follow existing names such as `mitre_path` and `asd_path`;
+ChromaDB misuse (`metadatas=` on `add`, `upsert` and `update`; `query` filters with
+`where=` and returns metadata through `include=`); OPNsense/FreeBSD false-positive
+cases treated as hard suppression instead of advisory context; and anything that
+departs from the plan in your brief. No refactors or unrelated suggestions.
+Do not run pytest: the sandbox blocks the `.env` file the tests load, so pm runs
+the test suite itself. Report:
+- Checks: new ruff and pyright
+  errors on changed lines (file:line message), and the pre-existing count
+- Findings: file:line and the problem, or "Zero findings"
+
+**Diagnosis mode.** Do not edit any file. Trace the execution path to the fault,
+use the failing test output in your brief or hand-off file (do not run pytest:
+pm runs it), and report: the root cause in one
+sentence, your confidence (High, Medium or Low), the execution path, the affected
+files and functions, what not to touch, the fix strategy (no code), and unknowns.
 
 ---
 
@@ -57,17 +98,17 @@ any other agent, it is out of date — do not attempt it. Report it to Prin.
   credentials. Only `config.example.toml` changes; Prin copies new sections across by hand
 - `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, and everything under `.claude/` are edited by
   Prin only. `docs/RAVENSIGHT_ROADMAP.md` is also Prin's, with two exceptions.
-  `pm` may edit it, with targeted Edit calls only, to update the Feature Status
-  table after a `/build` run or to make a change Prin asks for in the session (rules
-  in `pm`'s own file). The main Claude Code session may also edit it, with targeted
+  `pm` may edit it, and insert into `docs/roadmap-archive.md`, with targeted Edit
+  calls only, to keep the roadmap short once a build is committed or to make a
+  change Prin asks for in the session (rules in `pm`'s own file). The main Claude Code session may also edit it, with targeted
   Edit calls only, but only for a change Prin asks for in that session. Never edit
   it unprompted, never rewrite the whole file, and leave the edit uncommitted for
-  Prin's review. `plan-reviewer`, `code-writer` and `deep-bug-hunter` never edit it
+  Prin's review. No other agent, and not Codex, edits either file
 - Never `git push` without explicit approval
 - Never use `--force` in Git
-- Always show `git diff` and wait for "OK" before committing. Only `pm` commits, and
-  only when Prin asks for it in the session; Prin's approval of the `git commit`
-  prompt is that OK. Other agents never commit
+- Only `pm` commits, and only when Prin asks for it in the session. Prin's request
+  to commit is the OK: `pm` shows `git diff` and `git status`, then commits. Other
+  agents, and Codex, never commit
 - Never modify any file without first reading its current contents
 - Never work around a permission deny or `ask` prompt — no string building, encoding,
   `python3 -c` or `uv run python -c` wrappers, subprocess calls or alternative tools. If a rule blocks

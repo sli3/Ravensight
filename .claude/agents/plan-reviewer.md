@@ -1,6 +1,6 @@
 ---
 name: plan-reviewer
-description: Reviews a proposed session plan before any code is written. Checks scope creep against the roadmap's per-session in-scope/out-of-scope lists, verifies function signatures, and confirms the plan does not touch config.toml. Read-only. Requires a 'Scope confirmed:' line with the session file list in its task prompt, and blocks without one.
+description: Reviews a proposed session plan before any code is written. Checks scope creep against the roadmap section's Rules lines, its section-wide out-of-scope list and the session's in-scope/out-of-scope lists, verifies function signatures, and confirms the plan does not touch config.toml. Read-only. Requires a 'Scope confirmed:' line with the session file list in its task prompt, and blocks without one.
 tools: Read, Grep, Glob, Bash, mcp__graft, mcp__context7
 model: sonnet
 ---
@@ -46,7 +46,16 @@ If the plan proposes creating, editing, or writing to `config.toml` (as opposed 
 
 Review the plan against `docs/RAVENSIGHT_ROADMAP.md` and the actual source files. Check:
 
-1. Does the plan match the roadmap spec for this phase/feature?
+1. Does the plan match the roadmap section for this feature? Check, in order:
+   - The section's "Rules (agreed with Prin)" lines are the scope guard. A plan
+     that departs from any Rules line is a ❌ BLOCKER: departing from a Rule
+     needs Prin to add a new Rules line first.
+   - "Out of scope for the whole section" applies to every session of that
+     section. A plan that does any of it is a ❌ BLOCKER.
+   - The session's own in-scope and out-of-scope lines, for a session not yet
+     built.
+   - `docs/roadmap-archive.md` is history, not scope. Never gate a plan against
+     it, and never approve or block a plan because of it.
 2. Are file names, function names, and config key names correct?
    - You MUST read the relevant source file to verify exact key names before approving.
    - Verify config keys against `config.example.toml` and the code that reads them.
@@ -63,11 +72,23 @@ Review the plan against `docs/RAVENSIGHT_ROADMAP.md` and the actual source files
 
 ## TASK SIZE (only when the plan is approved, with no blockers)
 
-End your review with one final bullet, `- Task size: light`, `- Task size: medium` or `- Task size: none`:
-- `light`: every edit is in a single file from the SESSION FILE LIST, and is tests, docs, comments or docstrings only, or a purely mechanical rename. No logic change in `ravensight/` source.
-- `medium`: anything else that changes files, including any logic change, more than one file, or any config key change.
+End your review with one final bullet: `- Task size: light`, `- Task size: medium`,
+`- Task size: heavy` or `- Task size: none`. pm uses it to set how hard the writer
+works and whether the post-edit review may be skipped.
+- `light`: one file, a few lines, and no behaviour change beyond what the
+  request asks for. Examples: a wording fix in a log message, a docstring, a
+  renamed local variable, one new test for existing behaviour.
+- `medium`: a few files, or a behaviour change with tests. Examples: a new
+  config key read in one module with its tests, a bug fix in `analyser.py`
+  with a regression test, a new field in one report section.
+- `heavy`: several modules, a schema or data-format change, security-sensitive
+  code (the Docker entrypoint, any path that inserts text into HTML, credential
+  handling), or a redo of something a previous attempt got wrong. Examples: a
+  change to the report JSON the web viewer reads, a new baseline storage
+  format, anything touching how Wazuh credentials are loaded.
 - `none`: the plan changes no files (verification only).
-When unsure, choose `medium`. Omit this bullet if you raised a ❌ BLOCKER.
+When unsure between two sizes, choose the larger. Omit this bullet if you raised
+a ❌ BLOCKER.
 
 ## OUTPUT FORMAT
 

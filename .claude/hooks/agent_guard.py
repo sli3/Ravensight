@@ -16,6 +16,7 @@ Agents not named below (including a session with no named agent) are left to
 the normal permission rules.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -28,14 +29,22 @@ PLAN_REVIEWER = "plan-reviewer"
 CODE_WRITER = "code-writer"
 DEEP_BUG_HUNTER = "deep-bug-hunter"
 TEAM = (PLAN_REVIEWER, CODE_WRITER, DEEP_BUG_HUNTER)
+# The Codex plugin's forwarding agent starts Codex with its own sandbox setting,
+# which replaces .codex/config.toml, so it is blocked outright. pm runs Codex
+# itself with `codex exec` instead. Both spellings of its name are guarded.
+CODEX_AGENT_NAMES = ("codex:codex-rescue", "codex-rescue")
+SPAWNABLE = TEAM
 
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
-# Per-call model overrides pm may pass, by subagent. Every subagent's own model
-# is set in its definition file; code-writer may be run on haiku for light tasks.
-ALLOWED_MODEL_OVERRIDES = {CODE_WRITER: ("haiku",)}
+# Per-call model overrides pm may pass, by subagent. plan-reviewer and
+# deep-bug-hunter always run on the model in their definition files.
+ALLOWED_MODEL_OVERRIDES = {
+    CODE_WRITER: ("haiku", "sonnet", "opus"),
+}
 
 ROADMAP = "docs/RAVENSIGHT_ROADMAP.md"
+ARCHIVE = "docs/roadmap-archive.md"
 MEMO_DIR = ".session-memos/"
 
 GRAFT_READ = (
@@ -93,14 +102,29 @@ CODE_WRITER_DENY_NAMES = {
     "CLAUDE.md",
     "ROADMAP.md",
     "RAVENSIGHT_ROADMAP.md",
+    "roadmap-archive.md",
     ".mcp.json",
 }
 # Top-level directories code-writer must never edit.
-CODE_WRITER_DENY_DIRS = {".claude"}
+CODE_WRITER_DENY_DIRS = {".claude", ".codex"}
 # The same protected names, spotted anywhere in a code-writer Bash command.
+# Git-ignored runtime and reference data under data/. Git cannot see changes to
+# them, so pm's checks would miss an edit; code-writer may not edit them.
+CODE_WRITER_DENY_PATHS = (
+    "data/baseline_state.json",
+    "data/chroma",
+    "data/eval_after.json",
+    "data/essentials_attestation.json",
+    "data/platform_agents.json",
+    "data/asd_framework.json",
+    "data/essentials_enterprise_it.json",
+    "data/mitre_attack.json",
+)
 CODE_WRITER_BASH_DENY = re.compile(
-    r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|\.mcp\.json"
-    r"|\.claude/"
+    r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|roadmap-archive\.md|\.mcp\.json"
+    r"|\.claude/|\.codex/"
+    r"|data/(?:baseline_state|eval_after|essentials_attestation|platform_agents"
+    r"|asd_framework|essentials_enterprise_it|mitre_attack)\.json|data/chroma"
 )
 
 # Claude in Chrome (browser) rules. Only pm may use the browser, only on local
@@ -144,6 +168,23 @@ ARTIFACT_PM_PATHS = ("project/Viewer.dc.html", "project/canvas.json", "project/E
 UNSAFE_SHELL = re.compile(r"[<>`]|\$\(")
 HARMLESS_REDIRECTS = re.compile(r"\s2>&1|\s2>/dev/null")
 COMMAND_SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
+# Files holding live credentials. No guarded agent may name them in Bash.
+SECRET_FILES = re.compile(r"config\.toml|\.env\b(?!\.example)")
+# File names a glob in a Bash command must not be able to reach.
+SECRET_NAMES = ("config.toml", ".env", ".env.local", ".env.production", ".env.development")
+GLOB_CHARS = re.compile(r"[*?\[]")
+BRACE_EXPANSION = re.compile(r"\{[^{}]*,[^{}]*\}")
+# The only Codex commands pm may run: a writer task, a writer follow-up by
+# session id, or a reviewer task on gpt-6-astra, each with an effort level and a
+# one-line brief in double quotes. No other flag fits, so the sandbox in
+# .codex/config.toml always applies.
+CODEX_EXEC = re.compile(
+    r'codex exec (?:resume [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} '
+    r'|-m gpt-6-astra )?-c model_reasoning_effort=(?:low|medium|high|xhigh) '
+    r'"[^"\\$`;&|<>\n\r]+"'
+)
+# Any run of the codex command or the plugin's script, to stop other agents.
+CODEX_COMMAND = re.compile(r"(?:^|[\s;&|(/\"'=])codex(?:\s|$)|codex-companion")
 
 
 def block(reason: str) -> None:
@@ -169,23 +210,29 @@ def code_writer_may_edit(rel: str) -> bool:
     name = parts[-1]
     if parts[0] in CODE_WRITER_DENY_DIRS or name in CODE_WRITER_DENY_NAMES:
         return False
+    if any(rel == p or rel.startswith(p + "/") for p in CODE_WRITER_DENY_PATHS):
+        return False
     return not (name == ".env" or (name.startswith(".env.") and name != ".env.example"))
 
 
-def roadmap_edit_problem(tool_input: dict, project_dir: Path) -> str | None:
-    """Return a reason to block a pm roadmap Edit, or None if it may go ahead.
+def roadmap_edit_problem(tool_input: dict, project_dir: Path, rel: str) -> str | None:
+    """Return a reason to block a pm roadmap or archive Edit, or None if it may go ahead.
 
-    pm may edit any part of the roadmap, but only with targeted Edit calls: a
-    non-empty old_string that matches exactly once. Whole-file Write is refused
-    in check_file_tool. Which parts pm should touch, and when, is governed by
-    pm.md (ROADMAP UPDATES), not by this guard.
+    pm may edit the roadmap and its archive only with targeted Edit calls: a
+    non-empty old_string that matches exactly once. The archive is insert-only:
+    new_string must begin with old_string unchanged, so archived text is never
+    altered. Whole-file Write is refused in check_file_tool. Which parts pm
+    should touch, and when, is governed by pm.md (ROADMAP UPDATES), not by this
+    guard.
     """
     old = tool_input.get("old_string", "")
     if not old:
-        return "roadmap edits need a non-empty old_string"
-    text = (project_dir / ROADMAP).read_text(encoding="utf-8")
+        return f"{rel} edits need a non-empty old_string"
+    text = (project_dir / rel).read_text(encoding="utf-8")
     if text.count(old) != 1:
-        return "old_string must match exactly one place in the roadmap; widen it"
+        return f"old_string must match exactly one place in {rel}; widen it"
+    if rel == ARCHIVE and not str(tool_input.get("new_string", "")).startswith(old):
+        return "the archive is insert-only: new_string must begin with old_string unchanged"
     return None
 
 
@@ -194,7 +241,7 @@ def check_file_tool(agent: str, tool: str, tool_input: dict, project_dir: Path) 
     raw = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     rel = project_relative(raw, project_dir)
 
-    if agent in (PLAN_REVIEWER, DEEP_BUG_HUNTER):
+    if agent in (PLAN_REVIEWER, DEEP_BUG_HUNTER) or agent in CODEX_AGENT_NAMES:
         block(f"{agent} is read-only and may not use {tool}")
 
     if agent == CODE_WRITER:
@@ -204,29 +251,67 @@ def check_file_tool(agent: str, tool: str, tool_input: dict, project_dir: Path) 
 
     if agent == PM:
         if rel is None:
-            block("pm may only write inside .session-memos/ and the roadmap")
+            block("pm may only write inside .session-memos/, the roadmap and its archive")
         if rel.startswith(MEMO_DIR) and tool in ("Edit", "Write"):
             if tool == "Write" and (project_dir / rel).exists():
                 block(f"{rel} already exists; never overwrite a session memo")
             return
-        if rel == ROADMAP:
+        if rel in (ROADMAP, ARCHIVE):
             if tool != "Edit":
-                block("pm may change the roadmap only with targeted Edit calls, never a whole-file write")
-            reason = roadmap_edit_problem(tool_input, project_dir)
+                block(f"pm may change {rel} only with targeted Edit calls, never a whole-file write")
+            reason = roadmap_edit_problem(tool_input, project_dir, rel)
             if reason:
                 block(reason)
             return
-        block(f"pm may not edit {rel}; only .session-memos/ and the roadmap")
+        block(f"pm may not edit {rel}; only .session-memos/, the roadmap and its archive")
+
+
+def names_secret(command: str) -> bool:
+    """Return True if a Bash command could reach a credentials file.
+
+    Catches the file named outright, split by quotes or backslashes, built by
+    brace expansion, or matched by a glob. Shell variables can still hide a
+    name, so this guards against slips; only an OS sandbox is airtight.
+    """
+    flat = re.sub(r"[\"'\\]", "", command)
+    if SECRET_FILES.search(flat) or BRACE_EXPANSION.search(flat):
+        return True
+    for token in re.split(r"[\s;&|()<>=]+", flat):
+        if GLOB_CHARS.search(token):
+            name = token.rsplit("/", 1)[-1]
+            if any(fnmatch.fnmatchcase(secret, name) for secret in SECRET_NAMES):
+                return True
+    return False
 
 
 def check_bash(agent: str, command: str) -> None:
     """Apply the per-agent Bash rules."""
+    if names_secret(command):
+        block(
+            f"{agent} may not reach config.toml or a .env file in Bash, by name, glob, "
+            "brace expansion or quoting; they hold live credentials"
+        )
+    if agent in CODEX_AGENT_NAMES:
+        block("the Codex plugin agent is disabled: it skips Codex's sandbox; pm runs codex exec itself")
+    if CODEX_COMMAND.search(command):
+        if agent != PM:
+            block(f"{agent} may not run Codex; only pm may, with codex exec")
+        if not CODEX_EXEC.fullmatch(command.strip()):
+            block(
+                "pm may run Codex only as: codex exec [resume <session id> | -m gpt-6-astra] "
+                '-c model_reasoning_effort=low|medium|high|xhigh "<one-line brief>", with no other '
+                "flags, and no double quote, backslash, $, backticks, ; & | < > or line "
+                "breaks in the brief"
+            )
+        return
     if agent == CODE_WRITER:
         if CODE_WRITER_BASH_DENY.search(command):
-            block("code-writer may not name protected governance files in Bash; use Read to read them")
+            block("code-writer may not name protected files in Bash; use Read to read governance files")
         for segment in COMMAND_SEPARATORS.split(command):
             if segment.strip().startswith("git commit"):
                 block("code-writer may not run git commit; that belongs to the git-workflow skill")
+            if segment.strip().startswith("graft build"):
+                block("code-writer may not run graft build; Prin runs it")
         return
 
     allowed = BASH_ALLOW.get(agent)
@@ -245,20 +330,21 @@ def check_bash(agent: str, command: str) -> None:
 
 def check_agent(agent: str, tool_input: dict) -> None:
     """Restrict which subagents can be spawned, and with which model."""
-    if agent in TEAM:
+    if agent in TEAM or agent in CODEX_AGENT_NAMES:
         block(f"{agent} may not spawn subagents")
     if agent == PM:
         subagent = tool_input.get("subagent_type", "")
-        if subagent not in TEAM:
+        if subagent not in SPAWNABLE:
             block(
-                f"pm may spawn only {', '.join(TEAM)}, not '{subagent or 'default'}'; "
+                f"pm may spawn only {', '.join(SPAWNABLE)}, not '{subagent or 'default'}'; "
                 "never substitute a built-in agent such as general-purpose"
             )
         model = tool_input.get("model")
-        if model and model not in ALLOWED_MODEL_OVERRIDES.get(subagent, ()):
+        allowed = ALLOWED_MODEL_OVERRIDES.get(subagent, ())
+        if model and model not in allowed:
             block(
-                "a model override is allowed only as haiku on a code-writer call "
-                "for a light task; omit the model parameter otherwise"
+                f"model '{model}' is not allowed on {subagent}; allowed: "
+                f"{', '.join(allowed) or 'none (omit the model parameter)'}"
             )
 
 
@@ -357,10 +443,20 @@ def main() -> None:
     """Read the hook input from stdin and apply the rules for its agent."""
     data = json.load(sys.stdin)
     agent = data.get("agent_type") or ""
-    if agent != PM and agent not in TEAM:
-        return
     tool = data.get("tool_name", "")
     tool_input = data.get("tool_input") or {}
+    if agent != PM and agent not in TEAM and agent not in CODEX_AGENT_NAMES:
+        # Any other session, including a plain `claude` session, may run Codex
+        # only in pm's safe forms, so the project sandbox always applies.
+        if tool == "Bash":
+            command = str(tool_input.get("command", ""))
+            if CODEX_COMMAND.search(command) and not CODEX_EXEC.fullmatch(command.strip()):
+                block(
+                    "Codex may run here only as: codex exec [resume <session id> | -m gpt-6-astra] "
+                    '-c model_reasoning_effort=low|medium|high|xhigh "<one-line brief>"; '
+                    "other flags, such as --cd, would skip the project sandbox"
+                )
+        return
     project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or ".")
 
     if tool in FILE_TOOLS:
