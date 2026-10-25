@@ -163,12 +163,13 @@ loop body never runs).
 
 Otherwise, for each iteration (max 3):
 a. Iterations 1 and 2: send the raw failure output and stack trace to the
-   writer's thread as a follow-up (`codex exec resume <session id>`, same
-   effort), then do the PROTECTED FILE CHECK. Iteration 3 (only if failures
+   active writer, with the same effort (the Codex writer's thread through a
+   HAND-OFF FILE, or `@code-writer` once the build has fallen back to it),
+   then do the PROTECTED FILE CHECK. Iteration 3 (only if failures
    persist): first run the Codex debugger in Diagnosis mode (effort `xhigh`,
    or `medium` if `xhigh` is rejected) with the REVIEW CHECK around it,
    falling back to `@deep-bug-hunter` Mode 2 if it fails; then send the
-   diagnosis to the writer's thread to apply.
+   diagnosis to the active writer the same way, to apply.
 b. Rerun `uv run pytest` yourself. Never apply a fix yourself.
 c. Evaluate the rerun result:
    - PASSING → exit the loop and go to Step 4.
@@ -189,8 +190,8 @@ fails twice or hits its usage limit, use `@deep-bug-hunter` Mode 1 instead.
 a. Zero findings → go to Step 5.
 b. Hard-stop finding (`AGENTS.md` contradiction, config.toml touched) → stop
    and report.
-c. Otherwise, send the findings word for word to the writer's thread for a fix
-   pass, do the PROTECTED FILE CHECK, rerun `uv run pytest` to confirm it is
+c. Otherwise, send the findings word for word to the active writer (through a
+   HAND-OFF FILE for Codex) for a fix pass, do the PROTECTED FILE CHECK, rerun `uv run pytest` to confirm it is
    still green, then run a fresh reviewer. Repeat until there are zero
    findings, up to 3 review rounds in all; then hard stop. If a fix pass
    breaks the suite, re-enter Step 3 for a SINGLE corrective iteration only
@@ -208,8 +209,9 @@ allowlist, ask `@code-writer` or report it, and do not run it yourself.
 
 - Browser tools unavailable → do not stop the build. Mark the check "not run" and
   ask Prin for screenshots and console output in the report.
-- Differences found → send them to the Codex writer's thread for a fix pass
-  (or `@code-writer` if the build has fallen back to it), do the PROTECTED FILE
+- Differences found → send them to the active writer for a fix pass (through
+  a HAND-OFF FILE for Codex, or to `@code-writer` if the build has fallen back
+  to it), do the PROTECTED FILE
   CHECK, rerun
   `uv run pytest`, and look again. Repeat for up to 5 rounds, and stop early
   as soon as the page matches the design. If it still differs after 5 rounds

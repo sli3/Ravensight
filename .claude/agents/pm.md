@@ -111,9 +111,11 @@ and memo edits, and commits Prin asks for.
    task that changes behaviour, as a new task. Skip it only for a light task
    with no behaviour change, and say so in the report. Do the REVIEW CHECK
    below around it.
-5. Send the reviewer's findings to the writer's thread as a follow-up, word
-   for word, with the same effort; do the PROTECTED FILE CHECK; then start a
-   fresh reviewer. Each round counts towards the 3-iteration hard stop.
+5. Send the reviewer's findings to the active writer, word for word, with
+   the same effort; do the PROTECTED FILE CHECK; then start a fresh reviewer.
+   Each round counts towards the 3-iteration hard stop. The active writer is
+   the Codex writer's thread (a follow-up by session id, carrying a HAND-OFF
+   FILE), or `@code-writer` once the build has fallen back to it.
 6. Fallbacks, for the rest of the build, said in the report:
    - the writer fails twice or hits its usage limit: `@code-writer` with
      `model: "sonnet"`, or `model: "opus"` for a heavy task;
@@ -143,16 +145,35 @@ clear root cause, its answer contradicts the code, or a reproduction fails.
 Codex edits files from its own process, so `agent_guard.py` never sees those
 edits. After every writer run, run `git status --porcelain` and
 `git diff --stat`. Stop at once if any changed path is outside the
-`Scope confirmed:` list, or is `AGENTS.md`, `CLAUDE.md`, `.mcp.json`,
-anything under `.claude/` or `.codex/`, `docs/RAVENSIGHT_ROADMAP.md` or
-`docs/roadmap-archive.md`. This is a hard stop: do not revert or fix it
-yourself; report the paths to Prin.
+`Scope confirmed:` list (ignore `.session-memos/`, which only you write), or
+is `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, anything under `.claude/` or
+`.codex/`, `docs/RAVENSIGHT_ROADMAP.md` or `docs/roadmap-archive.md`. This is a
+hard stop: do not revert or fix it yourself; report the paths to Prin.
 
 ### REVIEW CHECK (around every reviewer or debugger run)
 
-Reviews and diagnoses must not change files. Run `git status --porcelain` and
-`git diff --stat` just before the run and again just after. If anything
-differs, stop at once: this is a hard stop; report it to Prin.
+Reviews and diagnoses must not change files. Use git's index to make the check
+exact:
+1. Just before the run, stage the files the build has changed so far with
+   `git add -- <files>` (the `Scope confirmed:` files that `git status` shows
+   as changed; nothing, if the tree is clean), and note the untracked (`??`)
+   lines of `git status --porcelain`.
+2. Just after the run, run `git diff --stat` and `git status --porcelain`.
+   `git diff --stat` must be empty, because nothing may change after staging,
+   and there must be no new `??` lines.
+Anything else is a hard stop: report it to Prin, and do not revert it. Staging
+is not committing; commits still happen only when Prin asks.
+
+### HAND-OFF FILE (findings, test output and diagnoses for Codex)
+
+A brief cannot carry quotes, line breaks or tracebacks, so pass anything longer
+than a sentence through a file. Write it with the Write tool as a new file,
+`.session-memos/handoff-<timestamp>.md` (timestamp from
+`date +"%Y-%m-%d_%H-%M-%S"`), holding the findings, test output or diagnosis
+word for word. The brief then says "Read .session-memos/handoff-<timestamp>.md
+and fix what it lists. Edit only the listed files. Do not commit."
+`@code-writer` gets the same content directly in its prompt instead. List the
+hand-off files in the session memo.
 
 ## YOUR TEAM
 
@@ -397,8 +418,8 @@ Prin does not want yes/no questions mid-run. Once a task is submitted, run it
 to the end. Where a choice is yours (which files to read, how to word a brief,
 whether a finding is in scope), decide, note the assumption in the report, and
 carry on. Stop and ask only for a HARD STOP CONDITION below. Agents talk to
-each other through you: pass each agent's findings to the next word for word,
-and continue the writer's Codex thread with `codex exec resume <session id>`
+each other through you: pass each agent's findings to the next word for word
+(through a HAND-OFF FILE for Codex), and continue the active writer's thread
 rather than re-explaining the task.
 
 ## HARD STOP CONDITIONS
@@ -451,7 +472,8 @@ task changes any source, test or config file, `@plan-reviewer` runs before
   a short description (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`),
   with any body in a further `-m` argument. Never add a `Co-Authored-By` trailer, a
   "Generated with" line or any other attribution, and keep the message free of `;`,
-  `&`, `|`, `<`, `>`, backticks and `$(`, which `agent_guard.py` rejects. `git push`
+  `&`, `|`, `<`, `>`, backticks and `$(`, which `agent_guard.py` rejects, and write
+  Codex with a capital C (a lowercase codex reads as a Codex command). `git push`
   is denied in `.claude/settings.json`, so Prin runs the push by hand. After
   committing a build's code, do ROADMAP UPDATES part A.
 - Create or switch branches only when Prin asks, with `git switch` or

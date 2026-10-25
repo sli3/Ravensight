@@ -61,7 +61,9 @@ Style and Running Python and Tests below, and skip the Memory and Session Manage
 sections, which are for Claude Code agents.
 
 **Writer (no mode named).** Edit only the files your brief lists, and end with the
-files changed, what changed, and the tests run with their result.
+files changed, what changed, and the tests run with their result. If your brief points
+to a hand-off file under `.session-memos/`, read it first: it holds the findings or
+test output to act on, word for word.
 
 **Review mode.** Do not edit any file. Run `git status --short` and `git diff` to find
 the changed lines, then run `uv run pytest -q -p no:cacheprovider`,

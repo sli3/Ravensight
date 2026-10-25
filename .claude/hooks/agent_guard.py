@@ -165,7 +165,7 @@ CODEX_EXEC = re.compile(
     r'"[^"\\$`;&|<>\n\r]+"'
 )
 # Any run of the codex command or the plugin's script, to stop other agents.
-CODEX_COMMAND = re.compile(r"(?:^|[\s;&|(/])codex(?:\s|$)|codex-companion")
+CODEX_COMMAND = re.compile(r"(?:^|[\s;&|(/\"'=])codex(?:\s|$)|codex-companion")
 
 
 def block(reason: str) -> None:
@@ -401,10 +401,20 @@ def main() -> None:
     """Read the hook input from stdin and apply the rules for its agent."""
     data = json.load(sys.stdin)
     agent = data.get("agent_type") or ""
-    if agent != PM and agent not in TEAM and agent not in CODEX_AGENT_NAMES:
-        return
     tool = data.get("tool_name", "")
     tool_input = data.get("tool_input") or {}
+    if agent != PM and agent not in TEAM and agent not in CODEX_AGENT_NAMES:
+        # Any other session, including a plain `claude` session, may run Codex
+        # only in pm's safe forms, so the project sandbox always applies.
+        if tool == "Bash":
+            command = str(tool_input.get("command", ""))
+            if CODEX_COMMAND.search(command) and not CODEX_EXEC.fullmatch(command.strip()):
+                block(
+                    "Codex may run here only as: codex exec [resume <session id> | -m gpt-6-astra] "
+                    '-c model_reasoning_effort=low|medium|high|xhigh "<one-line brief>"; '
+                    "other flags, such as --cd, would skip the project sandbox"
+                )
+        return
     project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or ".")
 
     if tool in FILE_TOOLS:
