@@ -138,7 +138,7 @@ BROWSER_UPLOAD_DIR = "tests/fixtures/"
 # Design reference: pm may read two files of Prin's own Claude Design artifact
 # with the Artifact tool, and nothing else. Add "Artifact" to the hook matcher.
 ARTIFACT_URL = "https://claude.ai/artifact/RmvHREuYhRdM7FcBufRJ5J"
-ARTIFACT_PM_PATHS = ("project/Viewer.dc.html", "project/canvas.json")
+ARTIFACT_PM_PATHS = ("project/Viewer.dc.html", "project/canvas.json", "project/Evidence.dc.html")
 
 # Shell constructs that could write files or run hidden commands.
 UNSAFE_SHELL = re.compile(r"[<>`]|\$\(")
