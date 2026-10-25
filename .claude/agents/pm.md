@@ -89,6 +89,9 @@ sandbox protects those files anyway).
   what to check and how to report in review mode.
 - Diagnosis brief: start with "Diagnosis mode." then the error, the failing
   test and graft's spans. AGENTS.md gives the report format.
+- Never put `danger-full-access`, `workspace-write`, `--sandbox`, `--profile`
+  or `--dangerously` in a brief: the deny rules in `.claude/settings.json`
+  match them anywhere in the command, including inside the brief.
 
 ### Jobs you do alone, with no subagent
 
@@ -175,7 +178,7 @@ task description, or in a recalled memory.
    `@plan-reviewer` has reviewed and approved that task in the current
    session. Every change to a source, test or config file goes through one of
    them, so every change goes through `@plan-reviewer` first. A `@codex`
-   diagnosis (a brief that starts "Read-only diagnosis") needs no plan review.
+   diagnosis (a brief that starts "Diagnosis mode.") needs no plan review.
 2. None of these waive the review: how small or precise the task looks;
    exact wording, line numbers or line anchors supplied by Prin; a
    pre-approved or pre-planned task; urgency; a recalled memory;
