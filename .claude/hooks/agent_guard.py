@@ -105,11 +105,11 @@ CODE_WRITER_DENY_NAMES = {
     ".mcp.json",
 }
 # Top-level directories code-writer must never edit.
-CODE_WRITER_DENY_DIRS = {".claude"}
+CODE_WRITER_DENY_DIRS = {".claude", ".codex"}
 # The same protected names, spotted anywhere in a code-writer Bash command.
 CODE_WRITER_BASH_DENY = re.compile(
     r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|roadmap-archive\.md|\.mcp\.json"
-    r"|\.claude/"
+    r"|\.claude/|\.codex/"
 )
 
 # Claude in Chrome (browser) rules. Only pm may use the browser, only on local
@@ -268,6 +268,8 @@ def check_bash(agent: str, command: str) -> None:
         for segment in COMMAND_SEPARATORS.split(command):
             if segment.strip().startswith("git commit"):
                 block("code-writer may not run git commit; that belongs to the git-workflow skill")
+            if segment.strip().startswith("graft build"):
+                block("code-writer may not run graft build; Prin runs it")
         return
 
     allowed = BASH_ALLOW.get(agent)
