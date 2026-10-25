@@ -30,8 +30,8 @@ baseline memory tracking.
 ## Agents
 
 `pm` is the orchestrator, run on demand with `claude --agent pm`. It runs the `/build`
-skill and delegates to four subagents. `codex:codex-rescue` comes from OpenAI's Codex
-plugin and hands writing and first-pass bug investigation to Codex (ChatGPT). Each agent's behaviour, permissions and model
+skill and delegates to three subagents. It also runs Codex (ChatGPT) itself with
+`codex exec`, for writing and first-pass bug investigation. Each agent's behaviour, permissions and model
 are defined in its own file under `.claude/agents/` — this file deliberately does not
 restate them, so it cannot drift out of date.
 
@@ -41,7 +41,6 @@ Claude Code reads this file via `CLAUDE.md`'s `@AGENTS.md` import.
 |-------|------|---------|
 | `pm` | primary | Orchestrates a build, gates output, writes the session memo, keeps the roadmap current |
 | `plan-reviewer` | subagent | Read-only plan and scope gate |
-| `codex:codex-rescue` | subagent (plugin) | Forwards writing and first-pass investigation to Codex |
 | `code-writer` | subagent | Fallback writer when Codex fails or hits its limit |
 | `deep-bug-hunter` | subagent | Read-only post-edit review and root-cause analysis |
 
@@ -49,11 +48,13 @@ Skills: `/build "<task>"` runs the full autonomous build cycle; `/multi @agent .
 runs several agents in parallel and synthesises their findings.
 
 Only the agents in the table above exist. If a skill or document tells you to invoke
-any other agent, it is out of date — do not attempt it. Report it to Prin.
+any other agent, it is out of date — do not attempt it. Report it to Prin. Never use
+the Codex plugin's `codex:codex-rescue` agent or its `/codex:` commands: they start
+Codex without its sandbox.
 
 ### If you are Codex
 
-`pm` runs you through `codex:codex-rescue`, as the writer or as a first-pass bug
+`pm` runs you with `codex exec`, as the writer or as a first-pass bug
 investigator. Your sandbox (`.codex/config.toml`) blocks the protected files in
 Safety Gates below; treat them as off-limits anyway. Edit only the files your brief
 lists, never commit, and end with the files changed, what changed, and the tests run

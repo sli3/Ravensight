@@ -28,11 +28,11 @@ PLAN_REVIEWER = "plan-reviewer"
 CODE_WRITER = "code-writer"
 DEEP_BUG_HUNTER = "deep-bug-hunter"
 TEAM = (PLAN_REVIEWER, CODE_WRITER, DEEP_BUG_HUNTER)
-# The Codex plugin's forwarding agent. Hook input may name it with or without
-# the plugin prefix, so both spellings are guarded.
-CODEX_RESCUE = "codex:codex-rescue"
-CODEX_AGENT_NAMES = (CODEX_RESCUE, "codex-rescue")
-SPAWNABLE = TEAM + (CODEX_RESCUE,)
+# The Codex plugin's forwarding agent starts Codex with its own sandbox setting,
+# which replaces .codex/config.toml, so it is blocked outright. pm runs Codex
+# itself with `codex exec` instead. Both spellings of its name are guarded.
+CODEX_AGENT_NAMES = ("codex:codex-rescue", "codex-rescue")
+SPAWNABLE = TEAM
 
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
@@ -40,7 +40,6 @@ FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 # deep-bug-hunter always run on the model in their definition files.
 ALLOWED_MODEL_OVERRIDES = {
     CODE_WRITER: ("haiku", "sonnet", "opus"),
-    CODEX_RESCUE: ("haiku", "sonnet"),
 }
 
 ROADMAP = "docs/RAVENSIGHT_ROADMAP.md"
@@ -156,13 +155,15 @@ HARMLESS_REDIRECTS = re.compile(r"\s2>&1|\s2>/dev/null")
 COMMAND_SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
 # Files holding live credentials. No guarded agent may name them in Bash.
 SECRET_FILES = re.compile(r"config\.toml|\.env\b(?!\.example)")
-# codex-rescue may run only the plugin's companion script, in task mode.
-CODEX_TASK = re.compile(
-    r'node\s+"?(?:\$\{CLAUDE_PLUGIN_ROOT\}|/[^"\s]*/\.claude/plugins/cache/openai-codex/codex/[^/"\s]+)'
-    r'/scripts/codex-companion\.mjs"?\s+task(?:\s|$)'
+# The only Codex commands pm may run: a new task or a follow-up, with an effort
+# level and a one-line brief in double quotes. No other flag fits, so the
+# sandbox in .codex/config.toml always applies.
+CODEX_EXEC = re.compile(
+    r'codex exec (?:resume --last )?-c model_reasoning_effort=(?:low|medium|high) '
+    r'"[^"\\$`;&|<>\n\r]+"'
 )
-# Anything that could chain, redirect or expand inside a codex-rescue command.
-CODEX_UNSAFE = re.compile(r"[;&|<>`\n\r$]")
+# Any run of the codex command or the plugin's script, to stop other agents.
+CODEX_COMMAND = re.compile(r"(?:^|[\s;&|(/])codex(?:\s|$)|codex-companion")
 
 
 def block(reason: str) -> None:
@@ -247,11 +248,17 @@ def check_bash(agent: str, command: str) -> None:
     if SECRET_FILES.search(command):
         block(f"{agent} may not name config.toml or a .env file in Bash; they hold live credentials")
     if agent in CODEX_AGENT_NAMES:
-        rest = command.strip().replace("${CLAUDE_PLUGIN_ROOT}", "", 1)
-        if CODEX_UNSAFE.search(rest):
-            block("codex-rescue commands may not contain ; & | < > backticks, $ or line breaks")
-        if not CODEX_TASK.match(command.strip()):
-            block("codex-rescue may run only the codex-companion 'task' command")
+        block("the Codex plugin agent is disabled: it skips Codex's sandbox; pm runs codex exec itself")
+    if CODEX_COMMAND.search(command):
+        if agent != PM:
+            block(f"{agent} may not run Codex; only pm may, with codex exec")
+        if not CODEX_EXEC.fullmatch(command.strip()):
+            block(
+                "pm may run Codex only as: codex exec [resume --last] "
+                '-c model_reasoning_effort=low|medium|high "<one-line brief>", with no other '
+                "flags, and no double quote, backslash, $, backticks, ; & | < > or line "
+                "breaks in the brief"
+            )
         return
     if agent == CODE_WRITER:
         if CODE_WRITER_BASH_DENY.search(command):
