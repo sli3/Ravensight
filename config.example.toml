@@ -84,11 +84,13 @@ attestation_path = "data/e8_attestation.json"
 
 [essentials]
 # ASD Essentials for enterprise IT dataset (CC BY 4.0, © Commonwealth of Australia 2026).
-# Reference data, do not edit. This path is for a host run; Docker handling comes later.
+# Reference data, do not edit. In Docker use defaults/essentials_enterprise_it.json:
+# the image holds the dataset at /app/defaults/ (see README Docker section).
 path = "data/defaults/essentials_enterprise_it.json"
 # Manual Essentials attestations (copy data/defaults/essentials_attestation.example.json).
 # Ratings are your own declaration, not an ASD assessment. Entries whose reason still
-# starts with "EXAMPLE:" are skipped. This path is for a host run; Docker handling comes later.
+# starts with "EXAMPLE:" are skipped. This path works unchanged in Docker;
+# the init-essentials-attestation container command creates the file.
 attestation_path = "data/essentials_attestation.json"
 
 [platform]

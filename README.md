@@ -50,7 +50,8 @@ ravensight/
 ├── baseline.py        # Baseline memory persistence (JSON store)
 ├── trending.py        # Historical trend analysis and anomaly detection
 ├── embedder.py        # ChromaDB vector store and embedding client
-└── e8_scorer.py       # Essential Eight related-control scoring + ISM control matching
+├── e8_scorer.py       # Essential Eight related-control scoring + ISM control matching
+└── essentials_scorer.py # ASD Essentials principle pointers
 scripts/
 ├── mitre_sync.py      # MITRE ATT&CK dataset sync
 └── asd_sync.py        # ASD Essential Eight / ISM dataset sync
@@ -694,7 +695,8 @@ Ravensight/
 │   ├── baseline.py
 │   ├── trending.py
 │   ├── embedder.py
-│   └── e8_scorer.py
+│   ├── e8_scorer.py
+│   └── essentials_scorer.py # ASD Essentials principle pointers
 ├── scripts/
 │   ├── mitre_sync.py
 │   └── asd_sync.py
@@ -704,6 +706,7 @@ Ravensight/
 │   │   ├── e8_attestation.example.json
 │   │   ├── e8_keyword_overrides.json
 │   │   ├── e8_strategy_map.json
+│   │   ├── essentials_enterprise_it.json # ASD Essentials dataset, CC BY 4.0, modified
 │   │   ├── platform_agents.example.json
 │   │   └── platform_hints.json
 │   ├── mitre_attack.json     # Gitignored — regenerable via mitre_sync.py
