@@ -61,12 +61,14 @@ Style and Running Python and Tests below, and skip the Memory and Session Manage
 sections, which are for Claude Code agents.
 
 **Writer (no mode named).** Edit only the files your brief lists, and end with the
-files changed, what changed, and the tests run with their result. If your brief points
+files changed and what changed. Do not run pytest: the sandbox blocks the `.env` file the tests load, so pm runs
+the test suite itself. If your brief points
 to a hand-off file under `.session-memos/`, read it first: it holds the findings or
 test output to act on, word for word.
 
-**Review mode.** Do not edit any file. Run `git status --short` and `git diff` to find
-the changed lines, then run `uv run pytest -q -p no:cacheprovider`,
+**Review mode.** Do not edit any file. Run `git status --short` and `git diff HEAD` to find
+the changed lines (pm stages the build before a review, so a plain `git diff` would be
+empty), then run
 `uv run ruff check --output-format=concise` and `uv run pyright` on the changed `.py`
 files. Report only problems on changed lines, and give one count for pre-existing
 ones. Check for: logic errors; missing or wrong exception handling; missing type
@@ -75,13 +77,16 @@ config keys that do not follow existing names such as `mitre_path` and `asd_path
 ChromaDB misuse (`metadatas=` on `add`, `upsert` and `update`; `query` filters with
 `where=` and returns metadata through `include=`); OPNsense/FreeBSD false-positive
 cases treated as hard suppression instead of advisory context; and anything that
-departs from the plan in your brief. No refactors or unrelated suggestions. Report:
-- Checks: pytest N passed, N failed (test name and cause); new ruff and pyright
+departs from the plan in your brief. No refactors or unrelated suggestions.
+Do not run pytest: the sandbox blocks the `.env` file the tests load, so pm runs
+the test suite itself. Report:
+- Checks: new ruff and pyright
   errors on changed lines (file:line message), and the pre-existing count
 - Findings: file:line and the problem, or "Zero findings"
 
 **Diagnosis mode.** Do not edit any file. Trace the execution path to the fault,
-reproduce it with `uv run pytest` where you can, and report: the root cause in one
+use the failing test output in your brief or hand-off file (do not run pytest:
+pm runs it), and report: the root cause in one
 sentence, your confidence (High, Medium or Low), the execution path, the affected
 files and functions, what not to touch, the fix strategy (no code), and unknowns.
 

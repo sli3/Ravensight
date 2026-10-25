@@ -16,6 +16,7 @@ Agents not named below (including a session with no named agent) are left to
 the normal permission rules.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -107,9 +108,23 @@ CODE_WRITER_DENY_NAMES = {
 # Top-level directories code-writer must never edit.
 CODE_WRITER_DENY_DIRS = {".claude", ".codex"}
 # The same protected names, spotted anywhere in a code-writer Bash command.
+# Git-ignored runtime and reference data under data/. Git cannot see changes to
+# them, so pm's checks would miss an edit; code-writer may not edit them.
+CODE_WRITER_DENY_PATHS = (
+    "data/baseline_state.json",
+    "data/chroma",
+    "data/eval_after.json",
+    "data/essentials_attestation.json",
+    "data/platform_agents.json",
+    "data/asd_framework.json",
+    "data/essentials_enterprise_it.json",
+    "data/mitre_attack.json",
+)
 CODE_WRITER_BASH_DENY = re.compile(
     r"AGENTS\.md|CLAUDE\.md|ROADMAP\.md|roadmap-archive\.md|\.mcp\.json"
     r"|\.claude/|\.codex/"
+    r"|data/(?:baseline_state|eval_after|essentials_attestation|platform_agents"
+    r"|asd_framework|essentials_enterprise_it|mitre_attack)\.json|data/chroma"
 )
 
 # Claude in Chrome (browser) rules. Only pm may use the browser, only on local
@@ -155,6 +170,10 @@ HARMLESS_REDIRECTS = re.compile(r"\s2>&1|\s2>/dev/null")
 COMMAND_SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
 # Files holding live credentials. No guarded agent may name them in Bash.
 SECRET_FILES = re.compile(r"config\.toml|\.env\b(?!\.example)")
+# File names a glob in a Bash command must not be able to reach.
+SECRET_NAMES = ("config.toml", ".env", ".env.local", ".env.production", ".env.development")
+GLOB_CHARS = re.compile(r"[*?\[]")
+BRACE_EXPANSION = re.compile(r"\{[^{}]*,[^{}]*\}")
 # The only Codex commands pm may run: a writer task, a writer follow-up by
 # session id, or a reviewer task on gpt-6-astra, each with an effort level and a
 # one-line brief in double quotes. No other flag fits, so the sandbox in
@@ -190,6 +209,8 @@ def code_writer_may_edit(rel: str) -> bool:
     parts = rel.split("/")
     name = parts[-1]
     if parts[0] in CODE_WRITER_DENY_DIRS or name in CODE_WRITER_DENY_NAMES:
+        return False
+    if any(rel == p or rel.startswith(p + "/") for p in CODE_WRITER_DENY_PATHS):
         return False
     return not (name == ".env" or (name.startswith(".env.") and name != ".env.example"))
 
@@ -245,10 +266,31 @@ def check_file_tool(agent: str, tool: str, tool_input: dict, project_dir: Path) 
         block(f"pm may not edit {rel}; only .session-memos/, the roadmap and its archive")
 
 
+def names_secret(command: str) -> bool:
+    """Return True if a Bash command could reach a credentials file.
+
+    Catches the file named outright, split by quotes or backslashes, built by
+    brace expansion, or matched by a glob. Shell variables can still hide a
+    name, so this guards against slips; only an OS sandbox is airtight.
+    """
+    flat = re.sub(r"[\"'\\]", "", command)
+    if SECRET_FILES.search(flat) or BRACE_EXPANSION.search(flat):
+        return True
+    for token in re.split(r"[\s;&|()<>=]+", flat):
+        if GLOB_CHARS.search(token):
+            name = token.rsplit("/", 1)[-1]
+            if any(fnmatch.fnmatchcase(secret, name) for secret in SECRET_NAMES):
+                return True
+    return False
+
+
 def check_bash(agent: str, command: str) -> None:
     """Apply the per-agent Bash rules."""
-    if SECRET_FILES.search(command):
-        block(f"{agent} may not name config.toml or a .env file in Bash; they hold live credentials")
+    if names_secret(command):
+        block(
+            f"{agent} may not reach config.toml or a .env file in Bash, by name, glob, "
+            "brace expansion or quoting; they hold live credentials"
+        )
     if agent in CODEX_AGENT_NAMES:
         block("the Codex plugin agent is disabled: it skips Codex's sandbox; pm runs codex exec itself")
     if CODEX_COMMAND.search(command):
@@ -264,7 +306,7 @@ def check_bash(agent: str, command: str) -> None:
         return
     if agent == CODE_WRITER:
         if CODE_WRITER_BASH_DENY.search(command):
-            block("code-writer may not name protected governance files in Bash; use Read to read them")
+            block("code-writer may not name protected files in Bash; use Read to read governance files")
         for segment in COMMAND_SEPARATORS.split(command):
             if segment.strip().startswith("git commit"):
                 block("code-writer may not run git commit; that belongs to the git-workflow skill")

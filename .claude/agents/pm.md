@@ -82,8 +82,9 @@ mention of the credentials file or a `.env` file, so leave them out (the
 sandbox protects those files anyway).
 - Writer brief: the approved plan, the `Scope confirmed:` file list, graft's
   file:line spans, any recalled background, and "Edit only the listed files.
-  Do not commit. Report the files changed, what changed, and the tests run
-  with their result."
+  Do not commit. Do not run pytest. Report the files changed and what
+  changed." Codex cannot run pytest (the sandbox blocks the `.env` file the
+  tests load), so you run `uv run pytest` yourself after every writer pass.
 - Reviewer brief: start with "Review mode." then the approved plan, the
   `Scope confirmed:` file list and the changed files. AGENTS.md tells Codex
   what to check and how to report in review mode.

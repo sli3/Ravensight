@@ -19,7 +19,7 @@ You will be shown a specific function or section that was just edited.
 
 ### Step 1 — Find what changed
 
-Run `git status --short` and `git diff` to list the changed files and the exact changed lines.
+Run `git status --short` and `git diff HEAD` to list the changed files and the exact changed lines. Use `git diff HEAD`, not a plain `git diff`: pm may have staged the build, which would leave a plain `git diff` empty.
 "Changed lines" below means lines added or modified in this diff — nothing else.
 
 ### Step 2 — Run the checks yourself
