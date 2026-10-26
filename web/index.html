@@ -519,6 +519,10 @@ a { color: var(--link); }
 .tv-row { display: flex; flex-wrap: wrap; gap: 2px 16px; border-bottom: 1px solid var(--grid); padding: 6px 0; }
 .tv-name { flex: 0 0 232px; font-weight: 600; color: var(--text-primary); }
 .tv-text { flex: 1 1 240px; overflow-wrap: anywhere; }
+.terms-list { margin: 0; }
+.terms-list dt { font-weight: 600; color: var(--text-primary); }
+.terms-list dd { margin: 0 0 12px; overflow-wrap: anywhere; }
+.terms-list dd:last-child { margin-bottom: 0; }
 
 /* Declared ratings */
 .ratings { display: flex; flex-direction: column; border-top: 1px solid var(--baseline); }
@@ -663,12 +667,18 @@ a { color: var(--link); }
   <nav id="nav" class="nav" aria-label="Report sections" hidden>
     <a class="navlink" href="#overview">Overview</a>
     <a class="navlink" href="#findings">Findings</a>
+    <a class="navlink" href="#trends">Trends</a>
     <a class="navlink" href="#essentials">ASD Essentials</a>
     <a class="navlink" href="#e8">Essential Eight</a>
-    <a class="navlink" href="#trends">Trends</a>
+    <a class="navlink" href="#terms">Terms</a>
   </nav>
 
   <main id="report" class="wrap-main" style="display:flex;flex-direction:column;gap:28px">
+
+    <section id="howto" aria-labelledby="howto-h" class="panel" hidden>
+      <h2 id="howto-h">How to read this report</h2>
+      <div id="howto-body"></div>
+    </section>
 
     <section id="overview" aria-labelledby="overview-h" class="panel panel-overview" hidden>
       <h2 id="overview-h">Run summary</h2>
@@ -684,6 +694,12 @@ a { color: var(--link); }
       <div id="findings-body"></div>
     </section>
 
+    <section id="trends" aria-labelledby="trends-h" class="panel panel-trends" hidden>
+      <h2 id="trends-h">Trends</h2>
+      <div id="trends-body"></div>
+      <svg id="trends-svg-ns" width="0" height="0" aria-hidden="true" focusable="false"></svg>
+    </section>
+
     <section id="essentials" aria-labelledby="essentials-h" class="panel panel-essentials" hidden>
       <h2 id="essentials-h">ASD Essentials for enterprise IT</h2>
       <div id="essentials-body"></div>
@@ -694,10 +710,9 @@ a { color: var(--link); }
       <div id="e8-body"></div>
     </section>
 
-    <section id="trends" aria-labelledby="trends-h" class="panel panel-trends" hidden>
-      <h2 id="trends-h">Trends</h2>
-      <div id="trends-body"></div>
-      <svg id="trends-svg-ns" width="0" height="0" aria-hidden="true" focusable="false"></svg>
+    <section id="terms" aria-labelledby="terms-h" class="panel" hidden>
+      <h2 id="terms-h">Terms used on this page</h2>
+      <div id="terms-body"></div>
     </section>
 
   </main>
@@ -717,7 +732,21 @@ const FLAT_AXIS_PAD_MS = 30 * 60 * 1000;
 const MS_PER_HOUR = 60 * 60 * 1000;
 const CLUSTER_TYPES = ["rule", "vulnerability", "cluster"];
 const E8_UNMAPPED = "Unmapped";
-const SECTION_IDS = ["overview", "timeline", "findings", "essentials", "e8", "trends"];
+const SECTION_IDS = ["howto", "overview", "timeline", "findings", "trends", "essentials", "e8", "terms"];
+const TERMS = [
+  ["Cluster (C1, C2…)", "Alerts that share the same rule, grouped into one finding. Numbers apply to this report only."],
+  ["UTC", "Coordinated Universal Time, the time zone Wazuh uses for alert times."],
+  ["ASD", "Australian Signals Directorate, the Australian Government cyber security agency."],
+  ["ISM", "Information Security Manual, the ASD's catalogue of security controls (IDs like ISM-0298)."],
+  ["Essential Eight", "The ASD's eight core mitigation strategies, such as patching and multi-factor authentication."],
+  ["ASD Essentials", "The Australian Signals Directorate's framework of principles and actions for enterprise IT."],
+  ["Principle and action", "A principle is an outcome to achieve; an action is something that must be done to achieve it."],
+  ["Priority phase", "The order in which ASD suggests implementing the domains of the Essentials. It is not a rating."],
+  ["CVE", "Common Vulnerabilities and Exposures, a public ID for a known software flaw."],
+  ["MITRE ATT&CK", "A public catalogue of attacker tactics and techniques."],
+  ["Anomaly", "A finding in the Trends table whose latest daily count is unusually high compared with its earlier days. It comes from Ravensight's trend calculation, not from a judgement about your systems."],
+  ["Check", "A note on a finding saying its narrative or recommendation mentions details, such as IDs, file paths, ports, addresses or counts, that are not in that cluster's alert evidence, so read it with care."]
+];
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_VALUE_DEPTH = 3;
 const PAIR_ARROW = " → ";
@@ -1630,6 +1659,18 @@ function renderHeader(model) {
     windowChip.setAttribute("title", "Run window (UTC)");
     add(chips, [windowChip]);
   }
+}
+
+function renderHowTo() {
+  const body = document.getElementById("howto-body");
+  clear(body);
+  const sentences = [
+    "Ravensight groups alerts that share a Wazuh rule into findings, labelled C1, C2 and so on.",
+    "Start with the run summary, then read each finding: what the model found, what it recommends and the evidence behind it.",
+    "Trends come next, then pointers to ASD frameworks for reference, then a list of terms."
+  ];
+  body.appendChild(el("p", sentences.join(" "), "note"));
+  showSection("howto");
 }
 
 function renderOverview(model) {
@@ -2761,18 +2802,34 @@ function renderTrends(model) {
   showSection("trends");
 }
 
+function renderTerms() {
+  const body = document.getElementById("terms-body");
+  clear(body);
+  const details = el("details", "", "table-view");
+  details.appendChild(el("summary", "Show the terms"));
+  const list = el("dl", "", "terms-list");
+  for (const [term, meaning] of TERMS) {
+    add(list, [el("dt", term), el("dd", meaning)]);
+  }
+  details.appendChild(list);
+  body.appendChild(details);
+  showSection("terms");
+}
+
 function renderReport(model) {
   view.model = model;
   view.selected = 0;
   view.pressables = [];
   indexEssentials(model.essentials);
   renderHeader(model);
+  renderHowTo();
   renderOverview(model);
   renderTimeline(model);
   renderFindings(model);
+  renderTrends(model);
   renderEssentials(model);
   renderE8(model);
-  renderTrends(model);
+  renderTerms();
   showSection("nav");
 }
 

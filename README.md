@@ -499,12 +499,16 @@ overwrite. With `[reports] overwrite = true` the file is
 Each report contains, in order:
 
 - **Summary** — overall threat posture for the period
-- **Findings** — LLM-identified threats and patterns grouped by rule group
+- **Findings** — what happened, the recommendation, then the evidence for each finding
 - **Similar Past Incidents** — related historical findings retrieved via the
   ChromaDB vector store
-- **MITRE ATT&CK Tags** — tactics and techniques mapped to the period's findings
 - **Historical Trends** — slow-burn anomalies flagged across recent runs
-- **Recommendations** — LLM-generated response suggestions
+- **MITRE ATT&CK Tags** — tactics and techniques mapped to the period's findings
+- **ASD Essentials** — related principles and actions for enterprise IT
+- **ASD Framework** — Essential Eight and ISM context
+- **Glossary** — terms used in the report
+
+The Recommendations section appears only for reports from older baselines that have no per-finding recommendations.
 
 ### JSON report
 
@@ -559,6 +563,8 @@ must be exactly `true` or `false`). This applies to Docker too, through the moun
 `web/index.html` is a single page that shows a JSON report. Open it in a browser and
 choose a report `.json` file from `reports/`. It reads the JSON report only (schema versions 3 and 4),
 never the markdown, and it is read-only: it cannot change a report or any other file.
+The page opens with a short how-to-read box and the run summary, shows the findings,
+then the trends, then the ASD pointers, and ends with a closed list of terms.
 Nothing leaves the machine, because the page makes no network requests. A schema version 4
 report draws its trends as a line chart above a table of every finding, with a button on
 each row to show or hide that finding's line and a small line per row. The trends text sits

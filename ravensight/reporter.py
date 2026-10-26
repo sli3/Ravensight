@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 
 REPORT_MAX_CVES = 10
 UNMAPPED_STRATEGY = "Unmapped"
+NO_COMMENTARY_NARRATIVE = (
+    "The model wrote no commentary for this cluster. "
+    "The evidence below is the original alert data."
+)
+NO_RECOMMENDATION_TEXT = "No recommendation was generated."
 
 
 def _trim_timestamp(raw: str) -> str:
@@ -35,11 +40,16 @@ def _format_finding(finding: str | dict) -> list[str]:
         return [f"- {finding}"]
 
     if finding.get("type") == "unattached":
-        if not finding.get("description", "").strip():
+        description = finding.get("description", "")
+        recommendation = finding.get("recommendation", "")
+        if not description.strip() and not recommendation.strip():
             return []
-        return [
-            f"- *LLM note, not linked to alert data:* {finding.get('description', '')}"
-        ]
+        lines = ["- *LLM note, not linked to alert data:*"]
+        if description.strip():
+            lines[0] += f" {description}"
+        if recommendation.strip():
+            lines.append(f"  - Recommendation: {recommendation}")
+        return lines
 
     raw_first = finding.get("first_seen", "")
     raw_last = finding.get("last_seen", "")
@@ -66,8 +76,10 @@ def _format_finding(finding: str | dict) -> list[str]:
     ]
 
     narrative = finding.get("narrative", "")
-    if narrative:
+    if narrative.strip():
         lines.append(f"  - {narrative}")
+    else:
+        lines.append(f"  - *{NO_COMMENTARY_NARRATIVE}*")
 
     if finding.get("flags"):
         lines.append(
@@ -75,6 +87,12 @@ def _format_finding(finding: str | dict) -> list[str]:
             + ", ".join(finding["flags"])
             + ", which are not in this cluster's evidence"
         )
+
+    recommendation = finding.get("recommendation", "")
+    if recommendation.strip():
+        lines.append(f"  - Recommendation: {recommendation}")
+    else:
+        lines.append(f"  - *{NO_RECOMMENDATION_TEXT}*")
 
     evidence_text = render_evidence(finding.get("evidence"), plain_labels=True)
     if evidence_text:
@@ -122,6 +140,9 @@ CLUSTER_NOTE = (
     "level: High is level 12 or above, Medium is 7 to 11, Low is 6 or below. "
     "Finding times are in UTC (Coordinated "
     "Universal Time); the Generated time above is local."
+    " Read the Summary, then each finding with its recommendation; the sections after "
+    "the findings give context and reference, and the Glossary at the end explains "
+    "terms when it has entries."
 )
 
 # (term, meaning, regex that must match the report body for the term to be listed)
@@ -847,7 +868,7 @@ class Reporter:
 
         Args:
             data: Analysis or baseline dict with summary, findings, recommendations.
-            trends: Optional trending markdown, placed before the Recommendations section.
+            trends: Optional trending markdown, placed after similar past incidents and before reference sections.
             asd_data: Optional ASD framework data for Essential Eight and ISM controls.
             e8_scores: Optional E8 scoring results.
             matched_controls: Optional list of matched ISM controls.
@@ -965,7 +986,7 @@ class Reporter:
 
         attestation is the optional operator E8 attestation, passed on to the ASD section.
 
-        essentials is the optional Essentials block; with a usable dataset it adds the ASD Essentials section after the ASD Framework section.
+        essentials is the optional Essentials block; with a usable dataset it adds the ASD Essentials section before the ASD Framework section.
 
         asd_data of None renders no ASD section; an empty dict renders a note that the data file is missing or outdated.
         """
@@ -990,8 +1011,20 @@ class Reporter:
         if findings:
             for finding in findings:
                 lines.extend(_format_finding(finding))
+            if lines[-1] == "":
+                lines.pop()
         else:
             lines.append("*No findings*")
+
+        # Legacy reports keep their separate recommendations immediately after findings.
+        if not any(isinstance(f, dict) for f in findings):
+            lines.extend(["", "## Recommendations", ""])
+            recommendations = data.get("recommendations", [])
+            if recommendations:
+                for rec in recommendations:
+                    lines.append(f"- {rec}")
+            else:
+                lines.append("*No recommendations*")
 
         # Similar past incidents — context for findings
         unavailable_note = data.get("similar_incidents_unavailable_note")
@@ -1002,7 +1035,6 @@ class Reporter:
                 "## Similar Past Incidents",
                 "",
                 f"> **Note:** {unavailable_note}",
-                "",
             ])
         elif similar:
             lines.extend([
@@ -1010,8 +1042,11 @@ class Reporter:
                 "## Similar Past Incidents",
                 "",
                 _plain_incident_dates(similar),
-                "",
             ])
+
+        # Historical trends — supporting data
+        if trends:
+            lines.extend(["", trends.rstrip("\n")])
 
         # MITRE ATT&CK Tags — threat classification
         mitre_tags = data.get("mitre_tags", [])
@@ -1027,7 +1062,11 @@ class Reporter:
                 tactic = tag.get("tactic", "Unknown")
                 description = tag.get("description", "No description")
                 lines.append(f"| {tactic} | {description} |")
-            lines.append("")
+
+        # ASD Essentials section
+        essentials_section = _render_essentials_section(essentials, findings)
+        if essentials_section:
+            lines.extend(["", essentials_section.rstrip("\n")])
 
         # ASD Framework section
         if asd_data == {}:
@@ -1036,7 +1075,6 @@ class Reporter:
                 "## ASD Framework",
                 "",
                 "> ASD framework data is missing or in an older format. Run `scripts/asd_sync.py` to regenerate it.",
-                "",
             ])
         elif asd_data:
             lines.extend([
@@ -1048,45 +1086,8 @@ class Reporter:
                     finding_pointers=finding_pointers,
                     findings=findings,
                     attestation=attestation,
-                ),
+                ).rstrip("\n"),
             ])
-
-        # ASD Essentials section
-        essentials_section = _render_essentials_section(essentials, findings)
-        if essentials_section:
-            lines.extend(["", essentials_section])
-
-        # Historical trends — supporting data
-        if trends:
-            lines.extend(["", trends])
-
-        # Recommendations last — actions flow from all evidence above
-        lines.extend([
-            "",
-            "## Recommendations",
-            "",
-        ])
-
-        if any(isinstance(f, dict) for f in findings):
-            recommendation_lines: list[str] = []
-            for finding in findings:
-                if not isinstance(finding, dict):
-                    continue
-                rec = finding.get("recommendation", "")
-                if not rec:
-                    continue
-                if finding.get("type") == "unattached":
-                    recommendation_lines.append(rec)
-                else:
-                    recommendation_lines.append(f"[{finding.get('id', '')}] {rec}")
-            recommendations: list[str] = recommendation_lines
-        else:
-            recommendations = data.get("recommendations", [])
-        if recommendations:
-            for rec in recommendations:
-                lines.append(f"- {rec}")
-        else:
-            lines.append("*No recommendations*")
 
         lines.extend(_render_glossary("\n".join(lines)))
         lines.append("")

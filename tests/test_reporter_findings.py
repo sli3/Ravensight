@@ -4,6 +4,7 @@ Tests for rendering dict findings (clusters) in the report.
 No network — reports are built in-memory via Reporter._build_report.
 """
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -64,7 +65,7 @@ def test_legacy_string_finding_unchanged(tmp_path: Path) -> None:
 
 
 def test_recommendations_derive_from_dict_findings(tmp_path: Path) -> None:
-    """Recommendations carry the same [Cx] prefix as the finding lines."""
+    """Each dictionary finding carries its own recommendation sub-bullet."""
     rep = _make_reporter(tmp_path)
     data = {
         "summary": "s",
@@ -75,13 +76,15 @@ def test_recommendations_derive_from_dict_findings(tmp_path: Path) -> None:
         "recommendations": ["ignored when dict findings present"],
     }
     report = rep._build_report(data)
-    assert "- [C1] Enforce key-only authentication." in report
-    assert "- [C2] Patch the service." in report
+    first_finding, second_finding = report.split("- **[C2]")
+    assert "  - Recommendation: Enforce key-only authentication." in first_finding
+    assert "  - Recommendation: Patch the service." in second_finding
+    assert "## Recommendations" not in report
     assert "ignored when dict findings present" not in report
 
 
 def test_unattached_recommendation_has_no_prefix(tmp_path: Path) -> None:
-    """Unattached findings' recommendations render with no [Cx] prefix."""
+    """Unattached recommendations render as sub-bullets beneath the labelled note."""
     rep = _make_reporter(tmp_path)
     unattached = {
         "type": "unattached",
@@ -93,8 +96,14 @@ def test_unattached_recommendation_has_no_prefix(tmp_path: Path) -> None:
         "recommendation": "General hygiene advice",
     }
     report = rep._build_report({"summary": "s", "findings": [unattached]})
-    assert "- General hygiene advice" in report
-    assert "- [C" not in report.split("## Recommendations")[-1]
+    assert (
+        "- *LLM note, not linked to alert data:* Loose LLM note\n"
+        "  - Recommendation: General hygiene advice"
+    ) in report
+    assert "[C" not in report
+    assert "## Recommendations" not in report
+    assert reporter.NO_COMMENTARY_NARRATIVE not in report
+    assert reporter.NO_RECOMMENDATION_TEXT not in report
 
 
 def test_unattached_label_rendered(tmp_path: Path) -> None:
@@ -117,17 +126,122 @@ def test_full_report_smoke(tmp_path: Path) -> None:
     assert "# Security Report" in report
     assert "## Summary" in report
     assert "## Findings" in report
-    assert "## Recommendations" in report
+    assert "## Recommendations" not in report
     assert "- **[C3] High**" in report
-    assert "- [C3] Enforce key-only authentication." in report
+    assert "  - Recommendation: Enforce key-only authentication." in report
 
 
 def test_no_recommendations_placeholder(tmp_path: Path) -> None:
-    """Empty recommendations render the placeholder."""
+    """A dictionary finding with no recommendation renders its own placeholder."""
     finding = _cluster(recommendation="")
     rep = _make_reporter(tmp_path)
     report = rep._build_report({"summary": "s", "findings": [finding]})
-    assert "*No recommendations*" in report
+    assert "  - *No recommendation was generated.*" in report
+    assert "## Recommendations" not in report
+
+
+@pytest.mark.parametrize("finding_type", ["rule", "vulnerability"])
+@pytest.mark.parametrize("blank", ["", " \t\n"])
+def test_blank_finding_commentary_and_recommendation(
+    finding_type: str, blank: str
+) -> None:
+    """Blank and whitespace-only commentary and recommendations use the fixed sentences."""
+    lines = reporter._format_finding(
+        _cluster(type=finding_type, narrative=blank, recommendation=blank)
+    )
+    assert reporter.NO_COMMENTARY_NARRATIVE == (
+        "The model wrote no commentary for this cluster. "
+        "The evidence below is the original alert data."
+    )
+    assert reporter.NO_RECOMMENDATION_TEXT == "No recommendation was generated."
+    assert lines[1:] == [
+        (
+            "  - *The model wrote no commentary for this cluster. "
+            "The evidence below is the original alert data.*"
+        ),
+        "  - *No recommendation was generated.*",
+    ]
+
+
+@pytest.mark.parametrize("description", ["", " \t\n"])
+@pytest.mark.parametrize("recommendation", ["", " \t\n"])
+def test_blank_unattached_note_produces_no_bullet(
+    description: str, recommendation: str
+) -> None:
+    """An unattached note with both fields blank renders nothing."""
+    assert reporter._format_finding({
+        "type": "unattached",
+        "description": description,
+        "recommendation": recommendation,
+    }) == []
+
+
+@pytest.mark.parametrize("recommendation", ["", " \t\n"])
+def test_unattached_note_without_recommendation_has_no_placeholder(
+    recommendation: str,
+) -> None:
+    """An unattached description stands alone when its recommendation is blank."""
+    assert reporter._format_finding({
+        "type": "unattached",
+        "description": "Loose LLM note",
+        "recommendation": recommendation,
+    }) == ["- *LLM note, not linked to alert data:* Loose LLM note"]
+
+
+@pytest.mark.parametrize(
+    "findings",
+    [
+        [_cluster()],
+        [{"type": "unattached", "description": "Loose note"}],
+        [{"type": "unattached", "description": ""}],
+        ["Legacy finding", _cluster()],
+    ],
+)
+def test_dictionary_findings_omit_recommendations_section(
+    tmp_path: Path, findings: list[Any]
+) -> None:
+    """Any dictionary finding suppresses the legacy Recommendations section."""
+    report = _make_reporter(tmp_path)._build_report({
+        "summary": "s",
+        "findings": findings,
+        "recommendations": ["Ignored legacy recommendation"],
+    })
+    assert "## Recommendations" not in report
+    assert "Ignored legacy recommendation" not in report
+
+
+@pytest.mark.parametrize("findings", [["Legacy finding"], []])
+@pytest.mark.parametrize("recommendations", [["Legacy action"], []])
+def test_legacy_recommendations_immediately_follow_findings(
+    tmp_path: Path, findings: list[str], recommendations: list[str]
+) -> None:
+    """Legacy and empty reports keep recommendations or their placeholder after Findings."""
+    report = _make_reporter(tmp_path)._build_report({
+        "summary": "s",
+        "findings": findings,
+        "recommendations": recommendations,
+        "similar_incidents": "- Earlier incident",
+    })
+    findings_text = "- Legacy finding" if findings else "*No findings*"
+    recommendations_text = "- Legacy action" if recommendations else "*No recommendations*"
+    assert (
+        f"## Findings\n\n{findings_text}\n\n"
+        f"## Recommendations\n\n{recommendations_text}\n\n"
+        "## Similar Past Incidents"
+    ) in report
+
+
+@pytest.mark.parametrize("recommendation", ["", " \t\n", "  Patch the service.  "])
+def test_json_finding_recommendation_unchanged(
+    tmp_path: Path, recommendation: str
+) -> None:
+    """Markdown placement and placeholders leave the JSON recommendation value untouched."""
+    path = _make_reporter(tmp_path).generate({
+        "summary": "s",
+        "findings": [_cluster(recommendation=recommendation)],
+    })
+    payload = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    assert payload["findings"][0]["recommendation"] == recommendation
 
 
 def test_cve_cap_in_report(tmp_path: Path) -> None:
@@ -219,19 +333,29 @@ def test_single_timestamp_rendered_once(tmp_path: Path) -> None:
     assert "→" not in lines[0]
 
 
-def test_empty_unattached_description_produces_no_bullet(tmp_path: Path) -> None:
-    """An unattached finding with no description renders no Findings bullet."""
-    unattached = _cluster(type="unattached", description="", recommendation="Hygiene advice")
+@pytest.mark.parametrize("description", ["", " \t\n"])
+def test_empty_unattached_description_keeps_recommendation(
+    tmp_path: Path, description: str
+) -> None:
+    """A blank description keeps the exact prefix-only line and its recommendation."""
+    unattached = _cluster(
+        type="unattached", description=description, recommendation="Hygiene advice"
+    )
     rep = _make_reporter(tmp_path)
     report = rep._build_report({"summary": "s", "findings": [unattached]})
-    assert "*LLM note, not linked to alert data:*" not in report
-    recommendations = report.split("## Recommendations")[-1]
-    assert "- Hygiene advice" in recommendations
-    assert "[C" not in recommendations
+    assert reporter._format_finding(unattached) == [
+        "- *LLM note, not linked to alert data:*",
+        "  - Recommendation: Hygiene advice",
+    ]
+    assert (
+        "- *LLM note, not linked to alert data:*\n"
+        "  - Recommendation: Hygiene advice"
+    ) in report
+    assert "## Recommendations" not in report
 
 
 def test_evidence_sub_bullet_renders(tmp_path: Path) -> None:
-    """A finding with evidence renders one Evidence sub-bullet after the narrative."""
+    """A finding renders one Evidence sub-bullet directly after its recommendation."""
     finding = _cluster(
         evidence={
             "syscheck": {
@@ -249,15 +373,14 @@ def test_evidence_sub_bullet_renders(tmp_path: Path) -> None:
         "  - Evidence: content unchanged; event modified; "
         "changed inode, mtime; paths /etc/resolv.conf"
     )
-    # sub-bullet sits between the narrative line and any CVEs line
-    narrative_idx = lines.index(
-        "  - Repeated password guessing from external addresses."
+    recommendation_idx = lines.index(
+        "  - Recommendation: Enforce key-only authentication."
     )
-    assert lines.index(evidence_lines[0]) == narrative_idx + 1
+    assert lines.index(evidence_lines[0]) == recommendation_idx + 1
 
 
 def test_evidence_sub_bullet_before_cves(tmp_path: Path) -> None:
-    """For vulnerability findings the Evidence line precedes the CVEs line."""
+    """Vulnerability evidence follows the recommendation and precedes CVEs."""
     finding = _cluster(
         type="vulnerability",
         package="openssl",
@@ -271,7 +394,10 @@ def test_evidence_sub_bullet_before_cves(tmp_path: Path) -> None:
     cve_idx = next(
         i for i, line in enumerate(lines) if line.strip().startswith("- CVEs:")
     )
-    assert evidence_idx < cve_idx
+    recommendation_idx = lines.index(
+        "  - Recommendation: Enforce key-only authentication."
+    )
+    assert recommendation_idx < evidence_idx < cve_idx
     assert "status Solved×1" in lines[evidence_idx]
 
 
@@ -289,7 +415,7 @@ def test_evidence_newlines_and_pipes_sanitised(tmp_path: Path) -> None:
 
 
 def test_finding_without_evidence_byte_identical(tmp_path: Path) -> None:
-    """A missing or empty evidence dict renders identically, with only the headline and narrative."""
+    """Missing and empty evidence both keep the headline, narrative and recommendation."""
     assert reporter._format_finding(_cluster()) == reporter._format_finding(
         _cluster(evidence={})
     )
@@ -299,6 +425,7 @@ def test_finding_without_evidence_byte_identical(tmp_path: Path) -> None:
             "on host-1, host-2 (2026-09-24 08:15 → 2026-09-24 10:30 UTC)"
         ),
         "  - Repeated password guessing from external addresses.",
+        "  - Recommendation: Enforce key-only authentication.",
     ]
     assert reporter._format_finding(_cluster()) == expected
 
@@ -316,6 +443,7 @@ def test_finding_with_notes_renders_note_lines() -> None:
     evidence_idx = next(
         i for i, line in enumerate(lines) if line.strip().startswith("- Evidence:")
     )
+    assert lines.index("  - Recommendation: Enforce key-only authentication.") < evidence_idx
     assert lines.index("  - Note: alpha") > evidence_idx
 
 
@@ -337,7 +465,7 @@ def test_finding_with_flags_renders_check_line() -> None:
 
 
 def test_check_line_directly_after_narrative_before_evidence_and_note() -> None:
-    """The Check line follows the narrative and precedes Evidence and Note lines."""
+    """Check follows the narrative, then Recommendation, Evidence and Note follow."""
     finding = _cluster(
         flags=["T1100"],
         notes=["alpha"],
@@ -346,10 +474,13 @@ def test_check_line_directly_after_narrative_before_evidence_and_note() -> None:
     lines = reporter._format_finding(finding)
     narrative_idx = lines.index(f"  - {finding['narrative']}")
     check_idx = next(i for i, line in enumerate(lines) if "- Check:" in line)
+    recommendation_idx = lines.index(f"  - Recommendation: {finding['recommendation']}")
     evidence_idx = next(i for i, line in enumerate(lines) if "- Evidence:" in line)
     note_idx = lines.index("  - Note: alpha")
     assert check_idx == narrative_idx + 1
-    assert check_idx < evidence_idx < note_idx
+    assert recommendation_idx == check_idx + 1
+    assert evidence_idx == recommendation_idx + 1
+    assert evidence_idx < note_idx
 
 
 def test_check_line_absent_with_empty_flags() -> None:
@@ -396,8 +527,7 @@ def test_blank_line_before_mitre_tags_without_similar_incidents(
     lines = report.splitlines()
     idx = lines.index("## MITRE ATT&CK Tags")
     assert lines[idx - 1] == ""
-    bullet_idx = next(i for i, line in enumerate(lines) if line.startswith("- **[C3]"))
-    assert idx - bullet_idx >= 2
+    assert lines[idx - 2] == "  - Recommendation: Enforce key-only authentication."
 
 
 # --- ASD/ISM table cell sanitisation ---
@@ -839,6 +969,23 @@ def test_cluster_note_explains_c_numbers_and_utc(tmp_path: Path) -> None:
     assert report.index("clusters (C1, C2…)") < report.index("## Summary")
 
 
+def test_cluster_note_retains_text_and_appends_reading_order() -> None:
+    """The existing cluster note gains exactly the agreed reading-order sentence."""
+    original = (
+        "> Findings are grouped into clusters (C1, C2…): alerts that share the same rule. "
+        "The numbers apply to this report only. Severity comes from the Wazuh rule "
+        "level: High is level 12 or above, Medium is 7 to 11, Low is 6 or below. "
+        "Finding times are in UTC (Coordinated "
+        "Universal Time); the Generated time above is local."
+    )
+    addition = (
+        " Read the Summary, then each finding with its recommendation; the sections "
+        "after the findings give context and reference, and the Glossary at the end "
+        "explains terms when it has entries."
+    )
+    assert reporter.CLUSTER_NOTE == original + addition
+
+
 def test_cluster_note_absent_without_findings(tmp_path: Path) -> None:
     """A report with no findings has no cluster note."""
     rep = _make_reporter(tmp_path)
@@ -858,7 +1005,13 @@ def test_glossary_lists_only_terms_used_in_the_report(tmp_path: Path) -> None:
     )
     report = rep._build_report({"summary": "s", "findings": [finding]})
     glossary = report.split("## Glossary")[1]
-    assert report.index("## Glossary") > report.index("## Recommendations")
+    assert report.index("## Glossary") > report.index("## Findings")
+    assert report.rsplit("\n## ", 1)[-1].startswith("Glossary\n")
+    assert glossary.strip().splitlines() == [
+        "- **Cluster (C1, C2…)**: Alerts that share the same rule, grouped into one finding. Numbers apply to this report only.",
+        "- **UTC**: Coordinated Universal Time, the time zone Wazuh uses for alert times.",
+        "- **CVE**: Common Vulnerabilities and Exposures, a public ID for a known software flaw.",
+    ]
     assert "**Cluster (C1, C2…)**" in glossary
     assert "**UTC**" in glossary
     assert "**CVE**" in glossary

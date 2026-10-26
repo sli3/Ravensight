@@ -14,7 +14,7 @@ import pytest
 
 from ravensight import essentials_scorer, reporter
 from ravensight.reporter import MAX_FINDING_LABEL_CHARS, Reporter
-from tests.test_reporter_findings import _cluster
+from tests.test_reporter_findings import _cluster, _make_asd_data, _make_e8_scores
 
 _FIXED_NOW = datetime(2026, 10, 15, 9, 30, 15, tzinfo=timezone.utc)
 _DATASET_PATH = (
@@ -471,11 +471,85 @@ def test_asd_framework_glossary_entry_unaffected(tmp_path: Path) -> None:
     assert pattern == r"## ASD Framework"
 
 
-def test_section_follows_asd_framework_and_precedes_trends(tmp_path: Path) -> None:
-    """The section sits after the ASD Framework block and before trends."""
+def test_section_follows_trends_and_precedes_asd_framework(tmp_path: Path) -> None:
+    """Essentials follows trends and precedes even the missing-framework note."""
     text = _report(tmp_path, _essentials(), trends="## Trends\n\nstuff", asd_data={})
-    assert text.index("## ASD Framework") < text.index(_SECTION_HEADING) < text.index("## Trends")
-    assert text.index("## Trends") < text.index("## Recommendations")
+    assert text.index("## Trends") < text.index(_SECTION_HEADING) < text.index("## ASD Framework")
+    assert "## Recommendations" not in text
+
+
+@pytest.mark.parametrize("description", ["", " \t\n"])
+@pytest.mark.parametrize("recommendation", ["", " \t\n"])
+@pytest.mark.parametrize("next_section", ["similar", "trends"])
+def test_blank_unattached_findings_keep_single_blank_line(
+    tmp_path: Path, description: str, recommendation: str, next_section: str
+) -> None:
+    """Blank unattached findings leave one blank line before the next section."""
+    data: dict[str, Any] = {
+        "summary": "Report summary",
+        "findings": [{
+            "type": "unattached",
+            "description": description,
+            "recommendation": recommendation,
+        }],
+    }
+    trends = None
+    heading = "## Similar Past Incidents"
+    if next_section == "similar":
+        data["similar_incidents"] = "- Earlier incident"
+    else:
+        trends = "## Historical Trends\n\nTrend context"
+        heading = "## Historical Trends"
+    text = _reporter(tmp_path)._build_report(data, trends=trends)
+    assert f"## Findings\n\n{heading}" in text
+    assert "\n\n\n" not in text
+
+
+@pytest.mark.parametrize("unavailable", [False, True])
+def test_all_report_sections_follow_reading_order(
+    tmp_path: Path, unavailable: bool
+) -> None:
+    """All sections follow the agreed order, with one blank line at each boundary."""
+    data: dict[str, Any] = {
+        "summary": "Report summary",
+        "findings": [_cluster(id="C1")],
+        "similar_incidents": "- Earlier incident",
+        "mitre_tags": [{"tactic": "Discovery", "description": "Reference tactic"}],
+    }
+    if unavailable:
+        data["similar_incidents_unavailable_note"] = "Similar incidents unavailable"
+    trends = "## Historical Trends\n\nTrend context\n\n"
+    text = _reporter(tmp_path)._build_report(
+        data,
+        trends=trends,
+        asd_data=_make_asd_data(),
+        e8_scores=_make_e8_scores(),
+        essentials=_essentials(),
+    )
+    headings = [
+        "## Summary",
+        "## Findings",
+        "## Similar Past Incidents",
+        "## Historical Trends",
+        "## MITRE ATT&CK Tags",
+        _SECTION_HEADING,
+        "## ASD Framework",
+        "## Glossary",
+    ]
+    assert [line for line in text.splitlines() if line.startswith("## ")] == headings
+    assert text.index(reporter.CLUSTER_NOTE) < text.index("## Summary")
+    assert text.index("**Generated**:") < text.index(reporter.CLUSTER_NOTE)
+    lines = text.splitlines()
+    for heading in headings:
+        index = lines.index(heading)
+        assert lines[index - 1] == ""
+        assert lines[index - 2] != ""
+    assert "Trend context" in text
+    assert reporter._render_essentials_section(_essentials(), data["findings"]).rstrip("\n") in text
+    assert reporter._render_asd_section(
+        _make_asd_data(), e8_scores=_make_e8_scores(), findings=data["findings"]
+    ).rstrip("\n") in text
+    assert "## Recommendations" not in text
 
 
 # --- JSON -------------------------------------------------------------------------------

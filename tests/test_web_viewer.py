@@ -32,6 +32,8 @@ from typing import Any
 
 import pytest
 
+from ravensight.reporter import _GLOSSARY
+
 ROOT = Path(__file__).resolve().parent.parent
 VIEWER = ROOT / "web" / "index.html"
 FIXTURE = ROOT / "tests" / "fixtures" / "report-schema3-sample.json"
@@ -561,9 +563,9 @@ def test_csp_meta_tag_is_exact() -> None:
     assert f'<meta http-equiv="Content-Security-Policy" content="{policy}">' in _text()
 
 
-@pytest.mark.parametrize("name", ["READS", "ASD_DOMAINS"])
+@pytest.mark.parametrize("name", ["READS", "ASD_DOMAINS", "TERMS"])
 def test_constant_arrays_are_valid_json(name: str) -> None:
-    """READS and ASD_DOMAINS parse as JSON, so the tests can read them."""
+    """READS, ASD_DOMAINS and TERMS parse as JSON, so the tests can read them."""
     assert isinstance(_extract_array(name, _text()), list)
 
 
@@ -571,11 +573,17 @@ def test_constant_arrays_are_valid_json(name: str) -> None:
 # (g) Sections, navigation, fixed wording and the README
 # ---------------------------------------------------------------------------
 
-SECTION_IDS = ["overview", "timeline", "findings", "essentials", "e8", "trends"]
-NAV_TARGETS = ["overview", "findings", "essentials", "e8", "trends"]
+SECTION_IDS = ["howto", "overview", "timeline", "findings", "trends", "essentials", "e8", "terms"]
+NAV_TARGETS = ["overview", "findings", "trends", "essentials", "e8", "terms"]
 
 # Wording the page must carry as written (statements, empty states and labels).
 REQUIRED_PHRASES = [
+    "How to read this report",
+    "Ravensight groups alerts that share a Wazuh rule into findings, labelled C1, C2 and so on.",
+    "Start with the run summary, then read each finding: what the model found, what it recommends and the evidence behind it.",
+    "Trends come next, then pointers to ASD frameworks for reference, then a list of terms.",
+    "Terms used on this page",
+    "Show the terms",
     "Not assessed",
     "Operator: ",
     "No commentary",
@@ -605,15 +613,24 @@ REQUIRED_PHRASES = [
 
 
 def test_section_ids_exist_once_each() -> None:
-    """Each of the six section elements is present exactly once, with its body element."""
+    """Each of the eight section elements is present exactly once, with its body element."""
     html = _html_only(_text())
     for name in SECTION_IDS:
         assert len(re.findall(rf'<section id="{name}"', html)) == 1, name
         assert html.count(f'id="{name}-body"') == 1, name
 
 
+def test_section_markup_and_reset_ids_follow_the_reading_order() -> None:
+    """The markup and reset list put the intro first, trends before pointers and terms last."""
+    text = _text()
+    assert re.findall(r'<section\b[^>]*\bid="([^"]+)"', _html_only(text)) == SECTION_IDS
+    ids = re.search(r"const SECTION_IDS = (\[[^\]]*\]);", text)
+    assert ids is not None
+    assert json.loads(ids.group(1)) == SECTION_IDS
+
+
 def test_nav_anchors_line_up_with_element_ids() -> None:
-    """Every nav href="#x" points at an element with id x, and all five links are there."""
+    """Every nav href="#x" points at an element with id x, and all six links are there."""
     html = _html_only(_text())
     nav = re.search(r"<nav\b.*?</nav>", html, flags=re.DOTALL)
     assert nav, "no nav element"
@@ -621,6 +638,111 @@ def test_nav_anchors_line_up_with_element_ids() -> None:
     assert targets == NAV_TARGETS
     for target in targets:
         assert html.count(f'id="{target}"') == 1, f"nav target {target} has no single element"
+
+
+def test_nav_order_matches_the_linked_sections_in_page_order() -> None:
+    """Navigation follows the linked sections and omits the intro and timeline."""
+    html = _html_only(_text())
+    nav = re.search(r"<nav\b.*?</nav>", html, flags=re.DOTALL)
+    assert nav is not None
+    targets = re.findall(r'href="#([^"]+)"', nav.group(0))
+    sections = re.findall(r'<section\b[^>]*\bid="([^"]+)"', html)
+    assert targets == [name for name in sections if name not in ("howto", "timeline")]
+    assert re.findall(r'<a\b[^>]*>([^<]+)</a>', nav.group(0)) == [
+        "Overview", "Findings", "Trends", "ASD Essentials", "Essential Eight", "Terms"
+    ]
+
+
+def _function_body(name: str, text: str) -> str:
+    """Return a top-level viewer function, excluding its closing brace."""
+    start = text.index(f"function {name}(")
+    return text[start : text.index("\n}\n", start)]
+
+
+def test_render_report_follows_the_reading_order() -> None:
+    """The header precedes the intro, and section render calls follow page order."""
+    body = _function_body("renderReport", _text())
+    assert re.findall(r"\b(render\w+)\(", body)[1:] == [
+        "renderHeader", "renderHowTo", "renderOverview", "renderTimeline",
+        "renderFindings", "renderTrends", "renderEssentials", "renderE8", "renderTerms"
+    ]
+    assert body.index("indexEssentials(") < body.index("renderHeader(")
+    assert body.index("renderTerms(") < body.index('showSection("nav")')
+
+
+def test_terms_have_exactly_the_twelve_names_in_order() -> None:
+    """The fixed terms cover the agreed twelve concepts in reading order."""
+    terms = _extract_array("TERMS", _text())
+    assert all(isinstance(pair, list) and len(pair) == 2 for pair in terms)
+    assert all(isinstance(value, str) and value for pair in terms for value in pair)
+    assert [term for term, _ in terms] == [
+        "Cluster (C1, C2…)", "UTC", "ASD", "ISM", "Essential Eight", "ASD Essentials",
+        "Principle and action", "Priority phase", "CVE", "MITRE ATT&CK", "Anomaly", "Check"
+    ]
+
+
+def test_shared_terms_match_the_reporter_glossary_by_name() -> None:
+    """Each of the ten shared meanings matches the markdown Glossary word for word."""
+    terms = dict(_extract_array("TERMS", _text()))
+    glossary = {term: meaning for term, meaning, _ in _GLOSSARY}
+    shared = set(terms) - {"Anomaly", "Check"}
+    assert len(shared) == 10
+    for term in shared:
+        assert terms[term] == glossary[term], term
+
+
+def test_viewer_specific_terms_keep_the_agreed_meanings() -> None:
+    """Anomaly and Check explain their origins and limits in the agreed wording."""
+    terms = dict(_extract_array("TERMS", _text()))
+    assert terms["Anomaly"] == (
+        "A finding in the Trends table whose latest daily count is unusually high compared with its earlier days. "
+        "It comes from Ravensight's trend calculation, not from a judgement about your systems."
+    )
+    assert terms["Check"] == (
+        "A note on a finding saying its narrative or recommendation mentions details, such as IDs, file paths, "
+        "ports, addresses or counts, that are not in that cluster's alert evidence, so read it with care."
+    )
+
+
+def test_terms_use_a_closed_details_element_and_definition_list() -> None:
+    """The terms use text helpers and a details element that is never opened by code."""
+    text = _text()
+    body = _function_body("renderTerms", text)
+    assert 'el("details", "", "table-view")' in body
+    assert 'el("summary", "Show the terms")' in body
+    assert 'el("dl", "", "terms-list")' in body
+    assert 'el("dt", term)' in body
+    assert 'el("dd", meaning)' in body
+    assert "of TERMS" in body
+    assert "body.appendChild(details)" in body
+    assert not re.search(r"<details\b[^>]*\sopen\b", _html_only(text), re.IGNORECASE)
+    assert not re.search(r"\.open\s*=(?!=)", text)
+    assert not re.search(r"setAttribute\s*\(\s*[\"']open[\"']", text)
+
+
+def test_howto_is_outside_details_and_renders_a_plain_paragraph() -> None:
+    """The intro is visible on load and cannot be folded into a details element."""
+    text = _text()
+    depth = 0
+    for tag in re.findall(r"</?(?:details|section)\b[^>]*>", _html_only(text)):
+        if tag.startswith("<details"):
+            depth += 1
+        elif tag.startswith("</details"):
+            depth -= 1
+        elif 'id="howto"' in tag:
+            assert depth == 0
+    body = _function_body("renderHowTo", text)
+    assert 'body.appendChild(el("p", sentences.join(" "), "note"))' in body
+    assert not re.search(r"el\(\s*[\"']details[\"']", body)
+
+
+def test_intro_and_terms_use_allowed_wording() -> None:
+    """The new fixed wording obeys the same word and name guards as the page."""
+    text = _text()
+    wording = _function_body("renderHowTo", text) + _function_body("renderTerms", text)
+    wording += " ".join(value for pair in _extract_array("TERMS", text) for value in pair)
+    assert BANNED_WORDS.findall(wording) == []
+    assert not any(term in wording.lower() for term in BANNED_TERMS)
 
 
 def test_required_phrases_are_present() -> None:
@@ -674,9 +796,14 @@ def test_page_has_no_img_and_no_external_url() -> None:
 def test_every_section_is_filled_by_a_render_function() -> None:
     """Each section body is looked up by a render function, which calls showSection."""
     text = _text()
-    for name in SECTION_IDS:
-        assert f'getElementById("{name}-body")' in text, f"no render for {name}"
-        assert f'showSection("{name}")' in text, f"{name} is never shown"
+    functions = [
+        "renderHowTo", "renderOverview", "renderTimeline", "renderFindings",
+        "renderTrends", "renderEssentials", "renderE8", "renderTerms"
+    ]
+    for name, function in zip(SECTION_IDS, functions, strict=True):
+        body = _function_body(function, text)
+        assert f'getElementById("{name}-body")' in body, f"no render for {name}"
+        assert f'showSection("{name}")' in body, f"{name} is never shown"
 
 
 def test_readme_describes_the_viewer() -> None:
