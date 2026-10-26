@@ -51,10 +51,16 @@ ravensight/
 ├── trending.py        # Historical trend analysis and anomaly detection
 ├── embedder.py        # ChromaDB vector store and embedding client
 ├── e8_scorer.py       # Essential Eight related-control scoring + ISM control matching
-└── essentials_scorer.py # ASD Essentials principle pointers
+├── essentials_scorer.py # ASD Essentials principle pointers
+├── config_check.py    # Config validation at start-up
+├── evidence.py        # Alert evidence extraction and rendering
+└── ui.py              # Rich terminal status panel and log output
 scripts/
 ├── mitre_sync.py      # MITRE ATT&CK dataset sync
-└── asd_sync.py        # ASD Essential Eight / ISM dataset sync
+├── asd_sync.py        # ASD Essential Eight / ISM dataset sync
+└── eval_prompt.py     # Prompt calibration harness (needs a live LLM)
+web/
+└── index.html         # Read-only JSON report viewer
 ```
 
 ---
@@ -696,16 +702,23 @@ Ravensight/
 │   ├── trending.py
 │   ├── embedder.py
 │   ├── e8_scorer.py
-│   └── essentials_scorer.py # ASD Essentials principle pointers
+│   ├── essentials_scorer.py # ASD Essentials principle pointers
+│   ├── config_check.py
+│   ├── evidence.py
+│   └── ui.py
 ├── scripts/
 │   ├── mitre_sync.py
-│   └── asd_sync.py
+│   ├── asd_sync.py
+│   └── eval_prompt.py
+├── web/
+│   └── index.html
 ├── tests/
 ├── data/
 │   ├── defaults/             # Seed files baked into the Docker image
 │   │   ├── e8_attestation.example.json
 │   │   ├── e8_keyword_overrides.json
 │   │   ├── e8_strategy_map.json
+│   │   ├── essentials_attestation.example.json
 │   │   ├── essentials_enterprise_it.json # ASD Essentials dataset, CC BY 4.0, modified
 │   │   ├── platform_agents.example.json
 │   │   └── platform_hints.json
