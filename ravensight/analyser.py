@@ -968,11 +968,13 @@ def analyse(
         last_tokens: int | None = None
         last_tok_s: float | None = None
         last_chunk: Any = None
+        finish_reason: str | None = None
+        max_tokens = llm_config.get("max_tokens", 8192)
         stream = client.chat.completions.create(
             model=llm_config["model"],
             messages=[{"role": "user", "content": prompt}],
             temperature=llm_config.get("temperature", 0.3),
-            max_tokens=llm_config.get("max_tokens", 8192),
+            max_tokens=max_tokens,
             presence_penalty=0.0,
             frequency_penalty=0.0,
             stream=True,
@@ -991,6 +993,9 @@ def analyse(
                     llm_started_at = time.monotonic()
             if not chunk.choices:
                 continue
+            reason = getattr(chunk.choices[0], "finish_reason", None)
+            if isinstance(reason, str) and reason:
+                finish_reason = reason
             content = chunk.choices[0].delta.content or ""
             if not content:
                 continue
@@ -1012,6 +1017,16 @@ def analyse(
                 tok_s = content_count / elapsed if elapsed > 0 else 0.0
             progress.llm_done(content_count, tokens, tok_s)
             progress.stage("LLM analysis", "done")
+        logger.info(
+            "LLM finish reason: "
+            f"{finish_reason if finish_reason is not None else 'not reported'}"
+        )
+        if finish_reason == "length":
+            logger.warning(
+                f"LLM reply stopped at max_tokens ({max_tokens}), "
+                "so the analysis may be cut off. Raise max_tokens in the llm "
+                "settings if findings are missing."
+            )
     except APIConnectionError as e:
         if progress is not None:
             progress.service("llm", "fail", detail=str(e))

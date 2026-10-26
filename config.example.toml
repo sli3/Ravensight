@@ -30,7 +30,7 @@ base_url = "http://YOUR_LLAMA_CPP_SERVER_IP:8080/v1"
 api_key = "local"
 model = "Ornith-1.5-9B"
 temperature = 0.3
-max_tokens = 1024
+max_tokens = 8192
 
 [reports]
 output_dir = "reports"
