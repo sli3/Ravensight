@@ -43,8 +43,8 @@ One line each. Fix them in a session of their own, or close them here with Prin'
 - §9: its "Not applicable" state and attestation file were delivered by §15, so only extra
   evidence sources (such as Wazuh SCA results) remain. Prin to decide whether to close §9
 - Pyright does not check the openai/httpx2 exception handling in `ravensight/analyser.py`
-- The LLM stream's `finish_reason` is not logged, the report shows nothing for a cluster
-  with no commentary, and reply length needs watching against `max_tokens` (8192)
+- The report shows nothing for a cluster with no commentary. The run log now shows the
+  stream's `finish_reason` and warns when a reply stops at `max_tokens`
 - `docker-entrypoint.sh` has no unit tests, seeded default files can drift from
   `data/defaults/`, and SELinux `:z` mount labels are not handled
 - Never run in a container: `json_output = false` or a bad value, a missing or unreadable
