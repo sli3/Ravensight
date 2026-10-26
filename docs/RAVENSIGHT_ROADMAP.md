@@ -42,12 +42,9 @@ One line each. Fix them in a session of their own, or close them here with Prin'
 
 - §9: its "Not applicable" state and attestation file were delivered by §15, so only extra
   evidence sources (such as Wazuh SCA results) remain. Prin to decide whether to close §9
-- `ravensight/reporter.py` and its test still say "ML1 to ML4" (the data has three levels)
 - Pyright does not check the openai/httpx2 exception handling in `ravensight/analyser.py`
 - The LLM stream's `finish_reason` is not logged, the report shows nothing for a cluster
   with no commentary, and reply length needs watching against `max_tokens` (8192)
-- `config.example.toml` still says "Docker handling comes later", the README file trees omit
-  `essentials_scorer.py` and the Essentials dataset, and a dead `linknce.md` reference remains
 - `docker-entrypoint.sh` has no unit tests, seeded default files can drift from
   `data/defaults/`, and SELinux `:z` mount labels are not handled
 - Never run in a container: `json_output = false` or a bad value, a missing or unreadable
