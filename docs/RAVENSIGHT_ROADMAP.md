@@ -35,7 +35,7 @@
 | Networked ChromaDB, Container non-root, Cluster Evidence, Wazuh Indexer TLS, Manager Login Removal, Alert Cap Warning, Data File Loader Hardening | ✅ Complete | Archive Feature Status table |
 | Web UI Report Viewer | 🔶 In progress | §23 below: Sessions 1 and 2 built, Session 3 open |
 | Trends Chart in the Viewer | 🔶 In progress | §24 below: Sessions 1 to 3 built, Session 4 open |
-| Report Reading Flow | 🔶 In progress | §25 below: Sessions 1 and 2 open |
+| Report Reading Flow | 🔶 In progress | §25 below: Sessions 1 and 2 built (commit `011c01e`) |
 
 ## Open Items
 
@@ -271,6 +271,9 @@ Rules (agreed with Prin, 26 Oct 2026; pm proposed them when Prin asked pm to dec
 - Markdown: the Glossary stays last. The how-to-read note under the title gains one
   sentence that gives the reading order and says terms are explained in the Glossary at the
   end when it has entries
+- Markdown: the Glossary leaves out the "Cluster (C1, C2…)" and "UTC" entries, because the
+  how-to-read note under the title already explains both. The entries stay in the glossary
+  data (the viewer's Terms box still uses them), and no other glossary entry changes
 - Viewer: the order is run summary and timeline, Findings, Trends, ASD Essentials, Essential
   Eight, Terms. The navigation follows the page order. Where artboard E orders these
   differently, this section's order wins
@@ -306,6 +309,18 @@ In scope:
 
 Out of scope:
 - `ravensight/` and the JSON report
+
+#### Session 3 — Glossary duplicates
+
+In scope:
+- `ravensight/reporter.py`: `_render_glossary` skips the "Cluster (C1, C2…)" and "UTC"
+  entries when the how-to-read note under the title is in the report
+- `tests/test_reporter_findings.py`, and any other reporter test that expects those two
+  entries in the Glossary
+
+Out of scope:
+- `web/` and the viewer's Terms box, the other glossary entries and their wording, the
+  how-to-read note, and the JSON report
 
 Out of scope for the whole section:
 - Any change to the JSON report (keys, values or `schema_version`), to how trends, direction
