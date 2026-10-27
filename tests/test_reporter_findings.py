@@ -1008,16 +1008,69 @@ def test_glossary_lists_only_terms_used_in_the_report(tmp_path: Path) -> None:
     assert report.index("## Glossary") > report.index("## Findings")
     assert report.rsplit("\n## ", 1)[-1].startswith("Glossary\n")
     assert glossary.strip().splitlines() == [
-        "- **Cluster (C1, C2…)**: Alerts that share the same rule, grouped into one finding. Numbers apply to this report only.",
-        "- **UTC**: Coordinated Universal Time, the time zone Wazuh uses for alert times.",
         "- **CVE**: Common Vulnerabilities and Exposures, a public ID for a known software flaw.",
     ]
-    assert "**Cluster (C1, C2…)**" in glossary
-    assert "**UTC**" in glossary
+    assert "**Cluster (C1, C2…)**" not in glossary
+    assert "**UTC**" not in glossary
     assert "**CVE**" in glossary
     assert "**ASD**" not in glossary
     assert "**ML**" not in glossary
     assert "**dpkg**" not in glossary
+
+
+def test_no_glossary_when_intro_explains_all_matching_terms(tmp_path: Path) -> None:
+    """A cluster-only report needs no glossary once its intro explains both terms."""
+    finding = _cluster(
+        id="C1",
+        type="rule",
+        description="Repeated login failures",
+        hosts=["host-1"],
+        first_seen="2026-09-24T08:15:00.000Z",
+        last_seen="2026-09-24T10:30:00.000Z",
+        cves=[],
+        package=None,
+        narrative="Repeated password guessing.",
+        recommendation="Review authentication settings.",
+        evidence={},
+        notes=[],
+        flags=[],
+    )
+    report = _make_reporter(tmp_path)._build_report({
+        "summary": "Repeated login failures",
+        "findings": [finding],
+    })
+    assert reporter.CLUSTER_NOTE in report
+    assert "**[C1] High**" in report
+    assert "10:30 UTC" in report
+    assert "## Glossary" not in report
+
+
+def test_glossary_includes_cluster_and_utc_without_intro() -> None:
+    """Direct rendering retains both explanations when the intro is absent."""
+    text = "- **[C1] High** — Login failures (2026-09-24 10:30 UTC)"
+    assert reporter.CLUSTER_NOTE not in text
+    assert reporter._render_glossary(text) == [
+        "",
+        "## Glossary",
+        "",
+        (
+            "- **Cluster (C1, C2…)**: Alerts that share the same rule, grouped into one "
+            "finding. Numbers apply to this report only."
+        ),
+        "- **UTC**: Coordinated Universal Time, the time zone Wazuh uses for alert times.",
+    ]
+
+
+def test_glossary_data_retains_cluster_and_utc_meanings() -> None:
+    """The shared glossary data retains both original meanings for the viewer."""
+    meanings = {term: meaning for term, meaning, _ in reporter._GLOSSARY}
+    assert meanings["Cluster (C1, C2…)"] == (
+        "Alerts that share the same rule, grouped into one finding. "
+        "Numbers apply to this report only."
+    )
+    assert meanings["UTC"] == (
+        "Coordinated Universal Time, the time zone Wazuh uses for alert times."
+    )
 
 
 def test_glossary_includes_asd_terms_when_asd_section_present(tmp_path: Path) -> None:

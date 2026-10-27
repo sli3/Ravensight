@@ -163,12 +163,17 @@ _GLOSSARY: list[tuple[str, str, str]] = [
     ("σ (sigma)", "Standard deviation: the usual size of day-to-day swings. +2.4σ means the latest count is 2.4 swings above the average of the previous days.", r"σ"),
 ]
 
+# CLUSTER_NOTE already explains these terms.
+_GLOSSARY_EXPLAINED_IN_INTRO = {"Cluster (C1, C2…)", "UTC"}
+
 
 def _render_glossary(report_text: str) -> list[str]:
     """Render a glossary of only the terms that appear in the given report text."""
+    has_intro = CLUSTER_NOTE in report_text
     entries = [
         f"- **{term}**: {meaning}"
         for term, meaning, pattern in _GLOSSARY
+        if not (has_intro and term in _GLOSSARY_EXPLAINED_IN_INTRO)
         if re.search(pattern, report_text)
     ]
     if not entries:
