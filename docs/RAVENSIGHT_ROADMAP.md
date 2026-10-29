@@ -36,7 +36,7 @@
 | Web UI Report Viewer | 🔶 In progress | §23 below: Sessions 1 and 2 built, Session 3 open |
 | Trends Chart in the Viewer | 🔶 In progress | §24 below: Sessions 1 to 3 built, Session 4 open |
 | Report Reading Flow | 🔶 In progress | §25 below: Sessions 1 to 3 built (commits `011c01e`, `362cb0a`), Session 4 open |
-| SCA Check Grouping | ⬜ Planned | §26 below |
+| SCA Check Grouping | 🔶 In progress | §26 below: Session 1 built (commit `18a5724`), Session 2 open |
 
 ## Open Items
 
@@ -346,16 +346,7 @@ Rules (agreed with Prin, 29 Oct 2026; pm proposed them when Prin chose this opti
 - How findings are matched to MITRE, ISM, the Essential Eight and the Essentials is
   unchanged; a grouped SCA finding is matched like any other finding
 
-#### Session 1 — Grouping and evidence
-
-In scope:
-- `ravensight/analyser.py`: `extract_alert_clusters` groups SCA check-result alerts by policy
-- `ravensight/evidence.py`: an SCA check evidence shape (check titles and Wazuh's result)
-- Tests for both, in the existing analyser and evidence test files
-- `README.md`: only if a sentence there describes how alerts are grouped
-
-Out of scope:
-- The LLM prompt, `ravensight/reporter.py`, `web/` and the JSON report shape
+Built: Session 1, Grouping and evidence (commit `18a5724`).
 
 #### Session 2 — Check against a real SCA scan
 
@@ -373,6 +364,7 @@ Out of scope for the whole section:
 - How any other alert groups, the 40-cluster prompt cap and the alert level threshold
 - Any change to the JSON report, the viewer or the markdown report's layout
 - Reading SCA results from the Wazuh API: only the alerts Ravensight already fetches
+- The LLM prompt, `ravensight/reporter.py`, `web/` and the JSON report shape
 - Opening, editing or printing `config.toml` or `.env`
 
 ## Suggested Build Order
