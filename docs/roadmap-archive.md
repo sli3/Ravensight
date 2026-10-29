@@ -2080,3 +2080,54 @@ Out of scope for the whole section:
 ---
 
 *Created: 2026-05-01 — last updated: 2026-05-11*
+
+---
+
+### 9. Essential Eight Evidence-Only Report
+
+**What it does:**
+Brings the Essential Eight (E8) section in line with Build 2b. Ravensight
+reads alerts, not system configuration, so it cannot measure maturity. Every
+strategy is reported as "Not assessed", with related findings and ISM controls
+shown as pointers for review. The pass/fail (✓ / -) wording in section 8 is
+superseded by this section.
+
+**Design rule:** evidence-only. No invented verdicts. Any new state must come
+from named evidence (an attestation entry, platform data or an extra evidence
+source), never from keyword matching alone.
+
+**Sessions: 1 so far (Phase 1). Later phases are added here before they start.**
+
+---
+
+#### Phase 1 — Remove quiet defects (no new features)
+
+In scope:
+- `ravensight/reporter.py`: the E8 table row prints the status returned by
+  `score_findings()` instead of a hard-coded string (falls back to
+  "Not assessed" when there is no score)
+- `ravensight/reporter.py`: the "Unmapped" pseudo-strategy stays visible but is
+  clearly labelled as not one of the Essential Eight, with status
+  "Not assessed"
+- `ravensight/reporter.py`: when the ASD data file is missing or from an older
+  format, `Reporter._build_report` shows a short note saying so and pointing at
+  `scripts/asd_sync.py`
+- `main.py`: one line, pass `None` (not `{}`) as `asd_data` when `[asd] path`
+  is not set, so the note appears only for a missing or old-format file
+- `ravensight/e8_scorer.py`: stop reading the unused `rule_group` field in
+  keyword matching and update the docstrings
+- `tests/test_e8_scorer.py` and `tests/test_reporter_findings.py`: tests for
+  each change above
+
+Out of scope:
+- A "Not applicable" state
+- An attestation file declaring what the operator has implemented
+- Optional extra evidence sources (for example Wazuh SCA results)
+- Any change to how findings are matched to controls
+- `analyser._build_asd_context` (the LLM prompt also sees "Unmapped"; logged as
+  deferred)
+- `scripts/asd_sync.py` and `data/asd_framework.json`
+- `config.toml` and `config.example.toml`
+
+Closed by Prin on 29 Oct 2026: §15 delivered the "Not applicable" state and the attestation
+file, and extra evidence sources (such as Wazuh SCA results) were not taken up.

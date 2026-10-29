@@ -18,7 +18,7 @@
 | Progress Bar + LLM Streaming (now the rich terminal UI) | ✅ Complete | Archive §6 |
 | ASD Framework Mapping | ✅ Complete | Archive §7 |
 | Essential Eight Scoring + ISM Mapping | ✅ Complete | Archive §8 |
-| Essential Eight Evidence-Only Report | 🔶 In progress | §9 below, see Open Items |
+| Essential Eight Evidence-Only Report | ✅ Closed | Archive §9 |
 | Wazuh Query Time Window Fix | ✅ Complete | Archive §10 |
 | Report Finding Time Labelling | ✅ Complete | Archive §11 |
 | Report Clarity | ✅ Complete | Archive §12 |
@@ -41,8 +41,6 @@
 
 One line each. Fix them in a session of their own, or close them here with Prin's say-so.
 
-- §9: its "Not applicable" state and attestation file were delivered by §15, so only extra
-  evidence sources (such as Wazuh SCA results) remain. Prin to decide whether to close §9
 - Pyright does not check the openai/httpx2 exception handling in `ravensight/analyser.py`
 - The report shows nothing for a cluster with no commentary. The run log now shows the
   stream's `finish_reason` and warns when a reply stops at `max_tokens`
@@ -65,54 +63,6 @@ One line each. Fix them in a session of their own, or close them here with Prin'
 ## Active Sections
 
 Finished sections keep their numbers in `docs/roadmap-archive.md` (see the table above).
-
-### 9. Essential Eight Evidence-Only Report
-
-**What it does:**
-Brings the Essential Eight (E8) section in line with Build 2b. Ravensight
-reads alerts, not system configuration, so it cannot measure maturity. Every
-strategy is reported as "Not assessed", with related findings and ISM controls
-shown as pointers for review. The pass/fail (✓ / -) wording in section 8 is
-superseded by this section.
-
-**Design rule:** evidence-only. No invented verdicts. Any new state must come
-from named evidence (an attestation entry, platform data or an extra evidence
-source), never from keyword matching alone.
-
-**Sessions: 1 so far (Phase 1). Later phases are added here before they start.**
-
----
-
-#### Phase 1 — Remove quiet defects (no new features)
-
-In scope:
-- `ravensight/reporter.py`: the E8 table row prints the status returned by
-  `score_findings()` instead of a hard-coded string (falls back to
-  "Not assessed" when there is no score)
-- `ravensight/reporter.py`: the "Unmapped" pseudo-strategy stays visible but is
-  clearly labelled as not one of the Essential Eight, with status
-  "Not assessed"
-- `ravensight/reporter.py`: when the ASD data file is missing or from an older
-  format, `Reporter._build_report` shows a short note saying so and pointing at
-  `scripts/asd_sync.py`
-- `main.py`: one line, pass `None` (not `{}`) as `asd_data` when `[asd] path`
-  is not set, so the note appears only for a missing or old-format file
-- `ravensight/e8_scorer.py`: stop reading the unused `rule_group` field in
-  keyword matching and update the docstrings
-- `tests/test_e8_scorer.py` and `tests/test_reporter_findings.py`: tests for
-  each change above
-
-Out of scope:
-- A "Not applicable" state
-- An attestation file declaring what the operator has implemented
-- Optional extra evidence sources (for example Wazuh SCA results)
-- Any change to how findings are matched to controls
-- `analyser._build_asd_context` (the LLM prompt also sees "Unmapped"; logged as
-  deferred)
-- `scripts/asd_sync.py` and `data/asd_framework.json`
-- `config.toml` and `config.example.toml`
-
----
 
 ### 23. Web UI Report Viewer
 
@@ -365,9 +315,8 @@ Out of scope for the whole section:
 
 1. Section 23 Session 3 and section 24 Session 4 together (one real-report check of the
    final layout)
-2. Section 9: close it or plan its next phase (see Open Items)
-3. Section 25 Session 4, the highlighted recommendation (Prin asked for it to come after the
-   items above)
+2. Section 25 Session 4, the highlighted recommendation (Prin asked for it to come after the
+   item above)
 
 ---
 
