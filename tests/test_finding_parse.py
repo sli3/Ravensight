@@ -154,7 +154,9 @@ def _coverage_warnings(caplog: Any) -> list[str]:
     """Return the coverage warning messages captured so far."""
     return [
         r.getMessage() for r in caplog.records
-        if r.levelname == "WARNING" and r.getMessage().startswith("LLM gave no")
+        if r.levelname == "WARNING" and r.getMessage().startswith(
+            ("No narrative was attached", "No recommendation was attached")
+        )
     ]
 
 
@@ -169,6 +171,9 @@ def test_warning_names_cluster_with_no_lines(caplog: Any) -> None:
     messages = _coverage_warnings(caplog)
     assert len(messages) == 2
     assert all("C2" in m and "C1" not in m for m in messages)
+    assert caplog.messages == messages + [
+        "Cluster C2 is not mentioned anywhere in the model reply"
+    ]
 
 
 def test_warning_names_cluster_missing_recommendation_only(caplog: Any) -> None:
@@ -183,10 +188,16 @@ def test_warning_names_cluster_missing_recommendation_only(caplog: Any) -> None:
     assert len(messages) == 1
     assert "recommendation" in messages[0]
     assert "C1" in messages[0] and "C2" not in messages[0]
+    assert caplog.messages == messages + [
+        (
+            "Cluster C1 appears 1 time(s) in the model reply but no readable line "
+            "was attached to it (run with --log-level DEBUG to see the full reply)"
+        )
+    ]
 
 
 def test_no_warning_when_every_cluster_covered(caplog: Any) -> None:
-    """No coverage warning is logged when every cluster has both lines."""
+    """No warning is logged when every cluster has both lines."""
     text = (
         "<findings>\n- [C1] One\n- [C2] Two\n</findings>\n"
         "<recommendations>\n- [C1] Monitor: a\n- [C2] No action: b\n</recommendations>"
@@ -194,6 +205,7 @@ def test_no_warning_when_every_cluster_covered(caplog: Any) -> None:
     with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
         _parse_analysis(text, clusters=_two_clusters())
     assert _coverage_warnings(caplog) == []
+    assert caplog.messages == []
 
 
 def test_findings_unchanged_by_missing_warning() -> None:
@@ -208,10 +220,11 @@ def test_findings_unchanged_by_missing_warning() -> None:
 
 
 def test_legacy_parse_logs_no_coverage_warning(caplog: Any) -> None:
-    """The clusters=None legacy path logs no coverage warning."""
+    """The clusters=None legacy path logs no new warnings, even for ignored text."""
     with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
-        _parse_analysis("<findings>\n- Legacy\n</findings>")
+        _parse_analysis("Outside\n- Outside bullet\n<findings>\nWrapped\n- Legacy\n</findings>")
     assert _coverage_warnings(caplog) == []
+    assert caplog.messages == []
 
 
 def test_coverage_warning_ignores_clusters_beyond_prompt_cap(caplog: Any) -> None:
@@ -236,6 +249,89 @@ def test_coverage_warning_ignores_clusters_beyond_prompt_cap(caplog: Any) -> Non
     named = {tok.strip() for m in messages for tok in m.split(": ", 1)[1].split(",")}
     assert named == {c["id"] for c in clusters[: analyser.MAX_PROMPT_CLUSTERS]}
     assert not named & set(beyond)
+    cluster_messages = [m for m in caplog.messages if m.startswith("Cluster ")]
+    assert cluster_messages == [
+        f"Cluster {c['id']} is not mentioned anywhere in the model reply"
+        for c in clusters[: analyser.MAX_PROMPT_CLUSTERS]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("unreadable", "count"),
+    [
+        ("1. [C3] Numbered narrative\nWrapped C3 text", 2),
+        ("C30 and C13 and ABC3", 0),
+        ("[C3]", 1),
+        ("C3:", 1),
+        ("**[C3]**", 1),
+        ("c3 and [c3]", 2),
+    ],
+)
+def test_uncovered_cluster_mention_count(
+    caplog: Any, unreadable: str, count: int,
+) -> None:
+    """Count whole-word ids across the reply regardless of case or decoration."""
+    clusters = _two_clusters()
+    clusters[1]["id"] = "C3"
+    text = (
+        f"<findings>\n- [C1] One\n{unreadable}\n</findings>\n"
+        "<recommendations>\n- [C1] Monitor: reason\n</recommendations>"
+    )
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        _parse_analysis(text, clusters=clusters)
+    expected = (
+        f"Cluster C3 appears {count} time(s) in the model reply but no readable "
+        "line was attached to it (run with --log-level DEBUG to see the full reply)"
+        if count else "Cluster C3 is not mentioned anywhere in the model reply"
+    )
+    assert [m for m in caplog.messages if m.startswith("Cluster ")] == [expected]
+
+
+def test_ignored_lines_count_examples_and_return_values(caplog: Any) -> None:
+    """Ignored lines are diagnosed without changing parsed values or section state."""
+    clusters = _two_clusters()
+    long_line = "x" * 100
+    text = (
+        f"Outside\n- Outside bullet\n<findings>\n{long_line}\n-\n"
+        "- [C1] One\n</findings>\n<recommendations>\n"
+        "- [C1] Monitor: reason\n</recommendations>"
+    )
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        result = _parse_analysis(text, clusters=clusters)
+    assert caplog.messages == [
+        "No narrative was attached for clusters: C2",
+        "No recommendation was attached for clusters: C2",
+        "Cluster C2 is not mentioned anywhere in the model reply",
+        (
+            "Ignored 4 model line(s) the parser cannot read, first examples: "
+            f"'Outside' | '- Outside bullet' | '{long_line[:80]}'"
+        ),
+    ]
+    expected_findings = [
+        {**clusters[0], "narrative": "One", "recommendation": "Monitor: reason"},
+        dict(clusters[1]),
+    ]
+    assert result == {
+        "findings": expected_findings,
+        "recommendations": ["Monitor: reason"],
+        "summary": "2 clusters across 1 hosts — severity: 1 High, 1 Medium, 0 Low clusters",
+        "mitre_tags": [],
+    }
+    assert clusters[0]["narrative"] == ""
+    assert clusters[0]["recommendation"] == ""
+
+
+def test_consumed_lines_are_not_counted_as_ignored(caplog: Any) -> None:
+    """Tags, blanks and consumed bullets, including unattached ones, are read."""
+    text = (
+        "\n<findings>\n\n- [C1] One\n- [C2] Two\n- Unknown finding\n"
+        "</findings>\n\n<recommendations>\n- [C1] Monitor: a\n"
+        "- [C2] No action: b\n- Unknown recommendation\n</recommendations>\n"
+    )
+    with caplog.at_level(logging.WARNING, logger="ravensight.analyser"):
+        _parse_analysis(text, clusters=_two_clusters())
+    assert len(caplog.messages) == 2
+    assert all(m.startswith("Unattached ") for m in caplog.messages)
 
 
 def test_parse_analysis_ignores_stray_mitre_tags_block() -> None:

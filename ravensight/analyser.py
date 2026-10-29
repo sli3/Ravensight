@@ -1470,6 +1470,8 @@ def _parse_analysis(
     ##################################
 
     current_section: str | None = None
+    ignored_count = 0
+    ignored_examples: list[str] = []
     for line in text.split("\n"):
         line = line.strip()
         if line.startswith("<findings>"):
@@ -1512,16 +1514,42 @@ def _parse_analysis(
             else:
                 logger.warning(f"Unattached recommendation line (no known cluster id): {line}")
                 unattached.append(_unattached_finding("", recommendation=rest))
+        elif line:
+            ignored_count += 1
+            if len(ignored_examples) < 3:
+                ignored_examples.append(line[:80])
 
     if clusters is not None:
         shown_ids = [c["id"] for c in clusters[:MAX_PROMPT_CLUSTERS]]
         no_narrative = [i for i in shown_ids if not by_id[i]["narrative"]]
         no_recommendation = [i for i in shown_ids if not by_id[i]["recommendation"]]
         if no_narrative:
-            logger.warning("LLM gave no narrative for clusters: %s", ", ".join(no_narrative))
+            logger.warning("No narrative was attached for clusters: %s", ", ".join(no_narrative))
         if no_recommendation:
             logger.warning(
-                "LLM gave no recommendation for clusters: %s", ", ".join(no_recommendation)
+                "No recommendation was attached for clusters: %s", ", ".join(no_recommendation)
+            )
+        uncovered_ids = set(no_narrative) | set(no_recommendation)
+        for cluster_id in dict.fromkeys(shown_ids):
+            if cluster_id not in uncovered_ids:
+                continue
+            mention_count = len(re.findall(
+                rf"\b{re.escape(cluster_id)}\b", text, flags=re.IGNORECASE
+            ))
+            if mention_count == 0:
+                logger.warning(
+                    "Cluster %s is not mentioned anywhere in the model reply", cluster_id
+                )
+            else:
+                logger.warning(
+                    "Cluster %s appears %s time(s) in the model reply but no readable "
+                    "line was attached to it (run with --log-level DEBUG to see the full reply)",
+                    cluster_id, mention_count,
+                )
+        if ignored_count:
+            logger.warning(
+                "Ignored %s model line(s) the parser cannot read, first examples: %s",
+                ignored_count, " | ".join(f"'{example}'" for example in ignored_examples),
             )
         findings.extend(unattached)
         recommendations = [
