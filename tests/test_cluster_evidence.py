@@ -21,8 +21,10 @@ from ravensight.evidence import (
     _project_firewall,
     _render_firewall,
     accumulate,
+    detect_shape,
     dpkg_event,
     render_evidence,
+    sca_check_policy,
 )
 
 
@@ -128,6 +130,134 @@ def _only_cluster(alerts: list[dict[str, Any]]) -> dict[str, Any]:
     clusters = extract_alert_clusters(alerts)
     assert len(clusters) == 1
     return clusters[0]
+
+
+def _sca_alert(
+    title: Any = "Ensure permissions on /etc/security/opasswd are configured.",
+    result: Any = "failed",
+    agent: str = "Wazuh",
+) -> dict[str, Any]:
+    """Build an inline SCA check alert using the observed Indexer fields."""
+    policy = "CIS Ubuntu Linux 24.04 LTS Benchmark v1.0.0."
+    alert = _alert(
+        description=f"{policy}: {title}", level=7, rule_id="19007", agent=agent,
+        timestamp="2026-10-29T03:43:39.736+0000", groups=["sca"],
+        data={"sca": {
+            "type": "check", "policy": policy, "scan_id": "1479757890",
+            "check": {"id": "35770", "title": title, "result": result},
+        }},
+    )
+    source = alert["_source"]
+    source["timestamp"] = source.pop("@timestamp")
+    return alert
+
+
+def test_sca_shape_and_existing_fixture_shapes() -> None:
+    """SCA checks have their own shape while existing fixtures keep theirs."""
+    assert detect_shape(_sca_alert()) == "sca"
+    for filename, shape in (
+        ("syscheck-550.json", "syscheck"),
+        ("dpkg-installed-2902.json", "dpkg"),
+        ("dpkg-half-configured-2904.json", "dpkg"),
+        ("netstat-533.json", "netstat"),
+        ("docker-kill-87924.json", "docker"),
+        ("docker-start-87903.json", "docker"),
+        ("vuln-solved-23502.json", "vulnerability"),
+        ("firewall-mixed-dir-87702.json", "firewall"),
+        ("firewall-drop-87701.json", "firewall"),
+        ("firewall-multiple-87702.json", "firewall"),
+    ):
+        assert detect_shape(_fixture(filename)) == shape
+
+
+def test_sca_policy_validation_and_cleaning() -> None:
+    """Malformed SCA policy fields return None and valid names are cleaned."""
+    for alert in (
+        {}, {"_source": []}, {"_source": {"rule": []}},
+        {"_source": {"rule": {"groups": 1}}},
+    ):
+        assert sca_check_policy(alert) is None
+    for field, values in (
+        ("type", [None, "summary"]),
+        ("policy", [None, 7, "", " \n "]),
+    ):
+        for value in values:
+            alert = _sca_alert()
+            alert["_source"]["data"]["sca"][field] = value
+            assert sca_check_policy(alert) is None
+    alert = _sca_alert()
+    alert["_source"]["data"]["sca"]["policy"] = "  CIS\n Ubuntu  "
+    assert sca_check_policy(alert) == "CIS Ubuntu"
+
+
+def test_sca_checks_sorted_capped_and_rendered() -> None:
+    """SCA values are distinct, sorted, capped at five and show overflow."""
+    alerts = [_sca_alert(title=f"Check {i}") for i in (4, 2, 3, 1, 0, 5, 6, 6)]
+    evidence = _only_cluster(alerts)["evidence"]
+    assert evidence["sca"]["checks"] == [f"Check {i}: failed" for i in range(5)]
+    assert evidence["sca"]["more"] == {"checks": 2}
+    assert render_evidence(evidence) == (
+        "checks " + ", ".join(f"Check {i}: failed" for i in range(5)) + " (+2 more)"
+    )
+
+
+def test_sca_long_title_preserves_result_in_main_evidence() -> None:
+    """Shortening a long title keeps the full result in the main checks value."""
+    evidence = _only_cluster([_sca_alert(title="Ensure permissions " * 20)])["evidence"]
+    value = evidence["sca"]["checks"][0]
+    assert len(value) <= MAX_EVIDENCE_VALUE_CHARS
+    assert value.endswith("…: failed")
+    assert render_evidence(evidence).endswith(": failed")
+
+
+def test_sca_oversized_result_guard() -> None:
+    """Results leaving no title space fall back to the bounded title alone."""
+    for size in (97, 98, 110):
+        evidence = _only_cluster([
+            _sca_alert(title="Ensure permissions", result="x" * size)
+        ])["evidence"]
+        value = evidence["sca"]["checks"][0]
+        assert len(value) <= MAX_EVIDENCE_VALUE_CHARS
+        if size == 97:
+            assert value == "…: " + "x" * size
+        else:
+            assert value == "Ensure permissions"
+
+
+def test_sca_missing_title_or_result() -> None:
+    """An absent result leaves the title alone and absent titles add nothing."""
+    alert = _sca_alert(title="Ensure permissions")
+    del alert["_source"]["data"]["sca"]["check"]["result"]
+    assert _only_cluster([alert])["evidence"]["sca"]["checks"] == ["Ensure permissions"]
+    for title in (None, "", " \n "):
+        assert "evidence" not in _only_cluster([_sca_alert(title=title)])
+    del alert["_source"]["data"]["sca"]["check"]["title"]
+    assert "evidence" not in _only_cluster([alert])
+
+
+def test_sca_results_keep_wording_and_render_safely() -> None:
+    """Whitespace collapses without changing Wazuh's result or leaking pipes."""
+    evidence = _only_cluster([
+        _sca_alert(title="Ensure | permissions", result=" Not\n applicable ")
+    ])["evidence"]
+    assert evidence["sca"]["checks"] == ["Ensure | permissions: Not applicable"]
+    assert render_evidence(evidence) == "checks Ensure \\| permissions: Not applicable"
+
+
+def test_sca_per_host_rendering_remains_bounded() -> None:
+    """Per-host SCA text may truncate while the main checks retain results."""
+    alerts = [
+        _sca_alert(title=f"Check {i} " + "permissions " * 20, agent=host)
+        for host in ("Wazuh", "host-2") for i in range(2)
+    ]
+    evidence = _only_cluster(alerts)["evidence"]
+    assert all(value.endswith(": failed") for value in evidence["sca"]["checks"])
+    rendered = render_evidence(evidence)
+    assert rendered.startswith("checks ")
+    for host in ("Wazuh", "host-2"):
+        segment = rendered.split(f"[{host}: ", 1)[1].split("]", 1)[0]
+        assert len(segment) <= 120
+        assert segment.endswith("…")
 
 
 # --- scope classifier ---

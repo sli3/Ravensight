@@ -7,8 +7,9 @@ content verdicts, dpkg package/version/status pairs, netstat opened and closed
 ports with their processes, docker container action/signal/compose/image
 tuples, vulnerability status/severity/score, firewall action/direction/
 interface/ipversion/protocol/sources/destinations/destination-port tuples
-parsed from OPNsense filterlog lines (the firewall's log format), and generic
-srcip/dstuser fallbacks. Evidence is data-built, never LLM-written, and
+parsed from OPNsense filterlog lines (the firewall's log format), SCA check
+titles with Wazuh's result, and generic srcip/dstuser fallbacks. These eight
+shapes provide evidence that is data-built, never LLM-written, and
 bounded in size.
 """
 
@@ -123,11 +124,36 @@ def _more_out(out: dict[str, Any], acc: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def sca_check_policy(alert: dict[str, Any]) -> str | None:
+    """Return the cleaned policy name for a valid SCA check alert, else None."""
+    if not isinstance(alert, dict):
+        return None
+    source = alert.get("_source")
+    if not isinstance(source, dict):
+        return None
+    rule = source.get("rule")
+    if not isinstance(rule, dict):
+        return None
+    groups = rule.get("groups")
+    if not isinstance(groups, (list, tuple, set)) or "sca" not in groups:
+        return None
+    data = source.get("data")
+    if not isinstance(data, dict):
+        return None
+    sca = data.get("sca")
+    if not isinstance(sca, dict) or sca.get("type") != "check":
+        return None
+    policy = sca.get("policy")
+    if not isinstance(policy, str):
+        return None
+    return _clean(policy) or None
+
+
 def detect_shape(alert: dict[str, Any]) -> str:
-    """Classify one alert into exactly one of the seven evidence shapes.
+    """Classify one alert into exactly one of the eight evidence shapes.
 
     First match wins: vulnerability, syscheck, dpkg, netstat, docker,
-    firewall, then 'generic' as the catch-all — a shape string is always
+    sca, firewall, then 'generic' as the catch-all — a shape string is always
     returned.
     """
     source = alert.get("_source") or {}
@@ -149,6 +175,8 @@ def detect_shape(alert: dict[str, Any]) -> str:
         return "netstat"
     if "docker" in groups:
         return "docker"
+    if sca_check_policy(alert) is not None:
+        return "sca"
     predecoder = source.get("predecoder")
     if not isinstance(predecoder, dict):
         predecoder = {}
@@ -166,6 +194,8 @@ def detect_shape(alert: dict[str, Any]) -> str:
 
 def _empty_shape_acc(shape: str) -> dict[str, Any]:
     """Create the empty per-shape accumulator dict."""
+    if shape == "sca":
+        return {"checks": [], "dropped": {}}
     if shape == "syscheck":
         return {"paths": [], "events": [], "changed": [], "dropped": {}}
     if shape == "dpkg":
@@ -535,6 +565,25 @@ def _accumulate_firewall(acc: dict[str, Any], alert: dict[str, Any]) -> None:
                 )
 
 
+def _accumulate_sca(acc: dict[str, Any], alert: dict[str, Any]) -> None:
+    """Merge one SCA check title and Wazuh result into acc."""
+    check = alert["_source"]["data"]["sca"].get("check")
+    if not isinstance(check, dict):
+        return
+    title = check.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return
+    title = " ".join(title.split())
+    result = check.get("result")
+    result = " ".join(str(result).split()) if result is not None else ""
+    title_limit = MAX_EVIDENCE_VALUE_CHARS - len(result) - 2
+    if result and title_limit > 0:
+        value = f"{truncate_words(title, title_limit)}: {result}"
+    else:
+        value = truncate_words(title, MAX_EVIDENCE_VALUE_CHARS)
+    _add_unique(acc["checks"], value, dropped=acc["dropped"], field="checks")
+
+
 def _accumulate_generic(acc: dict[str, Any], alert: dict[str, Any]) -> None:
     """Merge one alert's generic srcip/dstuser values into acc."""
     source = alert.get("_source") or {}
@@ -566,6 +615,7 @@ _SHAPE_ACCUMULATORS = {
     "docker": _accumulate_docker,
     "vulnerability": _accumulate_vulnerability,
     "firewall": _accumulate_firewall,
+    "sca": _accumulate_sca,
     "generic": _accumulate_generic,
 }
 
@@ -689,6 +739,13 @@ def _project_firewall(acc: dict[str, Any]) -> dict[str, Any]:
     return _more_out(out, acc)
 
 
+def _project_sca(acc: dict[str, Any]) -> dict[str, Any]:
+    """Project the SCA accumulator into sorted check values."""
+    if not acc["checks"]:
+        return {}
+    return _more_out({"checks": sorted(acc["checks"])}, acc)
+
+
 def _project_generic(acc: dict[str, Any]) -> dict[str, Any]:
     """Project the generic accumulator, omitting empty lists."""
     out: dict[str, Any] = {}
@@ -706,6 +763,7 @@ _SHAPE_PROJECTORS = {
     "docker": _project_docker,
     "vulnerability": _project_vulnerability,
     "firewall": _project_firewall,
+    "sca": _project_sca,
     "generic": _project_generic,
 }
 
@@ -948,6 +1006,18 @@ def _render_firewall(data: dict[str, Any], plain_labels: bool = False) -> list[s
     return parts
 
 
+def _render_sca(data: dict[str, Any]) -> list[str]:
+    """Render SCA check titles and their Wazuh results."""
+    if not data.get("checks"):
+        return []
+    return [
+        "checks "
+        + _with_more(
+            ", ".join(_sanitise(value) for value in data["checks"]), data, "checks"
+        )
+    ]
+
+
 def _render_generic(data: dict[str, Any]) -> list[str]:
     """Render generic evidence fields."""
     parts = []
@@ -1005,6 +1075,7 @@ _SHAPE_RENDERERS = {
     "netstat": _render_netstat,
     "docker": _render_docker,
     "firewall": _render_firewall,
+    "sca": _render_sca,
     "generic": _render_generic,
     "per_host": _render_per_host,
 }

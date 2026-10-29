@@ -518,8 +518,8 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
     """Group raw alerts into data-built clusters for analysis.
 
     Vulnerability alerts group by (agent name, package), or by (agent name,
-    description) when no package is known; all other alerts group by rule
-    description alone, so hosts merge across agents. Counts,
+    description) when no package is known. SCA checks group by policy; other
+    rule alerts group by description, so hosts merge across agents. Counts,
     hosts, severities, timestamps and CVE lists all come from alert data.
     Each cluster also carries a sorted, de-duplicated "mitre_ids" list taken
     from the alerts' rule.mitre.id values (empty when none are present).
@@ -578,6 +578,9 @@ def extract_alert_clusters(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]
                 cluster = _new_cluster("vulnerability", description, package)
                 vuln_by_key[key] = cluster
         else:
+            policy = evidence.sca_check_policy(alert)
+            if policy is not None:
+                description = f"SCA checks: {policy}"
             cluster = rule_by_desc.get(description)
             if cluster is None:
                 cluster = _new_cluster("rule", description, None)

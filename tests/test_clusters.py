@@ -64,6 +64,100 @@ def _vuln_alert(
     )
 
 
+def _sca_alert(
+    title: str = "Ensure permissions on /etc/security/opasswd are configured.",
+    policy: str = "CIS Ubuntu Linux 24.04 LTS Benchmark v1.0.0.",
+    agent: str = "Wazuh",
+) -> dict[str, Any]:
+    """Build an inline SCA check alert modelled on the Indexer alert."""
+    alert = _alert(
+        description=f"{policy}: {title}", level=7, rule_id="19007",
+        agent=agent, timestamp="2026-10-29T03:43:39.736+0000", groups=["sca"],
+    )
+    source = alert["_source"]
+    source["timestamp"] = source.pop("@timestamp")
+    source["data"] = {"sca": {
+        "type": "check", "policy": policy, "scan_id": "1479757890",
+        "check": {"id": "35770", "title": title, "result": "failed"},
+    }}
+    return alert
+
+
+def test_sca_checks_group_by_policy() -> None:
+    """Different failed check titles share one medium rule cluster per policy."""
+    alerts = [_sca_alert(title=f"Ensure setting {i} is configured.") for i in range(3)]
+    clusters = extract_alert_clusters(alerts)
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster["description"] == (
+        "SCA checks: CIS Ubuntu Linux 24.04 LTS Benchmark v1.0.0."
+    )
+    assert cluster["count"] == 3
+    assert cluster["type"] == "rule"
+    assert cluster["severity"] == "Medium"
+    assert cluster["rule_ids"] == ["19007"]
+    assert cluster["mitre_ids"] == []
+    assert cluster["first_seen"] == cluster["last_seen"] == (
+        "2026-10-29T03:43:39.736+0000"
+    )
+
+
+def test_sca_two_policies_stay_separate() -> None:
+    """Checks for different policies produce separate clusters."""
+    clusters = extract_alert_clusters([_sca_alert(), _sca_alert(policy="Other policy")])
+    assert len(clusters) == 2
+    assert {c["description"] for c in clusters} == {
+        "SCA checks: CIS Ubuntu Linux 24.04 LTS Benchmark v1.0.0.",
+        "SCA checks: Other policy",
+    }
+
+
+def test_sca_policy_merges_hosts() -> None:
+    """One policy merges checks across hosts and retains per-host evidence."""
+    clusters = extract_alert_clusters([
+        _sca_alert(), _sca_alert(title="Ensure another setting.", agent="host-2"),
+    ])
+    assert len(clusters) == 1
+    assert clusters[0]["hosts"] == ["Wazuh", "host-2"]
+    assert clusters[0]["count"] == 2
+    assert set(clusters[0]["evidence"]["per_host"]) == {"Wazuh", "host-2"}
+
+
+def test_sca_summary_keeps_rule_description() -> None:
+    """An SCA summary remains separate from the policy's check cluster."""
+    summary = _sca_alert()
+    summary["_source"]["data"]["sca"]["type"] = "summary"
+    summary["_source"]["rule"]["description"] = "SCA scan summary"
+    clusters = extract_alert_clusters([_sca_alert(), summary])
+    assert len(clusters) == 2
+    assert "SCA scan summary" in {c["description"] for c in clusters}
+
+
+def test_sca_incomplete_fields_keep_description_grouping() -> None:
+    """Missing SCA data or policy leaves existing rule grouping intact."""
+    no_data = _sca_alert()
+    del no_data["_source"]["data"]
+    no_policy = _sca_alert()
+    del no_policy["_source"]["data"]["sca"]["policy"]
+    clusters = extract_alert_clusters([no_data, no_policy])
+    assert len(clusters) == 1
+    assert clusters[0]["description"] == no_data["_source"]["rule"]["description"]
+    assert clusters[0]["count"] == 2
+
+
+def test_sca_description_does_not_include_count() -> None:
+    """The policy description stays identical for two and seven checks."""
+    descriptions = [
+        extract_alert_clusters([_sca_alert(title=f"Check {i}") for i in range(n)])[0][
+            "description"
+        ]
+        for n in (2, 7)
+    ]
+    assert descriptions == [
+        "SCA checks: CIS Ubuntu Linux 24.04 LTS Benchmark v1.0.0."
+    ] * 2
+
+
 def test_same_host_package_different_cves_one_cluster() -> None:
     """Same host and package with different CVEs merge into one cluster."""
     alerts = [
