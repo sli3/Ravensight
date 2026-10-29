@@ -829,6 +829,14 @@ def test_text_width_caps() -> None:
     assert not re.search(r"\.prose \{[^}]*max-width", text)
 
 
+def test_finding_cards_do_not_shrink() -> None:
+    """Finding cards retain their height when the findings list overflows."""
+    text = _text()
+    rule = re.search(r"^\.item \{([^{}]*)\}", text, re.MULTILINE)
+    assert rule is not None
+    assert "flex-shrink: 0" in rule.group(1)
+
+
 def test_detail_two_column_layout_rules() -> None:
     """The cluster detail uses a named container and a two column wrapper without order."""
     text = _text()
