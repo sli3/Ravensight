@@ -159,7 +159,7 @@ BROWSER_BLOCKED_KEYS = re.compile(r"(?i)\b(ctrl|control|cmd|command|meta|alt|win
 # CONFIRM with Prin: set this to where the sample fixture really lives.
 BROWSER_UPLOAD_DIR = "tests/fixtures/"
 
-# Design reference: pm may read two files of Prin's own Claude Design artifact
+# Design reference: pm may read only the files listed below from Prin's own Claude Design artifact
 # with the Artifact tool, and nothing else. Add "Artifact" to the hook matcher.
 ARTIFACT_URL = "https://claude.ai/artifact/RmvHREuYhRdM7FcBufRJ5J"
 ARTIFACT_PM_PATHS = ("project/Viewer.dc.html", "project/canvas.json", "project/Evidence.dc.html", "project/Sections.dc.html")
