@@ -36,6 +36,7 @@
 | Web UI Report Viewer | 🔶 In progress | §23 below: Sessions 1 and 2 built, Session 3 open |
 | Trends Chart in the Viewer | 🔶 In progress | §24 below: Sessions 1 to 3 built, Session 4 open |
 | Report Reading Flow | 🔶 In progress | §25 below: Sessions 1 to 3 built (commits `011c01e`, `362cb0a`), Session 4 open |
+| SCA Check Grouping | ⬜ Planned | §26 below |
 
 ## Open Items
 
@@ -311,12 +312,76 @@ Out of scope for the whole section:
 - A web server, a network request, a framework, a build step, or writing to any file
 - Opening, editing or printing `config.toml` or `.env`
 
+### 26. SCA Check Grouping
+
+**What it does:** Wazuh's Security Configuration Assessment (SCA) raises one alert per check
+result after an agent restart, an upgrade or a policy change. Ravensight groups rule alerts
+by rule description, and every check has its own description, so one scan becomes one
+finding per check (127 findings on 29 Oct 2026, after an `apt full-upgrade` on the Wazuh
+server). Most of them then get no commentary, because only the first 40 clusters reach the
+model. This section groups the check-result alerts of one SCA policy into one finding, with
+the checks as evidence.
+
+**Design rule:** the finding shows only what Wazuh reported. Ravensight never works out a
+score, a percentage, a count of passed or failed checks as a rating, or a compliance verdict
+from SCA alerts, and SCA results never set an Essential Eight or Essentials status (those come
+only from Prin's attestation files).
+
+Rules (agreed with Prin, 29 Oct 2026; pm proposed them when Prin chose this option):
+- An SCA check-result alert is one whose `rule.groups` includes `sca` and whose
+  `data.sca.type` is `check`. Session 1 confirms these field names against a real alert
+  before relying on them
+- Check-result alerts group by SCA policy name, one finding per policy, with hosts merged as
+  for other rule alerts
+- The finding's description is the same from run to run, so trends, the baseline and similar
+  past incidents follow it: "SCA checks: " followed by the policy name. It never includes a
+  count; the alert count is the finding's count, as for any cluster
+- The cluster type stays `rule`, so the JSON report (keys, values and `schema_version`) and
+  the viewer need no change. Severity comes from the highest rule level, as for any cluster
+- Evidence lists the check titles, each with the result Wazuh recorded for it, word for word,
+  capped like other evidence lists with "+N more". This is Wazuh's data shown as evidence,
+  not a Ravensight rating
+- The SCA summary alert ("SCA summary: …") is not a check-result alert and stays its own
+  finding, unchanged. An alert without the SCA fields groups as it does today
+- How findings are matched to MITRE, ISM, the Essential Eight and the Essentials is
+  unchanged; a grouped SCA finding is matched like any other finding
+
+#### Session 1 — Grouping and evidence
+
+In scope:
+- `ravensight/analyser.py`: `extract_alert_clusters` groups SCA check-result alerts by policy
+- `ravensight/evidence.py`: an SCA check evidence shape (check titles and Wazuh's result)
+- Tests for both, in the existing analyser and evidence test files
+- `README.md`: only if a sentence there describes how alerts are grouped
+
+Out of scope:
+- The LLM prompt, `ravensight/reporter.py`, `web/` and the JSON report shape
+
+#### Session 2 — Check against a real SCA scan
+
+In scope:
+- Run against a window that holds SCA check alerts (for example the 29 Oct 2026 upgrade, or
+  after restarting an agent) and fix only defects in the files listed for Session 1
+- This section's Feature Status row
+
+Out of scope:
+- New evidence fields or wording beyond the Rules above
+
+Out of scope for the whole section:
+- Any score, percentage, pass or fail summary or compliance rating worked out by Ravensight,
+  and feeding SCA results into any Essential Eight or Essentials status
+- How any other alert groups, the 40-cluster prompt cap and the alert level threshold
+- Any change to the JSON report, the viewer or the markdown report's layout
+- Reading SCA results from the Wazuh API: only the alerts Ravensight already fetches
+- Opening, editing or printing `config.toml` or `.env`
+
 ## Suggested Build Order
 
 1. Section 23 Session 3 and section 24 Session 4 together (one real-report check of the
    final layout)
 2. Section 25 Session 4, the highlighted recommendation (Prin asked for it to come after the
    item above)
+3. Section 26 Sessions 1 and 2, SCA check grouping
 
 ---
 
