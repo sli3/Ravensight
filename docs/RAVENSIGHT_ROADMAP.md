@@ -35,7 +35,7 @@
 | Networked ChromaDB, Container non-root, Cluster Evidence, Wazuh Indexer TLS, Manager Login Removal, Alert Cap Warning, Data File Loader Hardening | ✅ Complete | Archive Feature Status table |
 | Web UI Report Viewer | 🔶 In progress | §23 below: Sessions 1 and 2 built, Session 3 open |
 | Trends Chart in the Viewer | 🔶 In progress | §24 below: Sessions 1 to 3 built, Session 4 open |
-| Report Reading Flow | 🔶 In progress | §25 below: Sessions 1 and 2 built (commit `011c01e`) |
+| Report Reading Flow | 🔶 In progress | §25 below: Sessions 1 to 3 built (commits `011c01e`, `362cb0a`), Session 4 open |
 
 ## Open Items
 
@@ -153,7 +153,8 @@ Rules (agreed with Prin):
   - no text has a length limit, so notes and finding text fill their box
   - the finding's narrative and recommendation sit in two columns on a wide window and
     stack on a narrow one
-  - the order of the sections, the intro box and the terms box: see section 25
+  - the order of the sections, the intro box, the terms box and the highlighted
+    recommendation: see section 25
 
 Built: Session 1, JSON schema version 3 (commit `2af63af`). Session 2, the viewer (commits
 `acce411` and `5a1d60a`), with later style commits and the departures above.
@@ -274,6 +275,15 @@ Rules (agreed with Prin, 26 Oct 2026; pm proposed them when Prin asked pm to dec
 - Markdown: the Glossary leaves out the "Cluster (C1, C2…)" and "UTC" entries, because the
   how-to-read note under the title already explains both. The entries stay in the glossary
   data (the viewer's Terms box still uses them), and no other glossary entry changes
+- The finding's recommendation is highlighted in both outputs, because it answers "what do I
+  do?". Viewer: the recommendation sits in a callout box (a left accent border and a light
+  background from the existing design tokens, in both themes), kept in its current place
+  beside the narrative (stacked on a narrow window), labelled "Recommendation". Markdown:
+  the recommendation line becomes a blockquote starting "**Recommendation:**". One neutral
+  accent is used for every recommendation, including "No action" ones, and no colour implies
+  a rating, a severity or urgency (no red, amber or green). The "No recommendation was
+  generated." sentence stays plain and muted, with no box. The recommendation text itself is
+  never reworded
 - Viewer: the order is run summary and timeline, Findings, Trends, ASD Essentials, Essential
   Eight, Terms. The navigation follows the page order. Where artboard E orders these
   differently, this section's order wins
@@ -322,6 +332,22 @@ Out of scope:
 - `web/` and the viewer's Terms box, the other glossary entries and their wording, the
   how-to-read note, and the JSON report
 
+#### Session 4 — Highlighted recommendation
+
+In scope:
+- `ravensight/reporter.py`: the recommendation line in `_format_finding` becomes a blockquote
+  starting "**Recommendation:**", for cluster, vulnerability and unattached findings that have
+  one
+- `web/index.html`: the CSS for a recommendation callout and the recommendation block in
+  `renderClusterDetail` (and the unattached or other-finding detail if it shows one)
+- `tests/test_reporter_findings.py`, `tests/test_web_viewer.py` and any other test that
+  expects the old recommendation line
+- `README.md`: only if a sentence there describes the old recommendation line
+
+Out of scope:
+- The wording of any recommendation, the "No recommendation was generated." sentence's
+  wording, the order of sections, the JSON report, and `ravensight/` other than `reporter.py`
+
 Out of scope for the whole section:
 - Any change to the JSON report (keys, values or `schema_version`), to how trends, direction
   or anomalies are worked out, to how findings are matched or analysed, or to the LLM prompt
@@ -337,10 +363,11 @@ Out of scope for the whole section:
 
 ## Suggested Build Order
 
-1. Section 25 Sessions 1 and 2 (markdown first, then the viewer)
-2. Section 23 Session 3 and section 24 Session 4 together (one real-report check of the
+1. Section 23 Session 3 and section 24 Session 4 together (one real-report check of the
    final layout)
-3. Section 9: close it or plan its next phase (see Open Items)
+2. Section 9: close it or plan its next phase (see Open Items)
+3. Section 25 Session 4, the highlighted recommendation (Prin asked for it to come after the
+   items above)
 
 ---
 
