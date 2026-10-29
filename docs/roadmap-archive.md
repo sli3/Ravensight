@@ -2131,3 +2131,113 @@ Out of scope:
 
 Closed by Prin on 29 Oct 2026: §15 delivered the "Not applicable" state and the attestation
 file, and extra evidence sources (such as Wazuh SCA results) were not taken up.
+
+---
+
+### 25. Report Reading Flow
+
+**What it does:** puts the markdown report and the web viewer in one reading order that a
+first-time reader can follow: what this is, what happened, what to do about it, how it
+compares, then reference material. It changes order and a few joining sentences only, never
+the data.
+
+**Design rule:** order and wording only. Nothing is rated, scored, hidden or added, and every
+ASD notice stays wherever it is now, word for word. A section moves as a whole.
+
+Rules (agreed with Prin, 26 Oct 2026; pm proposed them when Prin asked pm to decide):
+- One reading order in both outputs: (1) a short how-to-read note, (2) the summary,
+  (3) the findings, each as what happened, then the recommended action, then the evidence,
+  (4) how it compares: similar past incidents (markdown only) and the trends, (5) reference
+  material: MITRE ATT&CK tags (markdown only), then ASD Essentials, then the ASD Framework
+  (Essential Eight and ISM), (6) terms, notices and attribution (a finding's own detail:
+  see section 27)
+- Markdown: each finding's recommendation is printed under its narrative and Check line,
+  before its evidence. An unattached note keeps its prefix and prints its recommendation the
+  same way. The separate Recommendations section stays only for an old-format report that
+  has no dictionary findings
+- Markdown: a finding with no commentary, or no recommendation, shows a plain sentence
+  saying so, using the viewer's existing wording
+- ASD Essentials comes before the ASD Framework section in the markdown, as in the viewer.
+  The Essential Eight section keeps its content and is not retired
+- The trends keep their rows, notes and wording (section 24's Rules stand). Only their place
+  changes: straight after the similar past incidents in the markdown, and before the
+  framework sections in the viewer
+- Markdown: the Glossary stays last. The how-to-read note under the title gains one
+  sentence that gives the reading order and says terms are explained in the Glossary at the
+  end when it has entries
+- Markdown: the Glossary leaves out the "Cluster (C1, C2…)" and "UTC" entries, because the
+  how-to-read note under the title already explains both. The entries stay in the glossary
+  data (the viewer's Terms box still uses them), and no other glossary entry changes
+- The finding's recommendation is highlighted in both outputs, because it answers "what do I
+  do?". Viewer: the recommendation sits in a callout box (a left accent border and a light
+  background from the existing design tokens, in both themes), kept in its current place
+  beside the narrative (stacked on a narrow window), labelled "Recommendation". Markdown:
+  the recommendation line becomes a blockquote starting "**Recommendation:**". One neutral
+  accent is used for every recommendation, including "No action" ones, and no colour implies
+  a rating, a severity or urgency (no red, amber or green). The "No recommendation was
+  generated." sentence stays plain and muted, with no box. The recommendation text itself is
+  never reworded (a finding's own detail: see section 27)
+- Viewer: the order is run summary and timeline, Findings, Trends, ASD Essentials, Essential
+  Eight, Terms. The navigation follows the page order. Where artboard E orders these
+  differently, this section's order wins
+- Viewer: a short plain-language "How to read this report" box shows after a report loads,
+  and a closed "Terms used on this page" box sits at the end. Both are fixed page text, not
+  report data. The terms cover cluster, UTC, ASD, ISM, Essential Eight, ASD Essentials,
+  principle and action, priority phase, CVE, MITRE ATT&CK, anomaly and Check, reusing the
+  Glossary's wording wherever it has an entry
+- No existing how-to-read note, notice, attribution, licence line or glossary entry is
+  reworded. Only the sentences and boxes named above are new
+
+#### Session 1 — Markdown report order
+
+In scope:
+- `ravensight/reporter.py`: the section order in `_build_report`, the recommendation line in
+  `_format_finding`, the no-commentary and no-recommendation sentences, the Recommendations
+  section for old-format reports only, and the extra intro sentence
+- `tests/test_reporter_findings.py`, `tests/test_reporter_essentials.py` and any other
+  reporter test that pins a section's place or the Recommendations section
+- `README.md`: the "Each report contains" list
+
+Out of scope:
+- `web/`, `ravensight/trending.py` (the trends text moves, it is not changed) and the JSON
+  report
+
+#### Session 2 — Viewer order, intro and terms
+
+In scope:
+- `web/index.html`: the section order, the navigation order, the "How to read this report"
+  box and the "Terms used on this page" box
+- `tests/test_web_viewer.py`
+- `README.md`: the "Report viewer" paragraph
+
+Out of scope:
+- `ravensight/` and the JSON report
+
+#### Session 3 — Glossary duplicates
+
+In scope:
+- `ravensight/reporter.py`: `_render_glossary` skips the "Cluster (C1, C2…)" and "UTC"
+  entries when the how-to-read note under the title is in the report
+- `tests/test_reporter_findings.py`, and any other reporter test that expects those two
+  entries in the Glossary
+
+Out of scope:
+- `web/` and the viewer's Terms box, the other glossary entries and their wording, the
+  how-to-read note, and the JSON report
+
+#### Session 4 — Highlighted recommendation
+
+Moved to section 27.
+
+Out of scope for the whole section:
+- Any change to the JSON report (keys, values or `schema_version`), to how trends, direction
+  or anomalies are worked out, to how findings are matched or analysed, or to the LLM prompt
+- Rewording, shortening or paraphrasing an existing how-to-read note, ASD notice,
+  attribution, licence line or glossary entry
+- Hiding, sorting, filtering or capping findings or trend rows, and any "Show all" or "Clear"
+  control
+- Any rating, score, percentage, pass or fail wording, or colour that implies one
+- Retiring or changing the content of the Essential Eight section
+- New screens or data, per-alert detail, and comparing or listing several reports
+- A web server, a network request, a framework, a build step, or writing to any file
+- Opening, editing or printing `config.toml` or `.env`

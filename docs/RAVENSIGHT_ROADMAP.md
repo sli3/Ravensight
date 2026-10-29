@@ -35,8 +35,9 @@
 | Networked ChromaDB, Container non-root, Cluster Evidence, Wazuh Indexer TLS, Manager Login Removal, Alert Cap Warning, Data File Loader Hardening | ✅ Complete | Archive Feature Status table |
 | Web UI Report Viewer | 🔶 In progress | §23 below: Sessions 1 and 2 built, Session 3 open |
 | Trends Chart in the Viewer | 🔶 In progress | §24 below: Sessions 1 to 3 built, Session 4 open |
-| Report Reading Flow | 🔶 In progress | §25 below: Sessions 1 to 3 built (commits `011c01e`, `362cb0a`), Session 4 open |
+| Report Reading Flow | ✅ Complete (Session 4 moved to §27) | Archive §25 |
 | SCA Check Grouping | 🔶 In progress | §26 below: Session 1 built (commit `18a5724`), Session 2 open |
+| Finding in Three Parts | ⬜ Planned | §27 below |
 
 ## Open Items
 
@@ -103,7 +104,7 @@ Rules (agreed with Prin):
     written
   - no text has a length limit, so notes and finding text fill their box
   - the finding's narrative and recommendation sit in two columns on a wide window and
-    stack on a narrow one
+    stack on a narrow one (replaced by section 27 for the finding detail)
   - the order of the sections, the intro box, the terms box and the highlighted
     recommendation: see section 25
 
@@ -193,125 +194,6 @@ Out of scope for the whole section:
 - A web server, authentication, or uploading a report anywhere
 - Opening, editing or printing `config.toml` or `.env`
 
-### 25. Report Reading Flow
-
-**What it does:** puts the markdown report and the web viewer in one reading order that a
-first-time reader can follow: what this is, what happened, what to do about it, how it
-compares, then reference material. It changes order and a few joining sentences only, never
-the data.
-
-**Design rule:** order and wording only. Nothing is rated, scored, hidden or added, and every
-ASD notice stays wherever it is now, word for word. A section moves as a whole.
-
-Rules (agreed with Prin, 26 Oct 2026; pm proposed them when Prin asked pm to decide):
-- One reading order in both outputs: (1) a short how-to-read note, (2) the summary,
-  (3) the findings, each as what happened, then the recommended action, then the evidence,
-  (4) how it compares: similar past incidents (markdown only) and the trends, (5) reference
-  material: MITRE ATT&CK tags (markdown only), then ASD Essentials, then the ASD Framework
-  (Essential Eight and ISM), (6) terms, notices and attribution
-- Markdown: each finding's recommendation is printed under its narrative and Check line,
-  before its evidence. An unattached note keeps its prefix and prints its recommendation the
-  same way. The separate Recommendations section stays only for an old-format report that
-  has no dictionary findings
-- Markdown: a finding with no commentary, or no recommendation, shows a plain sentence
-  saying so, using the viewer's existing wording
-- ASD Essentials comes before the ASD Framework section in the markdown, as in the viewer.
-  The Essential Eight section keeps its content and is not retired
-- The trends keep their rows, notes and wording (section 24's Rules stand). Only their place
-  changes: straight after the similar past incidents in the markdown, and before the
-  framework sections in the viewer
-- Markdown: the Glossary stays last. The how-to-read note under the title gains one
-  sentence that gives the reading order and says terms are explained in the Glossary at the
-  end when it has entries
-- Markdown: the Glossary leaves out the "Cluster (C1, C2…)" and "UTC" entries, because the
-  how-to-read note under the title already explains both. The entries stay in the glossary
-  data (the viewer's Terms box still uses them), and no other glossary entry changes
-- The finding's recommendation is highlighted in both outputs, because it answers "what do I
-  do?". Viewer: the recommendation sits in a callout box (a left accent border and a light
-  background from the existing design tokens, in both themes), kept in its current place
-  beside the narrative (stacked on a narrow window), labelled "Recommendation". Markdown:
-  the recommendation line becomes a blockquote starting "**Recommendation:**". One neutral
-  accent is used for every recommendation, including "No action" ones, and no colour implies
-  a rating, a severity or urgency (no red, amber or green). The "No recommendation was
-  generated." sentence stays plain and muted, with no box. The recommendation text itself is
-  never reworded
-- Viewer: the order is run summary and timeline, Findings, Trends, ASD Essentials, Essential
-  Eight, Terms. The navigation follows the page order. Where artboard E orders these
-  differently, this section's order wins
-- Viewer: a short plain-language "How to read this report" box shows after a report loads,
-  and a closed "Terms used on this page" box sits at the end. Both are fixed page text, not
-  report data. The terms cover cluster, UTC, ASD, ISM, Essential Eight, ASD Essentials,
-  principle and action, priority phase, CVE, MITRE ATT&CK, anomaly and Check, reusing the
-  Glossary's wording wherever it has an entry
-- No existing how-to-read note, notice, attribution, licence line or glossary entry is
-  reworded. Only the sentences and boxes named above are new
-
-#### Session 1 — Markdown report order
-
-In scope:
-- `ravensight/reporter.py`: the section order in `_build_report`, the recommendation line in
-  `_format_finding`, the no-commentary and no-recommendation sentences, the Recommendations
-  section for old-format reports only, and the extra intro sentence
-- `tests/test_reporter_findings.py`, `tests/test_reporter_essentials.py` and any other
-  reporter test that pins a section's place or the Recommendations section
-- `README.md`: the "Each report contains" list
-
-Out of scope:
-- `web/`, `ravensight/trending.py` (the trends text moves, it is not changed) and the JSON
-  report
-
-#### Session 2 — Viewer order, intro and terms
-
-In scope:
-- `web/index.html`: the section order, the navigation order, the "How to read this report"
-  box and the "Terms used on this page" box
-- `tests/test_web_viewer.py`
-- `README.md`: the "Report viewer" paragraph
-
-Out of scope:
-- `ravensight/` and the JSON report
-
-#### Session 3 — Glossary duplicates
-
-In scope:
-- `ravensight/reporter.py`: `_render_glossary` skips the "Cluster (C1, C2…)" and "UTC"
-  entries when the how-to-read note under the title is in the report
-- `tests/test_reporter_findings.py`, and any other reporter test that expects those two
-  entries in the Glossary
-
-Out of scope:
-- `web/` and the viewer's Terms box, the other glossary entries and their wording, the
-  how-to-read note, and the JSON report
-
-#### Session 4 — Highlighted recommendation
-
-In scope:
-- `ravensight/reporter.py`: the recommendation line in `_format_finding` becomes a blockquote
-  starting "**Recommendation:**", for cluster, vulnerability and unattached findings that have
-  one
-- `web/index.html`: the CSS for a recommendation callout and the recommendation block in
-  `renderClusterDetail` (and the unattached or other-finding detail if it shows one)
-- `tests/test_reporter_findings.py`, `tests/test_web_viewer.py` and any other test that
-  expects the old recommendation line
-- `README.md`: only if a sentence there describes the old recommendation line
-
-Out of scope:
-- The wording of any recommendation, the "No recommendation was generated." sentence's
-  wording, the order of sections, the JSON report, and `ravensight/` other than `reporter.py`
-
-Out of scope for the whole section:
-- Any change to the JSON report (keys, values or `schema_version`), to how trends, direction
-  or anomalies are worked out, to how findings are matched or analysed, or to the LLM prompt
-- Rewording, shortening or paraphrasing an existing how-to-read note, ASD notice,
-  attribution, licence line or glossary entry
-- Hiding, sorting, filtering or capping findings or trend rows, and any "Show all" or "Clear"
-  control
-- Any rating, score, percentage, pass or fail wording, or colour that implies one
-- Retiring or changing the content of the Essential Eight section
-- New screens or data, per-alert detail, and comparing or listing several reports
-- A web server, a network request, a framework, a build step, or writing to any file
-- Opening, editing or printing `config.toml` or `.env`
-
 ### 26. SCA Check Grouping
 
 **What it does:** Wazuh's Security Configuration Assessment (SCA) raises one alert per check
@@ -367,13 +249,109 @@ Out of scope for the whole section:
 - The LLM prompt, `ravensight/reporter.py`, `web/` and the JSON report shape
 - Opening, editing or printing `config.toml` or `.env`
 
+### 27. Finding in Three Parts
+
+**What it does:** each finding, in the viewer and in the markdown report, reads in three
+labelled parts in the same order: what we found, the evidence, and how to deal with it. A
+reader who is new to security logs can then follow a finding from top to bottom. It
+regroups what the report already holds; nothing is added to the analysis or the JSON.
+
+**Design rule:** layout, order and labels only. Nothing is rated, scored, hidden or added,
+and every ASD notice stays, word for word from the JSON. Colour marks which part you are
+reading, never a rating, a severity or urgency.
+
+Rules (agreed with Prin, 29 Oct 2026; pm proposed them from board G and Prin agreed):
+- Design reference: board G, "Finding in three sections" (`project/Sections.dc.html` in
+  Prin's design artifact), for layout and style only. Its sample data, its raw log lines and
+  its field names are never used. Where board G and these Rules differ, these Rules win.
+  Board G is a recorded departure from artboard E for the finding detail only
+- A cluster or vulnerability finding has three parts, in this order:
+  (1) "What we found": the narrative (or the existing no-commentary sentence), the Check
+  line, and facts for the hosts, first alert, last alert and alert count;
+  (2) "The evidence": the evidence rows as built (a label, then the values as chips), the
+  notes and the CVEs;
+  (3) "How to deal with it": the recommendation (or the existing "No recommendation was
+  generated." sentence), then, in the viewer only, the finding's ASD pointers (below)
+- For a finding's own detail, this order replaces section 25's "what happened, then the
+  recommended action, then the evidence" and section 23's two-column narrative and
+  recommendation departure. The page's section order (section 25) does not change
+- An unattached note: part 1 is its description and part 3 its recommendation, with no
+  part 2. A legacy text finding is unchanged
+- Viewer: each part is a box with a number badge, a title and a fixed one-line subtitle, in
+  board G's three neutral accents (blue, violet, teal) from design tokens, in both themes,
+  the same on every finding whatever its severity. No red, amber or green, and the Check
+  label has a neutral border, not a severity colour. Box 3 is the highlighted recommendation,
+  so section 25 Session 4's viewer callout is built here instead
+- Viewer, box 3: the finding's Essential Eight and ISM pointers from `finding_pointers` and
+  its Essentials actions from `essentials.finding_actions`, matched by finding id, shown in
+  a closed box when the JSON holds them; otherwise box 3 holds the recommendation only.
+  Pointers are shown as pointers, never with a status. An Essentials action shows the
+  operator's attestation status, labelled as the operator's own declaration, or "Not
+  assessed". The Essentials list carries the JSON's own attribution, licence link,
+  "modified" note and unofficial notice, never paraphrased. Session 1 confirms these key
+  names against the sample fixture before relying on them. The ASD Essentials and Essential
+  Eight sections stay as they are
+- Markdown: each finding gets the same three labels, in the same order, without colour. The
+  recommendation line becomes a blockquote starting "**Recommendation:**" (section 25
+  Session 4's markdown part, built here instead). ASD pointers stay in their own sections
+  and are not repeated in the finding
+- Titles and subtitles are fixed page text, not report data: "What we found" / "What the log
+  showed, in plain words"; "The evidence" / "The data behind the finding"; "How to deal with
+  it" / "What to do next". No narrative, recommendation, evidence or Check text is reworded
+
+#### Session 1 — Viewer: three parts
+
+In scope:
+- `web/index.html`: the finding detail (cluster, vulnerability and unattached) and its CSS
+- `tests/test_web_viewer.py`
+- `README.md`: the "Report viewer" paragraph, only if it describes the finding layout
+
+Out of scope:
+- `ravensight/`, the JSON report and the page's section order
+
+#### Session 2 — Markdown: three parts
+
+In scope:
+- `ravensight/reporter.py`: `_format_finding` and the unattached-note rendering
+- `tests/test_reporter_findings.py` and any other reporter test that pins a finding's
+  layout or the old recommendation line
+- `README.md`: the "Each report contains" list, only if it describes a finding's layout
+
+Out of scope:
+- `web/`, the JSON report, the section order and the Glossary
+
+#### Session 3 — Check against real reports
+
+In scope:
+- Run the report and the viewer against real runs (a full run, a run with no Essentials
+  data, a run with empty commentary, a run with `flags`, a vulnerability finding with CVEs,
+  an unattached note and a grouped SCA finding) and fix only defects in the files listed
+  for Sessions 1 and 2
+- This section's Feature Status row
+
+Out of scope:
+- New screens or data
+
+Out of scope for the whole section:
+- Any change to the JSON report (keys, values or `schema_version`), the LLM prompt, or how
+  findings are grouped, matched or analysed
+- Rewording any narrative, recommendation, evidence, Check line, how-to-read note, ASD
+  notice, attribution, licence line or glossary entry
+- Any rating, score, percentage, pass or fail wording, or colour that implies one, and any
+  Essential Eight status shown inside a finding
+- Raw log lines, or any figure the JSON does not hold
+- Moving, removing or changing the ASD Essentials, Essential Eight or Trends sections, or
+  the page's section order
+- Hiding, sorting, filtering or capping findings
+- A web server, a network request, a framework, a build step, or writing to any file
+- Opening, editing or printing `config.toml` or `.env`
+
 ## Suggested Build Order
 
 1. Section 23 Session 3 and section 24 Session 4 together (one real-report check of the
    final layout)
-2. Section 25 Session 4, the highlighted recommendation (Prin asked for it to come after the
-   item above)
-3. Section 26 Sessions 1 and 2, SCA check grouping
+2. Section 26 Sessions 1 and 2, SCA check grouping
+3. Section 27 Sessions 1 to 3, a finding in three parts
 
 ---
 
